@@ -95,7 +95,7 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 
 | ヘッダ | 値 | 備考 |
 | --- | --- | --- |
-| Content-Security-Policy | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'` | 外部スクリプト・外部接続なし（Supabase にはブラウザから接続しない）。`style-src 'unsafe-inline'` はグラフライブラリの都合で必要なら許し、不要なら外す（2 回目で確定）。Next.js のインラインスクリプトに nonce が要る場合は実装で確認 |
+| Content-Security-Policy | `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'` | 外部スクリプト・外部接続なし（Supabase にはブラウザから接続しない）。`style-src` は `'self'` に確定し `'unsafe-inline'` を外した（2026-11-03、ADR 0008。グラフは自前の SVG 部品で、動的な見た目は SVG 属性と CSS クラスだけで表す。React の `style` prop を lint で禁止する。07 §7 S-03）。`script-src` は未確定: Next.js App Router の静的生成は RSC ペイロードをインライン `<script>` で出すため `'self'` だけでは動かない可能性がある。nonce は静的生成と両立しないので、hash の列挙か `'unsafe-inline'` + `'strict-dynamic'` のどちらかを実装時に security-auditor と決める（ADR 0008「結果」、§13） |
 | X-Content-Type-Options | `nosniff` | |
 | Referrer-Policy | `strict-origin-when-cross-origin` | takatsu-connect.com への遷移で BI の URL パスを送らない |
 | X-Frame-Options | `DENY` | CSP の frame-ancestors と二重 |
@@ -169,7 +169,7 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 ## 13. 未確定
 
 - Supabase のアドバイザが出す「security definer view」（`pub_*` が所有者権限で base 表を読む）の警告を意図したものとして受け入れることを、security-auditor の設計レビューで確認する。代替（`security_invoker = true` + 内部表に anon の select を許すポリシー）は内部表の列が直接読めるようになるので採らない（ADR 0007）。
-- CSP の `style-src 'unsafe-inline'` と Next.js のインラインスクリプトの扱いは、グラフライブラリの選定（2 回目）後に確定する。
+- CSP の `script-src`: Next.js App Router の静的生成が出すインライン `<script>`（RSC ペイロード）の扱い（hash の列挙か、`'unsafe-inline'` + `'strict-dynamic'`）。実装時に `next build` の出力で確認し、security-auditor と決める（D-17、ADR 0008「結果」）。`style-src` は `'self'` で確定した（2026-11-03、ADR 0008）。
 - Vercel の Git 連携で fork からの PR のプレビューを止める設定の有無（devops-engineer が確認）。
 - Q-12（通知先）、Q-30（除外の窓口・文面と台帳の置き場所）。
-- D-16（0 の伏せ扱い。02 §9）、Q-33（二次伏せの表示文言）。
+- D-16（0 の伏せ扱い。02 §9）。Q-33 は確定（2026-11-03、ADR 0003 判断 5）。
