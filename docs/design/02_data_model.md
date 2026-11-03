@@ -7,6 +7,7 @@
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 全記事の分布の母集団を除外後にし、`benchmark_curve` と帯の列をビューで計算する（§3.5、§4.1、§5、§9）。N-3: service_role への `internal` スキーマの grant（§6））
   - 2026-11-03: 書き込みを専用ロール `batch_writer` に変更（ADR 0009）。§6 の service_role への grant を取り消し、表ごとの grant とポリシーに置き換え（§1、§6、§8、§9）。バッチの言語を Python に変更（ADR 0004）
+  - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-4、W-8、L-1〜L-3、L-7 を反映（§6 のロールの作成を `nologin` に、接続の上限と既定のタイムアウト、`batch_run` の delete を外す、権限の検査の拡張。§8 のテスト用パスワードを seed から除く。§9）
 
 ## 1. 方針
 
@@ -439,17 +440,24 @@ revoke all on internal.<表> from anon, authenticated;
 
 バッチが使うロールは `batch_writer`（ADR 0009）。`service_role` には `internal` の権限を与えない（2026-11-03。前回の再確認 N-3 の grant を取り消す。バッチが PostgREST を使わなくなり、service role キーを使う場所がなくなったため）。
 
-マイグレーション 0001 の上の `revoke` に続けて次を置く。パスワードはマイグレーションに書かない。設定は docs/operations/ の手順で行う（`alter role batch_writer with password '...'`。保存済みスニペットに残さない）。パスワードが未設定の間はログインできない。
+マイグレーション 0001 の上の `revoke` に続けて次を置く。パスワードはマイグレーションに書かない。有効にするときは docs/operations/ の手順で `alter role batch_writer login password '...'` を実行する（保存済みスニペットに残さない。経路監査 L-1）。実行するまでは `nologin` なので接続できない。
 
 ```sql
 -- ロールはクラスタ全体のオブジェクトなので、再適用に備えて存在を確認する
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'batch_writer') then
-    create role batch_writer login noinherit nobypassrls;
+    create role batch_writer nologin noinherit nobypassrls;
   end if;
 end
 $$;
+
+-- if not exists は既存のロールの属性を直さないので揃える（W-8）。
+-- super、createdb、createrole、replication、bypassrls は変更に強い権限が要る可能性があるので alter せず、末尾の検査で確かめる
+alter role batch_writer nologin noinherit;
+-- 既定のタイムアウトと接続の上限（経路監査 L-3、ADR 0009）
+alter role batch_writer connection limit 2;
+alter role batch_writer set statement_timeout = '120s';
 
 grant usage on schema internal to batch_writer;
 
@@ -460,14 +468,21 @@ alter default privileges for role postgres in schema internal revoke all on sequ
 alter default privileges for role postgres in schema internal revoke all on functions from service_role;
 ```
 
-`batch_writer` の権限は表の名前を列挙して与える。`grant ... on all tables in schema internal` と `alter default privileges ... to batch_writer` は使わない（`excluded_author` と、それを参照する `internal.article_cumulative`、`internal.benchmark_curve` まで届いてしまう）。§3.1〜§3.5 と `batch_run`、`sns_source_unmapped` の各表の作成直後に、上の `enable row level security` と `revoke` に続けて次を置く。
+`batch_writer` の権限は表の名前を列挙して与える。`grant ... on all tables in schema internal` と `alter default privileges ... to batch_writer` は使わない（`excluded_author` と、それを参照する `internal.article_cumulative`、`internal.benchmark_curve` まで届いてしまう）。§3.1〜§3.5 と `sns_source_unmapped` の各表の作成直後に、上の `enable row level security` と `revoke` に続けて次を置く。
 
 ```sql
 grant select, insert, update, delete on internal.<表> to batch_writer;
 create policy batch_writer_all on internal.<表> for all to batch_writer using (true) with check (true);
 ```
 
-シーケンスを持つ表（`batch_run` など、実装時に確定）は `grant usage on sequence internal.<シーケンス> to batch_writer;` を足す。`batch_run.counts` の check 制約が使う関数は、実行時に書き込むロールの EXECUTE 権限が要るので `grant execute on function internal.counts_is_numeric(jsonb) to batch_writer;` を足す（§3.6。上の `revoke execute ... from public` で閉じているため。07 I-DB-18 の insert で確かめる）。これ以外の関数は `internal` に置かない（§4.1 のビューも `case` 式で書く）。
+`batch_run` は delete を外す（経路監査 L-2。保持期間の削除がなく、バッチが痕跡を消せないようにする）。
+
+```sql
+grant select, insert, update on internal.batch_run to batch_writer;
+create policy batch_writer_all on internal.batch_run for all to batch_writer using (true) with check (true);
+```
+
+シーケンスの grant は最初は置かない。`generated always as identity` のシーケンスは grant なしで動く可能性がある（経路監査 L-2。要確認 ADR 0009 V-4）ので、I-DB-18 (4) の insert が失敗したときだけ `grant usage on sequence internal.<シーケンス> to batch_writer;` を足す。`batch_run.counts` の check 制約が使う関数は、実行時に書き込むロールの EXECUTE 権限が要るので `grant execute on function internal.counts_is_numeric(jsonb) to batch_writer;` を足す（§3.6。上の `revoke execute ... from public` で閉じているため。07 I-DB-18 の insert で確かめる）。これ以外の関数は `internal` に置かない（§4.1 のビューも `case` 式で書く）。
 
 `internal.excluded_author` には次のとおり何も与えない。
 
@@ -493,13 +508,22 @@ grant select on public.pub_<名前> to anon;
 ```
 
 - `authenticated` ロールは使わない（ログインなし）。grant も与えない。
-- 接続文字列 `SUPABASE_BATCH_DB_URL` は GitHub Actions の Secrets だけに置く（06 §3）。service role キーはどこにも置かない。Vercel には anon キーだけを置き、ビルド時に `pub_*` を読む。
+- 接続文字列 `SUPABASE_BATCH_DB_URL` は main だけを許可した GitHub Environment の Secret だけに置く（06 §3、§9）。service role キーはどこにも置かない。Vercel には anon キーだけを置き、ビルド時に `pub_*` を読む。
 - Supabase の API 設定「Exposed schemas」は `public` のみ（`internal` を含めない）。この設定はダッシュボードで行うため、初期設定手順（docs/operations/）に書き、受入（07 §8）で確認する。
 - マイグレーションの最後に次を検査する SQL を置き、CI（07 §4 I-DB-01、I-DB-15、I-DB-16、I-DB-18）でも同じ検査を行う。
   1. `information_schema.role_table_grants` で anon / authenticated / PUBLIC に grant があるのは `public.pub_%` の `SELECT` だけ。関数（`information_schema.routine_privileges`）・シーケンスへの grant がない。
   2. anon / authenticated / PUBLIC が `public` 以外のスキーマ（`internal` を含む）に usage を持たない（`has_schema_privilege`）。
   3. `pub_*` の列名に `_mask` を含むものがなく、`excluded_author` に由来する列（`excluded_at` など）を含まない。
   4. `pub_*` の列集合（ビュー名、列名、型）が §5 の対応表から作ったスナップショット（`tests/snapshots/pub-columns.json`）と一致する。差分があればスナップショットの更新と NFR-39 の手順を要求する。
+  5. `batch_writer` の権限が許可の範囲に収まる（W-8。下の検査）。
+
+`batch_writer` の権限の検査（W-8）は、違反を 1 行ずつ返す select として `supabase/checks/batch_writer_privileges.sql` に置く。0 行なら合格。同じ select をマイグレーション末尾に `do` ブロックで包んで写し（1 行でもあれば `raise exception`）、07 I-DB-18 でファイルを実行して 2 か所の本文の一致も確かめる。A-11 では本番の SQL エディタで同じファイルの内容を実行する。これで、本番の手変更や既定権限で広がった権限に気づける。検査する内容:
+
+- 表の grant: `information_schema.role_table_grants` が許可リスト（§3.1〜§3.6 から `excluded_author` を除いた表。`batch_run` は delete なし）に一致する（I-DB-18 (1)）。
+- スキーマ: すべてのスキーマについて `has_schema_privilege('batch_writer', <スキーマ>, 'USAGE')` と `'CREATE'` を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを `nspacl` で確かめた `public` だけ。`pg_catalog` と `information_schema` は PostgreSQL の既定で PUBLIC が USAGE を持つので USAGE の判定から除く。ほかに PUBLIC 経由の USAGE が見つかったら、ローカルの結果を確かめて可否を決める（Supabase の既定権限は未確認）。`public` の CREATE が PUBLIC に残っていれば `revoke create on schema public from public` をマイグレーションに足す。広げる方向で直さない。
+- 関数とシーケンス: `information_schema.routine_privileges` と `role_usage_grants` で、`batch_writer` を grantee にするものが `internal.counts_is_numeric` と必要なシーケンスだけ。
+- ロールの所属: `pg_auth_members` で `batch_writer` が member の行が 0 件。
+- ロールの属性: `pg_roles` で `rolbypassrls`、`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolinherit` がすべて false、`rolconnlimit` が 2。ログインの可否は検査に含めない（手順の前後で変わるため）。
 
 ## 7. 容量の見積もり
 
@@ -521,7 +545,7 @@ grant select on public.pub_<名前> to anon;
 ## 8. マイグレーションの運用
 
 - `supabase/migrations/NNNN_<内容>.sql` に置き、Supabase CLI（`supabase db push`）で適用する。適用は運用担当がローカルから行い、手順は docs/operations/（デプロイ工程）に書く。ダッシュボードでの手変更はしない（NFR-73）。
-- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し、`batch_writer` ロールの作成と usage の grant（§6、ADR 0009）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表（`article_summary`、`author_summary`、`article_milestone`。帯の列なし）。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: `internal.article_cumulative`・`internal.benchmark_curve` ビュー（§4.1。`excluded_author` を参照するため 0004 の後。`batch_writer` に grant しない）、公開ビューと grant、権限の検査 SQL。番号は実装時に確定。ロールのパスワードはどのマイグレーションにも書かない。CI とローカルのパスワードは `supabase/seed/test/` のテスト用の値を使う。
+- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し、`batch_writer` ロールの作成と usage の grant（§6、ADR 0009）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表（`article_summary`、`author_summary`、`article_milestone`。帯の列なし）。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: `internal.article_cumulative`・`internal.benchmark_curve` ビュー（§4.1。`excluded_author` を参照するため 0004 の後。`batch_writer` に grant しない）、公開ビューと grant、権限の検査 SQL。番号は実装時に確定。ロールのパスワードはどのマイグレーションにも seed にも書かない（W-4）。`supabase db reset` の後に `alter role batch_writer login password ...` を実行する: CI では実行時にランダムな値を生成して使い捨てる。ローカルは `.env` の `LOCAL_BATCH_WRITER_PASSWORD` の値を使う。本番の適用で `supabase/seed/test/` を入れない（`--include-seed` や `sql_paths` を本番に向けない。手順は docs/operations/）。
 - ビューの列を変えるときは ADR と security-auditor のレビュー（NFR-39）。05 §4.1 の表を変えずに済む変更（列名の修正など）はレビュー不要だが、§5 の対応表を更新する。
 
 ## 9. 未確定
@@ -530,7 +554,8 @@ grant select on public.pub_<名前> to anon;
 - Supabase の「Exposed schemas」の設定値はダッシュボード側にあるためマイグレーションで固定できない。初期設定手順で `public` のみとし、受入で確認する（§6）。
 - `internal.benchmark_curve` ビュー（§4.1）の計算時間は実装時に `explain analyze` で確認する（07 I-DB-17。目安 2 秒以内）。超えるときは ADR 0003 判断 4 追記の (c) に切り替える。母集団の定義（除外後）は変えない。
 - Supabase の既定権限の正確な内容は未確認（外部の事実）。§6 の grant と revoke をマイグレーションに置き、ローカル環境で確認する（07 I-DB-01、I-DB-18）。
-- `batch_writer` のパスワードの設定手順と、未設定の間に pooler 経由で確実に拒否されることの確認（ADR 0009、実装時）。
+- `batch_writer` のパスワードの設定手順（docs/operations/）。`nologin` で作るので、未設定の間の拒否を pooler の挙動に頼らない（経路監査 L-1）。
+- `generated always as identity` のシーケンスの grant の要否、`connection limit` の pooler との相性（ADR 0009 V-4、A-11）。
 
 確定した事項（2026-11-03、設計レビューの反映で「未確定」から移動）:
 

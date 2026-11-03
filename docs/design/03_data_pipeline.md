@@ -7,6 +7,7 @@
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 分布 `benchmark_curve` と帯をバッチで計算せず、公開ビューが可視記事から計算する。§1、§6.2、§7）
   - 2026-11-03: バッチを Python に変更（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。例外とログの規律を Python と psycopg に合わせて作り直し（§14、§15）。`packages/shared` のパスを `apps/batch` と `apps/web` に変更
+  - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-7、L-5〜L-7 を反映（§14 の起動時の処理と分類の規則、§10 の作り直し、§16 の接続文字列の形式と置き場所）
 
 ## 1. 全体の流れ
 
@@ -197,7 +198,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 ## 8. 公開（キャッシュ更新）
 
-- 工程 7 で Vercel の Deploy Hook（Secrets `VERCEL_DEPLOY_HOOK_URL`）を `httpx.post` で呼ぶ。応答本文を読まず、URL と応答をログに出さない（設計レビュー L-8）。`httpx` の例外は URL を含みうるので §14 の扱いで種別だけにする（失敗は `error_kind = network`）。Vercel がリポジトリの main をビルドし、ビルド時に `pub_*` ビューを anon キーで読んで全ページを静的生成する（ADR 0006）。
+- 工程 7 で Vercel の Deploy Hook（Environment の Secret `VERCEL_DEPLOY_HOOK_URL`。§16）を `httpx.post` で呼ぶ。応答本文を読まず、URL と応答をログに出さない（設計レビュー L-8）。`httpx` の例外は URL を含みうるので §14 の扱いで種別だけにする（失敗は `error_kind = network`）。Vercel がリポジトリの main をビルドし、ビルド時に `pub_*` ビューを anon キーで読んで全ページを静的生成する（ADR 0006）。
 - ビルドが失敗したときは前回のデプロイが残り、`pub_meta.base_date` は進んでいるが画面は古いままになる。Vercel のビルド失敗通知（メール）を運用担当が受ける。BI の FR-02 表示はビルド時の `pub_meta` を埋め込むので、画面の「◯月◯日までのデータ」はその画面が生成された時点の値になる。
 - 除外リストの変更後は `workflow_dispatch` の `publish_only` で Deploy Hook だけを呼ぶ（NFR-11）。`publish_only` は設定変更後の再ビルドなど他の用途にも使い、`batch_run` に行を書かない（§2、設計レビュー L-7）。除外変更後は Vercel の旧デプロイを削除する（06 §2.4）。
 
@@ -223,6 +224,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 - 割当: §11 のとおり 1 回で収まる見込みだが、`tokensPerProjectPerHour.remaining` が 2,000 を下回ったら処理を止めて `quota` で終了し、1 時間後に再実行する（G17 が最も多いので、手順 6 は記事 50 本ごとに残量を確認する）。
 - 所要時間: リクエスト約 300 × (応答 1 秒 + 間隔 0.2 秒) ≈ 6〜8 分。`timeout-minutes: 60`。
 - 2025-11 の不連続な値（03_data_sources.md §2.6）はそのまま取り込む（理由は確認しない）。
+- 接続文字列の漏えい後の作り直し（06 §3、W-2）にも `backfill` を使う。工程 0 の二重実行の防止（同じ基準日の `success` があれば終了）は `daily` だけに効かせ、`backfill` を止めない。`backfill` の upsert は攻撃者が足した行を消さないこと、GA4 から取り直せない期間の値は戻らないことが未解決（§17）。
 
 ## 11. GA4 の割当の見積もり（D-01）
 
@@ -275,14 +277,21 @@ Supabase Free は 1 週間アクセスがないと一時停止するが、日次
   - `httpx` のエラー: リクエストの URL（Deploy Hook の URL を含む）。
   - pydantic の `ValidationError`: 入力値。
 - 対策は次の 6 つ。
-  1. エントリ（`apps/batch/src/takatsu_batch/__main__.py`）で全工程を `try / except BaseException` で囲み、`errors.classify_error(e) -> ErrorKind` で種別に分類し、`log.log_error(step, kind)`（工程名と種別だけ）を出して `sys.exit(1)` で終える。`SystemExit` はそのまま通す。例外オブジェクト、メッセージ、スタックをどこにも渡さない。再送出しない。
-  2. 分類は例外の型と `sqlstate` だけを見る。`str(e)`、`repr(e)`、`e.args`、`e.diag`、`e.pgconn`、`e.pgresult`、`e.__cause__`、`traceback` の関数を使わない（ruff の `banned-api` と S-18 で検査）。
-  3. 分類の規則: pydantic の `ValidationError` → `validation`。GA4 の `ResourceExhausted` → `quota`、`PermissionDenied` / `Unauthenticated` → `auth`、それ以外の `GoogleAPICallError` → `network`。`httpx.HTTPError` → `network`。`psycopg.Error` は `sqlstate` で分け、class `28` → `auth`、class `08`・`53`・`57`、および `sqlstate` なしの `OperationalError`（接続の失敗）→ `network`、それ以外（`22`、`23`、`42` など）→ `db`。`psycopg.ProgrammingError` で `sqlstate` がないもの（接続文字列の解析エラーを含む）→ `validation`。その他 → `unknown`。
-  4. フックを起動直後に登録する: `sys.excepthook`、`threading.excepthook`、`sys.unraisablehook` を、種別のみを出力して終える関数（unraisable は何も出さない）に置き換える。`warnings.simplefilter("ignore")` を設定する。`faulthandler` を有効にしない。
-  5. ライブラリのログを止める: `httpx` は INFO でリクエストの URL をログに出すので、`logging.basicConfig` を呼ばず、ルートロガーに `NullHandler` を付けてレベルを `CRITICAL + 1` にし、`logging.lastResort = None` にする。ワークフローのステップに `GRPC_VERBOSITY=NONE` を設定する（gRPC の C 実装が stderr に直接書くのを止める）。
-  6. `batch_run` への `failed` の書き込みが失敗しても、そのエラーも出さず終了コードだけで知らせる。
+  1. エントリ（`apps/batch/src/takatsu_batch/__main__.py`）で全工程を `try / except BaseException` で囲み、`errors.classify_error(e) -> ErrorKind` で種別に分類し、`log.log_error(step, kind)`（工程名と種別だけ）を出して `sys.exit(1)` で終える。`SystemExit` は code が int（0 を含む）か `None` ならそのまま通し、それ以外（文字列つきの `sys.exit("...")` など）は `sys.exit(1)` に置き換える。工程の途中の 0 以外の `SystemExit` は失敗として扱う（`batch_run` を `failed`、種別は `unknown`）。例外オブジェクト、メッセージ、スタックをどこにも渡さない。再送出しない。
+  2. 分類は例外の型と `sqlstate` だけを見る。`str(e)`、`repr(e)`、`e.args`、`e.diag`、`e.pgconn`、`e.pgresult`、`e.__cause__`、`e.__context__`、`e.__traceback__`、f 文字列への埋め込み、`logging.exception`、`traceback` の関数を使わない。ruff の `banned-api` と S-18 の `ast` のテストで、`except ... as` の束縛名を `classify_error` への受け渡しにだけ使えるようにする（束縛名に関係なく検出する。`errors.py` の中は型の判定と `sqlstate` の参照だけを許す）。
+  3. 分類の規則: pydantic の `ValidationError` → `validation`。GA4 の `ResourceExhausted` → `quota`、`PermissionDenied` / `Unauthenticated` → `auth`、`google.api_core.exceptions.RetryError` → `network`、それ以外の `GoogleAPICallError` → `network`。`google.auth.exceptions` の例外（WIF の失敗を判別するため）→ `auth`。`httpx.HTTPError` → `network`。`psycopg.Error` は `sqlstate` で分け、class `28` → `auth`、class `08`・`53`・`57`、および `sqlstate` なしの `OperationalError`（接続の失敗。TLS の検証の失敗を含む）→ `network`、それ以外（`22`、`23`、`42` など）→ `db`。`psycopg.ProgrammingError` で `sqlstate` がないもの（接続文字列の解析エラーを含む）→ `validation`。その他 → `unknown`。CA の失効や交換も `network` になるので、切り分けは手順書に書く（ADR 0009「CA の失効と交換」）。
+  4. 起動の最初に、標準ライブラリだけで次を順に行う（W-7）。第三者のライブラリと本体は、この後で関数の中から遅延 import する。第三者の import をフック登録より前に置くと、import 時の例外が既定の表示になるため（isort が import を先頭に寄せるので、`__main__.py` の先頭の import は標準ライブラリだけにする。ruff の `import-outside-top-level` を使うならこの箇所だけ除外する）。
+     1. `os.dup2` で fd 2 を `/dev/null` へ向ける。ネイティブのライブラリや致命的エラーの出力は、Python のフックを通らず fd 2 に直接出るため。ログは `sys.stdout` だけに出すので影響しない。
+     2. フックを登録する: `sys.excepthook`、`threading.excepthook`、`sys.unraisablehook` を、種別のみを出力して終える関数（unraisable は何も出さない）に置き換える。`warnings.simplefilter("ignore")` を設定する。`faulthandler` を有効にしない。
+     3. `logging.disable(logging.CRITICAL)` と `logging.raiseExceptions = False` を設定する。
+     4. `os.environ["GRPC_VERBOSITY"] = "NONE"` を設定する（ワークフローの設定に頼らない。gRPC の import より前に設定する。効果は I-B-11 (h) で確かめる）。
+
+     この処理は `__main__.py` だけで行う。`__init__.py` には第三者の import も処理も書かない（`python -m` では先に読まれるため。pytest も import するので、ここで fd 2 を塞がない）。
+  5. ライブラリのログを止める: `httpx` は INFO でリクエストの URL をログに出すので、`logging.basicConfig` を呼ばず、ルートロガーに `NullHandler` を付けてレベルを `CRITICAL + 1` にし、`logging.lastResort = None` にする。独自のレベルとハンドラを持つロガーはルートのレベルでは止まらないので、4 の `logging.disable` で止める。
+  6. `batch_run` への `failed` の書き込みが失敗しても、そのエラーも出さず終了コードだけで知らせる。接続の失敗や import 時の例外では `batch_run` を `failed` にできない（§2 の Actions の失敗と、次回の行の不在で分かる）。
+- 接続の設定（ADR 0009「TLS」）: `sslmode` と `sslrootcert` は `psycopg.connect` のキーワードでコードから渡し、`env.py` が `conninfo_to_dict` の実効値を検査する。接続文字列に TLS の設定を書かない。
 - 接続文字列の扱い: `pydantic.SecretStr` で持ち、`psycopg.connect` に渡す直前にだけ `get_secret_value()` を呼ぶ。`repr` に出ない。
-- テスト: 07 U-29、I-B-11（例外時のログに `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、6 桁以上の数字列、`Traceback` が出ない）。
+- テスト: 07 U-29、U-30、I-B-11（例外時のログに `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、6 桁以上の数字列、`Traceback` が出ない）。
 - 通知（FR-74）: 通知先は Q-12 で未確定。実装は GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。Q-12 の回答まではワークフロー失敗時の GitHub のメール通知（リポジトリの管理者に届く）で代える。
 - BI は前回の成功時のデータで表示を続ける（NFR-90）。失敗した日は Deploy Hook を呼ばないので画面は変わらず、FR-02 の表示が「更新が遅れています」になる（§12 のクライアント側の判定）。
 
@@ -330,17 +339,20 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | GCP_SERVICE_ACCOUNT | Actions Secrets | 同上 |
 | GA4_PROPERTY_ID | Actions Secrets | Data API のプロパティ |
 | SUPABASE_URL | Vercel 環境変数のみ | プロジェクト URL（ビルド時に `pub_*` を読む） |
-| SUPABASE_BATCH_DB_URL | Actions Secrets のみ。日次の取得・書き込みのステップだけに渡す | `batch_writer` の接続文字列（shared pooler の session mode。形式は `postgresql://batch_writer.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:5432/postgres?sslmode=verify-full`。ADR 0009）。読み書きの対象は内部表だけ |
+| SUPABASE_BATCH_DB_URL | GitHub Environment（`production`、main のみ）の Secret のみ。`daily` と `backfill` の取得・書き込みのステップだけに渡す | `batch_writer` の接続文字列（shared pooler の session mode。形式は `postgresql://batch_writer.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:5432/postgres`。TLS の設定はコードで固定するので含めない。ADR 0009）。読み書きの対象は内部表だけ |
 | SUPABASE_ANON_KEY | Vercel 環境変数のみ（`NEXT_PUBLIC_` を付けない） | ビルド時に `pub_*` を読む |
-| VERCEL_DEPLOY_HOOK_URL | Actions Secrets | 再ビルドの起動 |
+| VERCEL_DEPLOY_HOOK_URL | GitHub Environment（`production`、main のみ）の Secret | 再ビルドの起動 |
+| LOCAL_BATCH_WRITER_PASSWORD | ローカルの `.env` だけ（CI は実行時に生成する。本番では使わない） | ローカルの `batch_writer` のパスワード（02 §8） |
 | NOTIFY_WEBHOOK_URL など | Actions Secrets | 失敗通知（Q-12 の回答後に名前を決める） |
 | BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行 |
 
-`env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。
+`env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。Environment が使えない場合の代替は ADR 0009「接続文字列のブランチへの束縛」。
 
 ## 17. 未確定
 
-- ADR 0009 の未確定: pooler の TLS（`sslmode=verify-full`）、`executemany` の挙動、IPv4 での到達（実装時と 07 A-11）。
+- ADR 0009 の未確定: pooler の TLS の基準の段階（第 1 か第 2。確認項目 1）、`executemany` の挙動、IPv4 での到達（実装時と 07 A-11）。
+- 漏えい後の作り直し（§10、06 §3）: `backfill` の upsert で消えない、攻撃者が足した行をどう消すか。`batch_writer` には truncate がない。GA4 から取り直せない期間があるときに値をどう扱うか。手順は docs/operations/ で決める。
+- W-7 の対策が頼るライブラリの挙動（`GRPC_VERBOSITY` の値、fd 2 の塞ぎ方で足りるか）は監査の時点で未確認。07 I-B-11 で確かめる。
 - Q-13: 実行時刻 T（仮 17:00 JST、鮮度 18:00）。cron の遅延を踏まえ、1 回目を 16:30 JST に前倒しする案も依頼者に示す。
 - Q-12: 失敗通知の宛先。
 - D-05 の残り: `/<ID>/<何か>/` の pagePath が実測で現れるか（親が GA4 で確認）。

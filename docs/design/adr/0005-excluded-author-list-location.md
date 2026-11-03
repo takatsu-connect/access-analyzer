@@ -1,11 +1,12 @@
 # ADR 0005: 除外リスト（非表示を申し出た著者）の置き場所と実装方式
 
-- 状態: 置き場所と除外の方式は承認（security-auditor の設計レビュー 2026-11-03、audits/2026-11-03-design-review.md §4。付帯の M-5・L-7・L-9 を反映済み）。運用経路の変更（2026-11-03）は security-auditor の確認待ち
+- 状態: 条件付き承認の条件を反映済み。残る確認は実装着手前（運用経路: docs/security/audits/2026-11-03-write-path-review.md。残る確認は確認項目 3）。置き場所と除外の方式は承認済み（security-auditor の設計レビュー 2026-11-03、audits/2026-11-03-design-review.md §4。付帯の M-5・L-7・L-9 を反映済み）
 - 更新日: 2026-11-03
 - 関係: FR-36、FR-06、FR-23、FR-30、NFR-11、NFR-22、NFR-40、NFR-43、NFR-44、NFR-52、NFR-73、D-10、Q-30、02_data_model.md §3.6・§4、06_security.md §5、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-5・M-7・L-7・L-9 を反映
   - 2026-11-03: 除外リストの変更経路を、ローカルの運用スクリプト（service role）から Supabase の SQL エディタに変更。`batch_writer` に `excluded_author` の権限を与えないことで、バッチの不読をロールでも強制（ADR 0009）
+  - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-5、W-6、L-7 を反映。固定の SQL を 1 ブロック 1 操作に分割、再ビルド前の確認、slug の残存の扱い
 
 ## 文脈
 
@@ -51,32 +52,47 @@
 | E2 | 専用ロール `exclude_admin`（`excluded_author` だけ）とローカルのスクリプト | パスワード入りの接続文字列をローカルに持つ | 権限は最も狭い。ただし年に数回の操作のために、ロール、接続、スクリプト、テスト、ローテーション手順が増える |
 | E3（前回の決定） | ローカルのスクリプト + service role キー | 権限の広い鍵をローカルに持つ（L-9） | 内部表が Exposed schemas にないので、そもそも PostgREST で届かない前提になった。不採用 |
 
-E1 を採る。ダッシュボードのアカウントは既にプロジェクト全体を操作でき、E1 で増える権限はない。アカウントの多要素認証を初期設定手順に含める（docs/operations/）。操作の頻度が増える、または担当者が増えて SQL エディタの権限を渡したくなくなったら E2 に切り替える。
+E1 を採る。ダッシュボードのアカウントは既にプロジェクト全体を操作でき、E1 で増える権限はない。E2 は権限が最も狭いが、最も機微な表に読み書きできる長期の秘密をインターネットから届く形で端末に置くことになり、年数回の操作には釣り合わない（監査の判定）。アカウントの多要素認証を初期設定手順に含める（docs/operations/）。条件は固定の SQL の分割（W-5。「実装方式」）と、初回の操作の前の確認項目 3（W-6）。操作の頻度が増える、または担当者が増えて SQL エディタの権限を渡したくなくなったら E2 に切り替える。
 
 ## 実装方式
 
 - 表: `internal.excluded_author(author_slug text primary key, excluded_at timestamptz not null default now())`（`internal` スキーマ。設計レビュー M-7）。FK は付けない（著者行が消えても除外を維持）。RLS 有効、anon / authenticated の grant なし。どの公開ビューにもこの表の列を出さない。
 - ビュー: 記事行・著者行を出すすべての公開ビューに `where not exists (select 1 from internal.excluded_author e where e.author_slug = <著者 slug>)`。記事の値から合算する集計（`pub_category_period` の親行・子行、`pub_tag_period`、`pub_site_period_freshness`、`pub_author_*`）もすべて除外後。除外込みは GA4 のサイト全体値（`pub_site_daily*`、`pub_site_period*`、`pub_site_month_*`）と公開本数の件数（`pub_posting_monthly`、`pub_posting_period.post_count`）だけ（H-1）。`pub_posting_period` に著者数の列を置かない（全体の著者数 − `pub_author` の件数 で除外著者の人数が分かるため。M-5）。
 - BI: `pub_*` だけを読む。`generateStaticParams` は `pub_post.post_id` と `pub_author.author_slug` から作り、`dynamicParams = false`。除外著者の ID / slug は 404（存在しない記事・著者と同じ）。クライアント側の一覧・フィルタも `pub_*` 由来のデータだけなので現れない。
-- 変更の手順: Supabase の SQL エディタで次の固定の SQL を実行する。`<slug>` だけを差し替え、スニペットとして保存しない。実行後に `workflow_dispatch` で `mode = publish_only` を起動して再ビルドし、Vercel の旧デプロイを削除する（NFR-11、06 §2.4）。
+- 変更の手順: Supabase の SQL エディタで次の固定の SQL を、必要なブロックだけ 1 つずつ実行する（W-5）。1 ブロックに 1 操作とし、追加と解除を同時に貼らない（全文を貼って実行すると、追加の直後に解除され、最後の結果だけを見て見落とす）。`<slug>` だけを差し替え、スニペットとして保存しない。確認 1 と確認 2 の結果を見てから、`workflow_dispatch` で `mode = publish_only` を起動して再ビルドし、Vercel の旧デプロイを削除する（NFR-11、06 §2.4）。docs/operations/ の手順書にも、この分け方のまま写す。
+
+  ブロック「追加」（wp_author にある slug だけを入れるので、打ち間違いは 0 行で分かる。1 行返れば成功。既に登録済みのときも 0 行）:
 
   ```sql
-  -- 追加。wp_author にある slug だけを入れるので、打ち間違いは 0 行で分かる（1 行返れば成功。既に登録済みのときも 0 行）
   insert into internal.excluded_author (author_slug)
   select author_slug from internal.wp_author where author_slug = '<slug>'
   on conflict (author_slug) do nothing
   returning author_slug;
-
-  -- 解除（1 行返れば成功）
-  delete from internal.excluded_author where author_slug = '<slug>' returning author_slug;
-
-  -- 確認
-  select author_slug, excluded_at from internal.excluded_author order by excluded_at;
-  select count(*) from public.pub_author where author_slug = '<slug>'; -- 追加後は 0
   ```
+
+  ブロック「解除」（1 行返れば成功）:
+
+  ```sql
+  delete from internal.excluded_author where author_slug = '<slug>' returning author_slug;
+  ```
+
+  ブロック「確認 1」（追加後は `<slug>` の行があり、解除後はない）:
+
+  ```sql
+  select author_slug, excluded_at from internal.excluded_author order by excluded_at;
+  ```
+
+  ブロック「確認 2」（追加後は 0。解除後は、`wp_author` にあれば 1）:
+
+  ```sql
+  select count(*) from public.pub_author where author_slug = '<slug>';
+  ```
+
+  再ビルドの前に確認 1 と確認 2 の両方を見る。追加のあとで確認 2 が 0 でなければ再ビルドしない。
+- SQL エディタに残るもの（W-6。確認項目 3、ADR 0009）: 初回の操作の前に、履歴、自動保存、Postgres ログ、監査ログ、AI 機能に slug が残るか、外部へ送られるかを確かめる。残るなら手順に削除を入れる。消せないなら、残存の事実と保持期間を台帳の運用（NFR-73）に書き、Q-30 の説明文面でも扱う。
 - `publish_only` は除外変更の専用ではない（設計レビュー L-7）: 設定値・辞書の変更後の再ビルドやビルド失敗後の再試行にも使い、public の Actions 実行一覧に見える `publish_only` が除外変更のタイミングの一意の信号にならないようにする。`publish_only` は `batch_run` に行を書かない。
-- 設計レビュー L-9（ローカルの service role キーのローテーション）は対象がなくなった: 変更の経路にローカルの鍵を使わない。担当者の退任時は Supabase の組織からメンバーを外す（docs/operations/）。SQL エディタの履歴に slug が残るかは未確定（`internal.excluded_author` と同じ Supabase プロジェクトの中で、新しい露出ではない。運用手順の作成時に確認する）。
-- バッチ: `excluded_author` を読まない。書かない。`daily` / `backfill` のどの工程でも参照しない。コードレビューに加えて、`batch_writer` ロールに grant もポリシーも与えないことで DB 側でも強制する（ADR 0009、07 I-DB-18）。`excluded_author` を参照する `internal.benchmark_curve` にも grant を与えない。ソースに表名が現れないことも CI で検査する（07 S-17）。
+- 設計レビュー L-9（ローカルの service role キーのローテーション）は対象がなくなった: 変更の経路にローカルの鍵を使わない。担当者の退任時は Supabase の組織からメンバーを外す（docs/operations/）。SQL エディタの履歴に slug が残るかは未確定（確認項目 3）。登録中であれば `internal.excluded_author` と同じ Supabase プロジェクトの中で新しい露出ではないが、解除後も残ると、表からは消えた申し出の事実が保持される。ダッシュボードの AI 機能に SQL が送られる場合は Supabase の外へ出る（未確認）。
+- バッチ: `excluded_author` を読まない。書かない。`daily` / `backfill` のどの工程でも参照しない。コードレビューに加えて、`batch_writer` ロールに grant もポリシーも与えないことで DB 側でも強制する（ADR 0009、07 I-DB-18）。`excluded_author` を参照する `internal.article_cumulative` と `internal.benchmark_curve` にも grant を与えない。ただし、これは表を直接読めないという意味で、`batch_writer` の接続文字列が漏れれば書き込みで除外を崩せ、差分で推定もできる（ADR 0009「漏えい時の影響」、06 §3）。ソースに表名が現れないことも CI で検査する（07 S-17）。
 
 ## 運用の記録方法
 
@@ -88,5 +104,5 @@ E1 を採る。ダッシュボードのアカウントは既にプロジェク�
 ## 結果
 
 - 良い点: 1 か所で確実に効く。確認・解除が容易。ログ漏えいの経路がない。バッチと BI は除外リストの存在を知らなくてよい（BI は「ないものはない」として動く）。
-- 引き受ける点: Supabase の内部表を秘密の経路として扱う（NFR-40）。公開ビューが所有者権限で内部表を読む形（ADR 0007）に依存するので、ビューの定義変更時は除外の `not exists` が落ちていないかをテストで確認する（07_test_plan.md: 除外した slug を入れたときに `pub_*` のどの行にも現れないことを結合テストで検査）。変更の操作は SQL エディタで行うので、固定の SQL 以外を実行しない規律を手順書に頼る。
+- 引き受ける点: Supabase の内部表を秘密の経路として扱う（NFR-40）。公開ビューが所有者権限で内部表を読む形（ADR 0007）に依存するので、ビューの定義変更時は除外の `not exists` が落ちていないかをテストで確認する（07_test_plan.md: 除外した slug を入れたときに `pub_*` のどの行にも現れないことを結合テストで検査）。変更の操作は SQL エディタで行うので、固定の SQL 以外を実行しない規律を手順書に頼る。SQL エディタの周辺に slug が残るかどうかが未確認で、確認項目 3 の結果によっては申し出の事実の残存を引き受けることになる（W-6）。
 - D-10 はこの ADR で決定とする。security-auditor の設計レビュー（2026-11-03）で承認。open_questions.md の D-10 の行は requirements-analyst が「確認済み」に更新する。

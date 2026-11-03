@@ -8,6 +8,7 @@
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（U-27〜U-29、I-DB-15・I-DB-16、I-B-11 を追加。I-DB-01・05・07、I-B-09、E-04、S-10・S-14、U-22 を修正）
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（I-DB-17、E-22 を追加。U-07・U-08・U-19・U-24、I-DB-01・I-DB-05、E-08・E-12・E-19、§9・§10 を修正）
   - 2026-11-03: バッチを Python に（ADR 0004）、書き込みを `batch_writer` に（ADR 0009）、除外リストの変更を SQL エディタに（ADR 0005）変更。§2〜§5・§7 の道具とパスを更新。I-DB-18、S-16〜S-18、A-11 を追加。I-DB-01、I-B-05、I-B-10、I-B-11、U-07、U-08、U-20、U-28、U-29、S-06〜S-10、S-12、S-13、S-15 を修正
+  - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1、W-3〜W-5、W-7〜W-9、L-1、L-2、L-5〜L-7 を反映（U-30 を追加。§2、§10、U-29、I-B-10、I-B-11、I-DB-18、S-08、S-10、S-18、A-11、§9、§11 を修正）
 
 ## 1. 方針
 
@@ -28,7 +29,7 @@
 | CI の静的検査（S） | ソース、設定、ワークフロー、依存 | GitHub Actions | ESLint の独自ルール、ruff、`grep`、`pip-audit`、`pnpm audit`、gitleaks、actionlint | PR ごと |
 | 手動の受入（A） | 06_acceptance.md の「目視」「照合」 | 本番相当（Preview または初回の本番） | 人 | 初回公開前、要件変更時 |
 
-- CI の Supabase ローカルは `supabase/migrations` を適用し、`supabase/seed/test/*.sql` のフィクスチャを入れる。`batch_writer` のパスワードは `seed/test` のテスト用の値だけで、本番の接続文字列を CI に置かない（06 §9）。CI のローカル環境には pooler と TLS がないので、ローカルの接続先に直接つなぐ（pooler と TLS の確認は A-11）。
+- CI の Supabase ローカルは `supabase/migrations` を適用し、`supabase/seed/test/*.sql` のフィクスチャを入れる。seed にパスワードを置かない（W-4）。`batch_writer` のパスワードは、`supabase db reset` の後に CI では実行時に生成したランダムな値（そのジョブの中で使い捨て）で、ローカルでは `.env` の `LOCAL_BATCH_WRITER_PASSWORD` で、`alter role batch_writer login password ...` として設定する（02 §8）。本番の接続文字列を CI に置かない（06 §9）。CI のローカル環境には pooler と TLS がないので、ローカルの接続先に直接つなぐ（pooler と TLS の確認は A-11）。
 - Preview（Vercel）のビルドは **本番の Supabase の anon キー**で `pub_*` を読む（公開データなので新しい露出はない）か、ステージング用の Supabase プロジェクトを使うかは devops が決める（§11）。Preview に対する Playwright は、データの値を検証せず、構造・ヘッダ・404 だけを見る。
 
 ## 3. 単体テスト（pytest: apps/batch、Vitest: apps/web）
@@ -65,7 +66,8 @@
 | U-26 | 外部リンクの再検証 | `https://takatsu-connect.com/` 配下以外はリンクにしない | FR-04、NFR-91 |
 | U-27 | `applyAuthorHierarchyMask(authorCells, articleCells)` | 著者 × 内訳軸 の階層差分（03 §6.1 手順 5）。同じ period・axis・bucket で、その著者の記事セルのうち伏せたもの（threshold / secondary）がちょうど 1 本なら、著者セルの値が T 以上でも `secondary` で伏せる。0 本・2 本以上なら変えない。手順 5 の後に区分内の二次伏せ（U-05）を再判定する。フィクスチャ: 記事 3 本のうち 1 本だけ instagram が 4（伏せ）→ 著者の instagram が伏さり、著者の区分内で伏せが 1 つだけになったので次に小さい T 以上のセルも伏さる | NFR-33（設計レビュー M-2）、05 §4.1 行 12 |
 | U-28 | `batch_run.counts` の pydantic モデル | 固定キー（02 §3.6 の一覧）・数値のみ。未知のキー、文字列・配列・オブジェクトの値、負数以外の数値以外は検証が失敗する。`extra="forbid"`、`strict=True` で余分なキーを拒否。`ValidationError` の文字列に入力値が含まれない（`hide_input_in_errors`） | NFR-44（設計レビュー L-6） |
-| U-29 | `classify_error(e)` と `log_error(step, kind)` | 03 §14 の分類表の全行: psycopg の `sqlstate` class 28 → `auth`、08 / 53 / 57 と `sqlstate` なしの `OperationalError` → `network`、22 / 23 / 42 → `db`、`sqlstate` なしの `ProgrammingError` → `validation`。GA4 の `ResourceExhausted` → `quota`、`PermissionDenied` / `Unauthenticated` → `auth`。`httpx.HTTPError` → `network`。pydantic の `ValidationError` → `validation`。その他 → `unknown`。`log_error` の出力は `step` と `kind` の 2 語だけで、引数の例外の `str()`、`args`、`__cause__`、`diag` の文字列が出力に含まれない | NFR-44（設計レビュー M-8） |
+| U-29 | `classify_error(e)` と `log_error(step, kind)` | 03 §14 の分類表の全行: psycopg の `sqlstate` class 28 → `auth`、08 / 53 / 57 と `sqlstate` なしの `OperationalError` → `network`、22 / 23 / 42 → `db`、`sqlstate` なしの `ProgrammingError` → `validation`。GA4 の `ResourceExhausted` → `quota`、`PermissionDenied` / `Unauthenticated` → `auth`、`RetryError` → `network`。`google.auth.exceptions` の例外 → `auth`。`httpx.HTTPError` → `network`。pydantic の `ValidationError` → `validation`。その他 → `unknown`。`log_error` の出力は `step` と `kind` の 2 語だけで、引数の例外の `str()`、`args`、`__cause__`、`diag` の文字列が出力に含まれない | NFR-44（設計レビュー M-8） |
+| U-30 | 接続設定の検査（`env.py`、`db.py`） | `conninfo_to_dict` の実効値で判定する。`?host=localhost` を付けた本番の host、`hostaddr` つき、複数 host、Unix ソケットの host、`sslmode` / `sslrootcert` / `service` を含む接続文字列、形式の誤りは、いずれも `validation` で失敗し、メッセージに値が出ない。`localhost` / `127.0.0.1` だけが TLS なしで接続する。それ以外では `psycopg.connect` に定数の `sslmode` と `sslrootcert`（`apps/batch/certs/` の固定の CA）がキーワードで渡る（`psycopg.connect` を偽物に替えて確かめる）。`config.py` の `sslmode` に `require` を入れると mypy か検証で失敗する。libpq の仕様に頼る期待値は ADR 0009 V-1 の確認で確定する | NFR-40、ADR 0009（W-1） |
 
 ## 4. 結合テスト（Supabase ローカル: マイグレーションと公開ビューの検査）
 
@@ -90,7 +92,7 @@
 | I-DB-15 | スキーマの usage | `has_schema_privilege(r, s, 'USAGE')` が、r ∈ {anon, authenticated, public(PUBLIC)} × s ∈ `public` 以外の全スキーマ（`internal` を含む。`pg_catalog`、`information_schema` は除く）で false。`internal` スキーマに `pub_` で始まるオブジェクトがなく、`public` スキーマに `pub_` 以外の表・ビュー・関数がない。`internal.batch_run.counts` に check 制約があり、文字列値を含む jsonb の insert が失敗する（L-6） | NFR-43（設計レビュー M-7、L-4、L-6） |
 | I-DB-16 | 公開ビューの列のスナップショット | `information_schema.columns where table_schema='public' and table_name like 'pub_%'` の（ビュー名、列名、型）の集合が `tests/snapshots/pub-columns.json`（02 §5 の対応表から作る）と完全に一致。列名に `_mask` を含むものがなく、`excluded_at`・`author_count`・`share_count` がない。差分があれば失敗し、スナップショットの更新には NFR-39 の手順（ADR と security-auditor のレビュー）を PR で示す | NFR-43、NFR-39（設計レビュー M-7、M-4、M-5） |
 | I-DB-17 | 分布と帯の計算（ビュー） | `pub_benchmark_curve` の各行が、同じフィクスチャから U-07（`quantiles`）で計算した p25 / p50 / p75・`population_size`・`population_window` と一致（12 か月 → 全期間の拡張、30 本未満で行なし、`scope = cat:<id>` は母集団 30 本以上の子カテゴリだけ、広告・除外記事を含めない）。`pub_article_summary.band_7d`（age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積と曲線 (all, N) の比較）、`pub_author_summary.band_30d`（own_median_30d と曲線 (all, 30)）が U-08（`band`）の結果と一致。age_days < 3・曲線の行なし・値 null で null。p25 / p75 と等しい値が `middle`。除外著者を 1 人追加すると、曲線・帯・`population_size` が次の select で変わる（バッチの再実行なし）。`explain analyze` で `pub_benchmark_curve` の全行 select がローカルの 1,000 本のフィクスチャで 2 秒以内（超えるなら ADR 0003 判断 4 追記の (c) へ） | M-19、M-20、M-27、FR-21、FR-23 (3)、FR-31 (b)、ADR 0003 判断 4 追記（N-1） |
-| I-DB-18 | `batch_writer` の権限 | (1) `information_schema.role_table_grants where grantee = 'batch_writer'` が許可リスト（02 §3.1〜§3.6 の表から `excluded_author` を除いたもの × select / insert / update / delete）と完全に一致し、truncate、references、trigger がない。(2) `excluded_author`、`internal.article_cumulative`、`internal.benchmark_curve`、すべての `public.pub_*` について `has_table_privilege('batch_writer', ..., 'SELECT')` が false。`batch_writer` で接続して `select * from internal.excluded_author` と `select * from public.pub_post` がともに `permission denied`。(3) `pg_policies` で `batch_writer_all` が許可リストの全表にあり、`excluded_author` にはなく、他のロール向けのポリシーがない。`pg_roles` で `rolbypassrls`、`rolsuper`、`rolcreaterole`、`rolcreatedb` がすべて false。(4) `batch_writer` で許可した表に upsert と delete が成功し、`batch_run` への insert が `counts_is_numeric` の check を通る。(5) マイグレーションの SQL に `password` の文字列がない。(6) `batch_writer` で実行した `create table`、`alter table`、`truncate` が拒否される | NFR-43、NFR-22、NFR-40、ADR 0005、ADR 0009 |
+| I-DB-18 | `batch_writer` の権限 | (1) `information_schema.role_table_grants where grantee = 'batch_writer'` が許可リスト（02 §3.1〜§3.6 の表から `excluded_author` を除いたもの × select / insert / update / delete。`batch_run` は delete なし。経路監査 L-2）と完全に一致し、truncate、references、trigger がない。(2) `excluded_author`、`internal.article_cumulative`、`internal.benchmark_curve`、すべての `public.pub_*` について `has_table_privilege('batch_writer', ..., 'SELECT')` が false。`batch_writer` で接続して `select * from internal.excluded_author` と `select * from public.pub_post` がともに `permission denied`。(3) `pg_policies` で `batch_writer_all` が許可リストの全表にあり、`excluded_author` にはなく、他のロール向けのポリシーがない。`pg_roles` で `rolbypassrls`、`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolinherit` がすべて false、`rolconnlimit` が 2。マイグレーションの適用直後（パスワード設定の前）は `rolcanlogin` が false（経路監査 L-1）。ロールの既定の `statement_timeout` が 120 秒。(4) `batch_writer` で許可した表に upsert と delete が成功し、`batch_run` への insert が `counts_is_numeric` の check を通る。`batch_run` への delete は `permission denied`。シーケンスの grant は、この insert が失敗したときだけ足す（経路監査 L-2）。(5) `supabase/migrations` と `supabase/seed` の SQL に `password` の文字列がない（大文字小文字を区別しない。W-4）。(6) `batch_writer` で実行した `create table`、`alter table`、`truncate` が拒否される。(7) すべてのスキーマで `has_schema_privilege` の USAGE と CREATE を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを確認した `public` だけ（`pg_catalog` と `information_schema` は USAGE の判定から除く。02 §6）。(8) `information_schema.routine_privileges` と `role_usage_grants` で `batch_writer` が grantee のものが `internal.counts_is_numeric` と必要なシーケンスだけ。(9) `pg_auth_members` で `batch_writer` が member の行が 0 件。(10) `supabase/checks/batch_writer_privileges.sql` が 0 行を返し、その本文がマイグレーション末尾の検査と一致する（W-8。同じ SQL を A-11 で本番にも流す） | NFR-43、NFR-22、NFR-40、ADR 0005、ADR 0009 |
 
 実装: `apps/batch/tests/db/` に pytest を置き、`DATABASE_URL`（ローカルの管理接続）で psycopg で接続する。`batch_writer` の検査はそのロールで接続し直す。anon の検査は、anon の JWT を使う PostgREST 経由（httpx、ローカルの anon キー）と、`set local role anon` の SQL の両方で行う（PostgREST 層の見落としを防ぐ）。
 
@@ -107,8 +109,8 @@
 | I-B-07 | 割当の記録 | `returnPropertyQuota` の値を実行記録に残し、1 回の daily のリクエスト数が D-01 の見込み（約 30）の 1.5 倍以内 | NFR-61 |
 | I-B-08 | バックフィル | 開始日 2025-10-08〜基準日を分割して実行し、`site_daily` の行数が日数と一致。開始日は環境変数 | FR-75、NFR-50 |
 | I-B-09 | publish | 成功時に Deploy Hook（モック URL）が 1 回だけ POST される。失敗時は呼ばれない。`publish_only` は取得をせず Hook だけ呼び、`batch_run` に行を書かない（L-7）。実行ログに Hook の URL と応答本文が含まれない（L-8） | NFR-11、ADR 0005、ADR 0006 |
-| I-B-10 | 除外リストの変更 | ADR 0005 の固定の SQL をローカルの管理接続で実行すると、`internal.excluded_author` に入り、`pub_*` から消える（I-DB-04 を再実行）。打ち間違いの slug では 0 行を返し、登録されない。バッチの `daily` を続けて実行しても `excluded_author` の行が変わらず、`pub_*` に現れない。解除の SQL で戻る | FR-36、D-10 |
-| I-B-11 | 未処理例外 | テスト用のフックで (a) 工程の途中で例外を送出、(b) `threading.Thread` の中の未処理例外、(c) psycopg の接続失敗（誤ったパスワード、存在しない host。接続文字列の形式の誤りも）、(d) psycopg の制約違反（`Failing row contains` を含むエラーを実際に起こす）、(e) GA4 の偽物が `properties/123456789` を含む例外を送出、(f) `httpx` が Deploy Hook の URL を含む例外を送出、(g) pydantic の検証エラー（入力値に秘密らしい文字列を入れる）、の 7 通りを起こす。サブプロセスで実行し、いずれも終了コード 1、`batch_run` が `failed` で `error_kind` が分類値（`unknown` を含む）。stdout / stderr の全文に `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、`eyJ`、6 桁以上の数字列（`\d{6,}`）、`Traceback`、`File "` が含まれない | NFR-44（設計レビュー M-8）、03 §14 |
+| I-B-10 | 除外リストの変更 | ADR 0005 の固定の SQL をブロックごとに（追加、確認 1、確認 2、解除の順に別々に）ローカルの管理接続で実行すると、`internal.excluded_author` に入り、`pub_*` から消える（I-DB-04 を再実行）。ADR 0005 の各コードブロックに文が 1 つだけあることを検査する（W-5）。打ち間違いの slug では 0 行を返し、登録されない。バッチの `daily` を続けて実行しても `excluded_author` の行が変わらず、`pub_*` に現れない。解除の SQL で戻る | FR-36、D-10 |
+| I-B-11 | 未処理例外 | テスト用のフックで (a) 工程の途中で例外を送出、(b) `threading.Thread` の中の未処理例外、(c) psycopg の接続失敗（誤ったパスワード、存在しない host。接続文字列の形式の誤りも）、(d) psycopg の制約違反（`Failing row contains` を含むエラーを実際に起こす）、(e) GA4 の偽物が `properties/123456789` を含む例外を送出、(f) `httpx` が Deploy Hook の URL を含む例外を送出、(g) pydantic の検証エラー（入力値に秘密らしい文字列を入れる）、(h) 閉じたポートへの実際の gRPC 呼び出し（`GRPC_VERBOSITY` を環境変数で渡さずに実行する。偽の GA4 では gRPC の C 実装の出力を通らないため）、(i) `sys.exit("msg")`、(j) import 時の例外（フック登録より後の遅延 import で起こす）、(k) 独自のレベルとハンドラ（stderr と stdout への `StreamHandler`）を持つロガーへの出力のあとの例外、の 11 通りを起こす。サブプロセスで `python -m takatsu_batch` を実行し、いずれも終了コード 1。(c) と (j) を除いて `batch_run` が `failed` で `error_kind` が分類値（`unknown` を含む）。(c) と (j) は `batch_run` を `failed` にできない（03 §14 の 6。経路監査 L-6）ので、行の状態を求めない。(h) の `error_kind` は `network`。stderr は 0 バイト。stdout / stderr の全文に `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、`eyJ`、6 桁以上の数字列（`\d{6,}`）、`Traceback`、`File "` が含まれない | NFR-44（設計レビュー M-8）、03 §14 |
 
 モックの応答は `apps/batch/tests/fixtures/ga4/*.json`、`apps/batch/tests/fixtures/wp/*.json` に置く。GA4 の偽クライアントは `BetaAnalyticsDataClient.run_report` と同じ呼び出しの形を持ち、固定 JSON を `RunReportResponse` に変換して返す（gRPC のモックサーバーを立てない）。本番から写した値は使わず、手で作る（著者名・タイトルは架空）。
 
@@ -154,9 +156,9 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | S-05 | 禁止語 | `ui-text.ts` と `apps/web` の `grep`（偏り、下位、読まれなかった、順位、ランキング） | NFR-97 |
 | S-06 | GA4 / WP の禁止名 | `apps/batch/src` の `grep`（newUsers、totalUsers、engagedSessions、engagementRate、averageSessionDuration、bounceRate、pageReferrer、pageLocation、`/comments`、`/users`、`realtime`、`run_realtime_report`） | M-04〜M-08、M-42、NFR-04、NFR-32、NFR-38 |
 | S-07 | 直接のログ出力の禁止 | BI は ESLint `no-console`。バッチは ruff T201（`print`）と `banned-api`（`logging`、`traceback`、`pprint` を `log.py`、`errors.py` の外で禁止） | NFR-44 |
-| S-08 | 依存の脆弱性 | `pip-audit --require-hashes -r apps/batch/requirements.txt`（例外は `--ignore-vuln` に理由つきで）と `pnpm audit --audit-level=high`（`apps/web`。例外は `pnpm audit` の ignore に理由つきで）。失敗で止める | 06 §10 |
+| S-08 | 依存の脆弱性 | `pip-audit --require-hashes -r apps/batch/requirements.txt`（例外は `--ignore-vuln` に理由つきで。`--disable-pip` は要確認 ADR 0009 V-6）と `pnpm audit --audit-level=high`（`apps/web`。例外は `pnpm audit` の ignore に理由つきで）。失敗で止める。同じ検査を週 1 の `audit.yml`（`schedule`）でも流し、失敗を通知する（W-9）。本番の `requirements.txt` に `colorama` がない（経路監査 L-7） | 06 §10、NFR-45 |
 | S-09 | 秘密の検出 | gitleaks（全履歴は初回、以後は差分）。Supabase のキーの形（`eyJ…` の JWT）、Postgres の接続文字列（`postgresql://` の後に `:` と `@` を含むもの。`pooler.supabase.com` を含むもの）、Deploy Hook URL（`api.vercel.com/v1/integrations/deploy/`）、GCP の鍵（`"type": "service_account"`）のパターンを追加 | NFR-40、NFR-41 |
-| S-10 | ワークフローの規律 | actionlint。`permissions:` が全ワークフローにあり、`id-token: write` は GCP 認証ジョブだけ、`pull_request_target` がない、`uses:` がすべて 40 桁 SHA（`grep -E 'uses: .+@[0-9a-f]{40}'` と一致しない行があれば失敗）、schedule のジョブに `if: github.ref == 'refs/heads/main'`。heartbeat の分離（M-3）: `contents: write` が現れるのは `heartbeat.yml` だけ（`grep -l 'contents: write' .github/workflows/*` の結果が `heartbeat.yml` のみ）。`heartbeat.yml` の `uses:` が `actions/checkout` だけで、`run:` に `pnpm`・`npm`・`node`・`pip`・`python` がなく、`secrets.` の参照がなく、`id-token` がない。`daily.yml` の最上位 `permissions` が `contents: read`。`daily.yml` の `uses:` が `actions/checkout`、`actions/setup-python`、`google-github-actions/auth` だけで、`astral-sh/` がどのワークフローにもない。`SUPABASE_BATCH_DB_URL` の参照が取得・書き込みのステップだけ | NFR-45 |
+| S-10 | ワークフローの規律 | actionlint。`permissions:` が全ワークフローにあり、`id-token: write` は GCP 認証ジョブだけ、`pull_request_target` がない、`uses:` がすべて 40 桁 SHA（`grep -E 'uses: .+@[0-9a-f]{40}'` と一致しない行があれば失敗）、schedule のジョブに `if: github.ref == 'refs/heads/main'`。heartbeat の分離（M-3）: `contents: write` が現れるのは `heartbeat.yml` だけ（`grep -l 'contents: write' .github/workflows/*` の結果が `heartbeat.yml` のみ）。`heartbeat.yml` の `uses:` が `actions/checkout` だけで、`run:` に `pnpm`・`npm`・`node`・`pip`・`python` がなく、`secrets.` の参照がなく、`id-token` がない。`daily.yml` の最上位 `permissions` が `contents: read`。`daily.yml` の `uses:` が `actions/checkout`、`actions/setup-python`、`google-github-actions/auth` だけで、`astral-sh/` がどのワークフローにもない。`SUPABASE_BATCH_DB_URL` の参照が `daily` と `backfill` の取得・書き込みのステップだけ。`SUPABASE_BATCH_DB_URL` と `VERCEL_DEPLOY_HOOK_URL` を参照するジョブに `environment: production` がある。`environment:` は `daily.yml` だけに現れる（W-3。ブランチ制限そのものは YAML に現れないので A-11 で確認）。`daily.yml` の `pip install` に `--require-hashes --only-binary :all:` がある（W-9）。`audit.yml` が週 1 の `schedule` を持ち、`permissions` が `contents: read` だけで、`secrets.` の参照と `id-token` がない。自動 merge がない（`gh pr merge`、`--auto`、`automerge` がワークフローに現れない）。`.github/dependabot.yml` に `cooldown` がある（W-9。設定の形は要確認 ADR 0009 V-6）。ワークフローに `PG` で始まる環境変数の設定がない（ADR 0009「TLS」） | NFR-45、ADR 0009 |
 | S-11 | 応答ヘッダ | `next build` → `next start` → 全ルートに対して `curl -I` し、E-01 の値を検査（E2E と二重。Playwright が落ちても単独で分かるように） | NFR-91 |
 | S-12 | 型検査と lint | バッチ: `ruff check`、`ruff format --check`、`mypy --strict`。BI: `tsc --noEmit`、ESLint、Prettier | ― |
 | S-13 | マイグレーションと公開ビュー | §4 の I-DB-01〜I-DB-18（スキーマの usage、列のスナップショット、`batch_writer` の権限を含む） | NFR-43 |
@@ -165,7 +167,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 
 | S-16 | 言語をまたぐ定数の一致 | `contracts/constants.json`（`SITE_ORIGIN`、チャネル 5 区分、SNS 5 区分、axis、鮮度区分、移動窓の期間 ID）と、Python の定数、TypeScript の定数が一致することを pytest と Vitest の両方で検査 | ADR 0004、FR-04 |
 | S-17 | バッチが除外リストと公開ビューに触れない | `apps/batch/src` の `grep`（`excluded_author`、`pub_`、`benchmark_curve`、`article_cumulative`、`SERVICE_ROLE`）で 1 件でも失敗 | ADR 0005、ADR 0009 |
-| S-18 | 例外の情報を使わない | `apps/batch/src` に対する ruff の `banned-api` と `grep`（`.diag`、`.pgconn`、`.pgresult`、`str(e)`、`repr(e)`、`format_exc`、`print_exc`、`basicConfig`）。pydantic のモデルが共通の基底クラス（`hide_input_in_errors=True`）を継承していることをテストで検査 | NFR-44、03 §14・§15 |
+| S-18 | 例外の情報を使わない | `apps/batch/src` に対する ruff の `banned-api` と `grep`（`.diag`、`.pgconn`、`.pgresult`、`str(e)`、`repr(e)`、`format_exc`、`format_exception`、`print_exc`、`logging.exception`、`basicConfig`）。`grep` は `str(exc)`、`f"{e}"`、`__context__`、`__traceback__` を見逃すので、`ast` のテストで `apps/batch/src` の全 `except ... as` を調べ、束縛名が `classify_error` への受け渡しにだけ使われていることを検査する（経路監査 L-5。`errors.py` の中は型の判定と `sqlstate` の参照だけを許す）。`__main__.py` と `__init__.py` の最上位の import が標準ライブラリだけで、`__init__.py` に処理がないことも `ast` で検査する（W-7）。pydantic のモデルが共通の基底クラス（`hide_input_in_errors=True`）を継承していることをテストで検査 | NFR-44、03 §14・§15 |
 
 - ローカルでも `pnpm check`（`apps/web`）と `ruff check`、`mypy`、`pytest`（`apps/batch`）で S-01〜S-07、S-12 を同じ設定で実行できるようにする。
 
@@ -185,7 +187,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | A-08 | 運用: 失敗通知の受信（通知先 Q-12）、再実行で復旧、60 日停止対策の確認手順、除外リストの変更と再生成（Preview 相当の環境で） | FR-74、NFR-70、NFR-71、NFR-11、NFR-73 |
 | A-09 | 秘密: Google Cloud の鍵一覧に JSON 鍵がない、Vercel / Actions の環境変数以外に受け渡し経路がない、リポジトリ履歴に除外リスト・著者名がない | NFR-40、NFR-41、NFR-44 |
 | A-10 | 無料枠: 初回公開後 1 か月の請求 | NFR-60 |
-| A-11 | 本番の DB 接続（CI のローカル環境に pooler と TLS がないため）: `batch_writer` のパスワード設定の後、Actions のランナー（`workflow_dispatch` の初回 `backfill`）から pooler に接続して書き込めること。`sslmode=verify-full` で TLS が通ること。実行ログに接続文字列の部品が出ていないこと。パスワード未設定の状態で接続が拒否されること（設定前に 1 回） | NFR-43、NFR-44、ADR 0009 |
+| A-11 | 本番の DB 接続（CI のローカル環境に pooler と TLS がないため）。前提: ADR 0009 の実装着手前の確認項目 1 で TLS の基準の段階（第 1 か第 2）が決まっていること。第 3 の `require` では実施しない。`alter role batch_writer login password ...` の後、Actions のランナー（`workflow_dispatch` の初回 `backfill`）から pooler に接続して書き込めること。採用した基準で TLS が通ること。`require_auth=scram-sha-256` と `connection limit 2` が pooler 経由で問題ないこと。実行ログに接続文字列の部品が出ていないこと。`supabase/checks/batch_writer_privileges.sql` を本番の SQL エディタで実行して 0 行であること（W-8）。Environment `production` の配備ブランチが main だけで、リポジトリの Secret に同名の値が残っておらず、main 以外のブランチのワークフローからその Secret を使えないこと（W-3。結果の値を記録しない） | NFR-43、NFR-44、NFR-45、ADR 0009 |
 
 ## 9. 受入基準との対応表
 
@@ -263,8 +265,8 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | NFR-40、NFR-41 | S-09、S-15、A-09 | 自動 + 手動 |
 | NFR-42 | S-01、E-04 | 自動 |
 | NFR-43 | I-DB-01（service_role に権限がないことを含む）、I-DB-02、I-DB-04、I-DB-15、I-DB-16、I-DB-18（`batch_writer` の権限）、A-11 | 自動、手動（A-11） |
-| NFR-44 | I-B-04、I-B-05、I-B-11、U-28、U-29、S-07 | 自動 |
-| NFR-45 | S-10 | 自動 |
+| NFR-44 | I-B-04、I-B-05、I-B-11、U-28、U-29、S-07、S-18 | 自動 |
+| NFR-45 | S-08、S-10、A-11（Environment のブランチ制限） | 自動、手動（A-11） |
 | NFR-50、NFR-51 | I-B-08、S-06（削除処理・保持依存がない: `grep` で `delete from site_daily` 等がない） | 自動 |
 | NFR-52 | I-B-03、I-DB-13、I-DB-04 | 自動 |
 | NFR-60、NFR-61 | A-10、I-B-07 | 手動 + 自動 |
@@ -293,6 +295,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 - 分母の境界: 19 と 20。
 - 累積の境界: 公開 2 日目の記事（まだ比較できません）、7 日目、29 日目、30 日目。
 - 本番のデータ（著者名、タイトル、数値）をフィクスチャに写さない。
+- `supabase/seed` にロールのパスワードを置かない（W-4、I-DB-18 (5)）。
 
 ## 11. 未確定
 
@@ -302,4 +305,5 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 - FR-05（CSV）、FR-61（シェア）を初回に含めるかで、U / E の項目を追加する。
 - Q-36 は確定（2026-11-03）。I-DB-07 の対象（`pub_site_period_breakdown` の channel / device_pv / device_sessions）と U-22（G19、G20）に反映済み。E-05 の S-01 の期待値は 05 §3 の確定した構成に従う。
 - 複数の Python 版や OS での `requirements.txt` の扱い（ADR 0004）、pooler の TLS と `executemany`（ADR 0009）は実装時と A-11 で確認する。
+- U-30 の期待値、I-B-11 (h) と S-10 の Dependabot の検査は、ADR 0009 の V-1、V-6 の確認結果で調整する。Dependabot が pip-compile のハッシュを再生成するかは初回の PR で確かめる（自動化しない）。
 - 「Standard Protection」（06 §2.1、M-6）が Hobby で設定できるかの確認結果により、Preview スモーク（E-01〜E-05）の実行方法（Vercel Authentication のバイパストークンの要否）を決める。

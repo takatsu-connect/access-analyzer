@@ -5,6 +5,7 @@
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
   - 2026-11-03: バッチを Python に変更し `packages/shared` を廃止（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。除外リストの変更を SQL エディタに変更（ADR 0005）
+  - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1、W-3、W-8、W-9 を反映（週 1 の `audit.yml`、`apps/batch/certs/`、`supabase/checks/`、Environment の Secret）
 - 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0005、ADR 0006、ADR 0007、ADR 0009
 
 ## 1. 概要
@@ -25,7 +26,7 @@ flowchart TB
 
   subgraph GH[GitHub（public リポジトリ）]
     REPO[リポジトリ<br/>apps/batch (Python), apps/web (TypeScript),<br/>supabase/migrations, .github/workflows]
-    ACT[GitHub Actions<br/>日次バッチ cron 17:00 JST<br/>Secrets: WIF, GA4_PROPERTY_ID,<br/>SUPABASE_BATCH_DB_URL, VERCEL_DEPLOY_HOOK_URL]
+    ACT[GitHub Actions<br/>日次バッチ cron 17:00 JST<br/>Secrets: WIF, GA4_PROPERTY_ID<br/>Environment production の Secrets:<br/>SUPABASE_BATCH_DB_URL, VERCEL_DEPLOY_HOOK_URL]
   end
 
   subgraph GCP[Google Cloud]
@@ -105,6 +106,7 @@ flowchart TB
 apps/
   batch/            日次バッチ（Python）
     src/takatsu_batch/   __main__.py、config.py、env.py、log.py、errors.py、db.py、page_path.py、sns_source.py、mask.py、period.py、derive.py、ga4.py、wp.py
+    certs/               pooler の検証に使う CA（秘密ではない。ADR 0009）
     tests/               unit/、integration/、db/（マイグレーションと公開ビューの検査）、support/（参照実装）
     requirements.in、requirements.txt、requirements-dev.in、requirements-dev.txt（ハッシュ固定）
     pyproject.toml       ruff、mypy、pytest の設定
@@ -118,8 +120,9 @@ contracts/
   constants.json    言語をまたぐ定数の正（07 S-16）
 supabase/
   migrations/       NNNN_*.sql（02 §8）
+  checks/           batch_writer_privileges.sql（権限の検査。02 §6）
 .github/
-  workflows/        daily.yml（バッチ。contents: read）、heartbeat.yml（月 1 回。contents: write のみ、checkout と git だけ。03 §12）、ci.yml（lint / test / audit）
+  workflows/        daily.yml（バッチ。contents: read、environment: production）、heartbeat.yml（月 1 回。contents: write のみ、checkout と git だけ。03 §12）、ci.yml（lint / test / audit）、audit.yml（週 1 の依存の監査。Secrets なし。06 §10）
 docs/               要件・設計・運用
 .env.example        環境変数の名前だけ
 ```

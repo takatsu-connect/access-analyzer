@@ -5,6 +5,7 @@
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: ADR 0004（Python バッチ）、ADR 0009（`batch_writer`）、ADR 0005（SQL エディタ）の改訂を反映（FR-36、NFR-40、NFR-43、NFR-44、NFR-45、D-10 の行）
+  - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-9 と L-1〜L-7 を反映（FR-36、NFR-11、NFR-40、NFR-43、NFR-44、NFR-45 の行）
 
 ## 1. 読み方
 
@@ -106,7 +107,7 @@
 | NFR-03 遅延データ | ― | §9、§6.3 | ― | 07 I-B-02 |
 | NFR-04 リアルタイムなし | 表なし | 取得なし | 06 §4 | 07 S-06、U-22 |
 | NFR-10 初期表示 3 秒 | ― | ― | ADR 0006（静的） | 04 §6（JSON 60 KB 以下）。05 §12、ADR 0008（HTML に描いた状態）。07 E-17、A-05 |
-| NFR-11 キャッシュ、再生成 | ― | §8 | ADR 0006、ADR 0005 | 04 §1（実行時のリクエストなし）。07 I-B-09、A-08 |
+| NFR-11 キャッシュ、再生成 | ― | §8 | ADR 0006、ADR 0005（1 ブロック 1 操作、再ビルド前の確認。W-5） | 04 §1（実行時のリクエストなし）。07 I-B-09、I-B-10、A-08 |
 | NFR-12 同時 10 人 | ― | ― | ADR 0006（CDN） | 07 E-17、A-05 |
 | NFR-20 ログインなし | ― | ― | 06 §2.1 | 05 §1（ナビに設定・ログインなし）。07 E-05、S-02 |
 | NFR-21 noindex | ― | ― | 06 §2.1、§6 | 05 §2.7（meta robots、robots.txt、404 も）。07 E-01、E-02 |
@@ -121,12 +122,12 @@
 | NFR-37 市まで | site_month_city、local 3 区分 | G9 | 06 §4 | 07 U-22、I-DB-09 |
 | NFR-38 参照元はドメインまで | source_domain | G7、G14、G16、G17 | 06 §4 | 07 U-22、S-06 |
 | NFR-39 変更手順 | §8 | §13 | ADR 0003 結果 | 07 A-09（手順の確認）、I-DB-16（列のスナップショット）。Q-36 は ADR 0003 判断 6 で確定 |
-| NFR-40 秘密の経路 | excluded_author（経路）、`batch_writer` のパスワードはマイグレーションに書かない（§6） | §16（SUPABASE_BATCH_DB_URL） | 06 §3、ADR 0009 | 04 §2（SUPABASE_URL / SUPABASE_ANON_KEY はビルド環境変数）。07 S-09、S-15、I-DB-18、A-09、A-11 |
+| NFR-40 秘密の経路 | excluded_author（経路）、`batch_writer` のパスワードはマイグレーションと seed に書かない（§6、§8。W-4） | §16（SUPABASE_BATCH_DB_URL。Environment の Secret。W-3） | 06 §3（TLS の基準、漏えい時の対処。W-1、W-2）、§9、ADR 0009 | 04 §2（SUPABASE_URL / SUPABASE_ANON_KEY はビルド環境変数）。07 U-30、S-09、S-10、S-15、I-DB-18、A-09、A-11 |
 | NFR-41 WIF | ― | §5 | ADR 0002、06 §2.2 | 07 A-09（鍵一覧） |
 | NFR-42 Supabase はサーバー側 | ― | ― | 06 §2.3、ADR 0006 | 04 §1、§2（NEXT_PUBLIC_ なし）。07 S-01、E-04 |
-| NFR-43 RLS、anon は pub_ のみ、除外 | §1・§3（internal スキーマ。M-7）、§6（`batch_writer` の grant とポリシー）、§4 | §7 | 06 §2.3、ADR 0005、ADR 0009 | 04 §1（from('pub_') の lint）。07 I-DB-01、I-DB-02、I-DB-04、I-DB-15、I-DB-16、I-DB-18、S-02、S-17、A-11 |
-| NFR-44 ログ・通知の規律 | batch_run の列 | §15、§14（psycopg と pydantic の例外） | 06 §8、ADR 0009 | 07 U-29、I-B-04、I-B-05、I-B-11、S-07、S-18 |
-| NFR-45 Actions の規律 | ― | §2、§12（heartbeat.yml の分離。M-3）、§14（未処理例外。M-8） | 06 §9 | 07 S-10、I-B-11 |
+| NFR-43 RLS、anon は pub_ のみ、除外 | §1・§3（internal スキーマ。M-7）、§6（`batch_writer` の grant とポリシー、`supabase/checks/batch_writer_privileges.sql`。W-8）、§4 | §7 | 06 §2.3、ADR 0005、ADR 0009 | 04 §1（from('pub_') の lint）。07 I-DB-01、I-DB-02、I-DB-04、I-DB-15、I-DB-16、I-DB-18、S-02、S-17、A-11 |
+| NFR-44 ログ・通知の規律 | batch_run の列 | §15、§14（psycopg と pydantic の例外、fd 2 と遅延 import。W-7） | 06 §8、ADR 0004、ADR 0005（slug の残存。W-6）、ADR 0009 | 07 U-29、I-B-04、I-B-05、I-B-11、S-07、S-18 |
+| NFR-45 Actions の規律 | ― | §2、§12（heartbeat.yml の分離。M-3）、§14（未処理例外。M-8）、§16（Environment の Secret。W-3） | 06 §9、§10（週 1 の監査、cooldown。W-9）、ADR 0004、ADR 0009 | 07 S-08、S-10、I-B-11、A-11 |
 | NFR-50 全期間、開始日 | 全表（削除は記事削除のみ） | §10、§16 | ― | 07 I-B-08、S-06 |
 | NFR-51 GA4 の保持に依存しない | 全表 | ― | 01 §6 | 07 S-06 |
 | NFR-52 削除記事、除外著者の集計維持 | cascade、excluded_author はビューのみ | §4 | ADR 0005 | 07 I-B-03、I-DB-13、I-DB-04 |
