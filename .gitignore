@@ -7,3 +7,12 @@
 *.gate.lock*
 
 credentials/
+
+# 秘密情報（.claude/rules/security.md）。項目名だけの .env.example は追跡する
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+*service*account*.json
