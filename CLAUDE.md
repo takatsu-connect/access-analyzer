@@ -22,11 +22,13 @@ WordPress で運営する「高津コネクト」(https://takatsu-connect.com/) 
 | デプロイ | devops-engineer | docs/operations/, .github/workflows/, Dockerfile など |
 | 横断 | tech-writer | docs/ 全体, docs/glossary.md, README.md |
 | 横断 | security-auditor | docs/security/audits/（監査報告。コードや設定は変更しない） |
+| 要件定義・設計 | analytics-advisor | docs/requirements/advice/（指標の適切さと見せ方の助言。要件・設計の文書は編集しない） |
 
 ## docs/ の構成
 ```
 docs/
   requirements/   要件定義（概要、利用者、指標定義、データソース、機能・非機能要件、受入基準、未確定事項）
+  requirements/advice/  analytics-advisor の助言（YYYY-MM-DD-題.md。指標の取捨と見せ方。要件への反映は requirements-analyst が行う）
   design/         設計（構成、技術選定、データモデル、パイプライン、API、画面、セキュリティ、テスト計画、トレース表）
   design/adr/     Architecture Decision Record（NNNN-題名.md）
   operations/     環境、デプロイ手順、CI/CD、運用手順、監視、コスト
@@ -47,6 +49,7 @@ docs/
 - 読ませるファイルは行範囲つきで列挙し、10 本以内・合計 15 万文字までを目安にする。
 - 依頼に所要時間の上限を書き、終了時に所要時間とツール呼び出し回数を報告させる。
 - セキュリティ監査（security-auditor）は、要件・設計の確定前、初回公開前、.github/workflows/ や Supabase の権限や認証に触れる変更のあと、定期点検のときに依頼する。致命的・高の指摘は Issue にして修正してから次の工程へ進む。
+- 指標と見せ方の助言（analytics-advisor）は、指標定義の確定前、画面設計（05_screens.md）のとき、指標を足すとき、BI 内の説明文を書くときに依頼する。この BI は誰でも見られ、ライターを競わせず、IT に詳しくない人にも分かることを前提にする。助言の採否は依頼者が決め、反映は requirements-analyst と architect が行う。
 
 ## 現在の状況
 - 2026-11-03: リポジトリを初期化し、エージェント定義と本ファイルを追加。
