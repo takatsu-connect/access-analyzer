@@ -2,7 +2,9 @@
 
 - 状態: レビュー中（2026-11-03。4 回目の反映後、tech-writer による全体の整合確認が残っている）
 - 更新日: 2026-11-03
-- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
+- 変更履歴:
+  - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
+  - 2026-11-03: ADR 0004（Python バッチ）、ADR 0009（`batch_writer`）、ADR 0005（SQL エディタ）の改訂を反映（FR-36、NFR-40、NFR-43、NFR-44、NFR-45、D-10 の行）
 
 ## 1. 読み方
 
@@ -76,7 +78,7 @@
 | FR-32 著者の記事一覧 | pub_post、pub_article_period、pub_article_summary、pub_article_period_breakdown(channel の最多) | ― | ― | 04 §3.5 posts、pvByPeriod、topChannelByPeriod。05 S-05「記事の一覧」（スマホ 4 列）。07 E-07、E-13 |
 | FR-33 著者の流入元・カテゴリ構成 | pub_author_period_breakdown、pub_author_category_period | G13、G14（著者合算 → 伏せ） | ADR 0003 判断 2 | 04 §3.5 breakdown、siteBreakdown、categoryMix。05 S-05「読者はどこから来たか（全体と並べて）」「どんなカテゴリを書いたか」。07 I-DB-07、A-03 |
 | FR-34 著者の最近読まれている | pub_article_summary | §6.2 | ― | 04 §3.5 posts.isRecentHot / isRevival。05 S-05（各 5 件）。07 U-10 |
-| FR-36 著者の非表示 | internal.excluded_author、公開ビューの除外、記事から合算する集計はすべて除外後（pub_category_period の親・子、pub_tag_period、pub_site_period_freshness、pub_author_*。H-1）、pub_posting_period に author_count なし（M-5） | §8（publish_only。L-7） | ADR 0005、ADR 0003 判断 4・5、06 §5 | 04 §7（除外列なし）、§5（pub_post にない記事はページを作らない）。05 §2.7 一般注記、§10 404（画面側の除外処理はない）。07 I-DB-04〜06、I-B-10、E-03、E-14 |
+| FR-36 著者の非表示 | internal.excluded_author、公開ビューの除外、記事から合算する集計はすべて除外後（pub_category_period の親・子、pub_tag_period、pub_site_period_freshness、pub_author_*。H-1）、pub_posting_period に author_count なし（M-5） | §8（publish_only。L-7） | ADR 0005、ADR 0009、ADR 0003 判断 4・5、06 §5 | 04 §7（除外列なし）、§5（pub_post にない記事はページを作らない）。05 §2.7 一般注記、§10 404（画面側の除外処理はない）。07 I-DB-04〜06、I-DB-18、I-B-10、S-17、E-03、E-14 |
 | FR-40 カテゴリ別 | pub_category_period、wp_category.path | ― | ADR 0003 判断 4 | 04 §3.6 CategoryData。05 S-06（軸ごと、注記）。07 I-DB-05 |
 | FR-41 月別 × カテゴリ | pub_category_period（月） | ― | ― | 04 §3.6 SeasonalData、§8 `axis`。05 S-06b。07 E-20 |
 | FR-42 タグ別 | pub_tag_period、pub_post_tag | ― | ADR 0003 判断 4 | 04 §3.6 TagIndexData / TagPageData。05 S-07、S-07b。07 I-DB-06、E-08 |
@@ -119,11 +121,11 @@
 | NFR-37 市まで | site_month_city、local 3 区分 | G9 | 06 §4 | 07 U-22、I-DB-09 |
 | NFR-38 参照元はドメインまで | source_domain | G7、G14、G16、G17 | 06 §4 | 07 U-22、S-06 |
 | NFR-39 変更手順 | §8 | §13 | ADR 0003 結果 | 07 A-09（手順の確認）、I-DB-16（列のスナップショット）。Q-36 は ADR 0003 判断 6 で確定 |
-| NFR-40 秘密の経路 | excluded_author（経路） | §16 | 06 §3 | 04 §2（SUPABASE_URL / SUPABASE_ANON_KEY はビルド環境変数）。07 S-09、S-15、A-09 |
+| NFR-40 秘密の経路 | excluded_author（経路）、`batch_writer` のパスワードはマイグレーションに書かない（§6） | §16（SUPABASE_BATCH_DB_URL） | 06 §3、ADR 0009 | 04 §2（SUPABASE_URL / SUPABASE_ANON_KEY はビルド環境変数）。07 S-09、S-15、I-DB-18、A-09、A-11 |
 | NFR-41 WIF | ― | §5 | ADR 0002、06 §2.2 | 07 A-09（鍵一覧） |
 | NFR-42 Supabase はサーバー側 | ― | ― | 06 §2.3、ADR 0006 | 04 §1、§2（NEXT_PUBLIC_ なし）。07 S-01、E-04 |
-| NFR-43 RLS、anon は pub_ のみ、除外 | §1・§3（internal スキーマ。M-7）、§6、§4 | ― | 06 §2.3、ADR 0005 | 04 §1（from('pub_') の lint）。07 I-DB-01、I-DB-02、I-DB-04、I-DB-15、I-DB-16、S-02 |
-| NFR-44 ログ・通知の規律 | batch_run の列 | §15、§14 | 06 §8 | 07 I-B-04、I-B-05、S-07 |
+| NFR-43 RLS、anon は pub_ のみ、除外 | §1・§3（internal スキーマ。M-7）、§6（`batch_writer` の grant とポリシー）、§4 | §7 | 06 §2.3、ADR 0005、ADR 0009 | 04 §1（from('pub_') の lint）。07 I-DB-01、I-DB-02、I-DB-04、I-DB-15、I-DB-16、I-DB-18、S-02、S-17、A-11 |
+| NFR-44 ログ・通知の規律 | batch_run の列 | §15、§14（psycopg と pydantic の例外） | 06 §8、ADR 0009 | 07 U-29、I-B-04、I-B-05、I-B-11、S-07、S-18 |
 | NFR-45 Actions の規律 | ― | §2、§12（heartbeat.yml の分離。M-3）、§14（未処理例外。M-8） | 06 §9 | 07 S-10、I-B-11 |
 | NFR-50 全期間、開始日 | 全表（削除は記事削除のみ） | §10、§16 | ― | 07 I-B-08、S-06 |
 | NFR-51 GA4 の保持に依存しない | 全表 | ― | 01 §6 | 07 S-06 |
@@ -170,7 +172,7 @@
 | D-07 60 日停止 | 別ワークフロー heartbeat.yml（月 1 回、contents: write のみ、checkout と git だけ。M-3）の条件付きコミット + クライアント側の停滞表示 | 03 §12。06 §9。05 §2.7。07 U-25、S-10 |
 | D-08 遅延と伏せ値 | 毎回まるごと再計算、状態を持たない | 03 §6.3。07 I-B-02 |
 | D-09 シェアのサービス別 | 取れない（カスタム次元未登録）。合計のみ。確定 | 03 §17 |
-| D-10 除外リスト | Supabase 内部表、公開ビューで除外 | ADR 0005。07 I-B-10 |
+| D-10 除外リスト | Supabase 内部表、公開ビューで除外。変更は SQL エディタ、`batch_writer` に権限なし | ADR 0005、ADR 0009。07 I-B-10、I-DB-18、S-17 |
 | D-12 カテゴリ別ヒートマップ | 可能だが初回は見送り。親カテゴリ 4 区分に限り NFR-39 の手順 | 03 §13 |
 | D-14 ADR の一覧 | ADR 0003 に 5 判断（判断 5 は Q-33） | adr/0003 |
 | D-15 page_type | 使わない。regex が正。バックフィル時に 1 回診断 | 03 §5.1 |

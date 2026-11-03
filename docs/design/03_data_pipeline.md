@@ -2,14 +2,15 @@
 
 - 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
-- 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0006、ADR 0007
+- 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0004、ADR 0006、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 分布 `benchmark_curve` と帯をバッチで計算せず、公開ビューが可視記事から計算する。§1、§6.2、§7）
+  - 2026-11-03: バッチを Python に変更（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。例外とログの規律を Python と psycopg に合わせて作り直し（§14、§15）。`packages/shared` のパスを `apps/batch` と `apps/web` に変更
 
 ## 1. 全体の流れ
 
-日次バッチ（GitHub Actions、`apps/batch`、TypeScript）は 1 回の実行で次の工程を順に行う。工程名は `batch_run.failed_step` の値と同じ。
+日次バッチ（GitHub Actions、`apps/batch`、Python）は 1 回の実行で次の工程を順に行う。工程名は `batch_run.failed_step` の値と同じ。
 
 | # | 工程 | 入力 | 出力 | 失敗時 |
 | --- | --- | --- | --- | --- |
@@ -19,10 +20,10 @@
 | 3 | ga4_daily | GA4 Data API | `site_daily`、`site_daily_channel`、`site_daily_device`、`article_daily`（直近 7 日ぶん、またはバックフィル範囲） | quota / auth / network |
 | 4 | ga4_period | GA4 Data API | 取り直す期間の `site_period`、`site_period_breakdown`、`site_period_heatmap`、`article_period`（landing_sessions、scroll_count、engagement_seconds）、`article_period_breakdown`。確定した月の `site_month_referrer`、`site_month_city`。30 日が経過した記事の `article_referrer_30d` | 同上 |
 | 5 | derive | 内部表（メモリ上の生値を含む） | `article_period.pageviews`、`author_period_breakdown`、`article_summary`（帯の列を除く）、`article_milestone`、`author_summary`（帯の列を除く）、`sns_source_unmapped`。分布 `benchmark_curve` と帯はバッチで計算せず、公開ビューが可視記事から計算する（02 §4.1、N-1） | validation |
-| 6 | write | 上記 | Supabase への upsert（1,000 行単位）。移動窓の古い行の削除 | db |
+| 6 | write | 上記 | Supabase への upsert（psycopg、1,000 行単位、全体で 1 トランザクション）。移動窓の古い行の削除 | db |
 | 7 | publish | ― | Vercel の Deploy Hook を呼び、BI を再ビルドする（ADR 0006）。`batch_run` を `success` に更新 | network |
 
-工程 1〜5 はメモリ上で完結させ、工程 6 でまとめて書く（途中失敗で半端な状態を残しにくくするため。それでも書き込み途中で失敗したときは次回の再実行が同じ基準日で上書きする）。公開（工程 7）は書き込みが成功したときだけ行うので、BI に半端なデータが載らない。
+工程 1〜5 はメモリ上で完結させ、工程 6 でまとめて 1 トランザクションで書く（§7）。書き込み途中で失敗すればロールバックされ、前回の成功時の状態が残る。公開（工程 7）は書き込みが成功したときだけ行うので、BI に半端なデータが載らない。工程 0 の `batch_run` の `running` と、失敗・成功の記録は、工程 6 とは別の短いトランザクションで書く。
 
 ```mermaid
 flowchart LR
@@ -32,7 +33,7 @@ flowchart LR
     direction TB
     P0[preflight] --> P1[wp_fetch] --> P2[period] --> P3[ga4_daily] --> P4[ga4_period] --> P5[derive<br/>正規化・伏せ値・二次伏せ・分布] --> P6[write] --> P7[publish]
   end
-  P6 -->|service role| SB[(Supabase<br/>内部表)]
+  P6 -->|psycopg, batch_writer| SB[(Supabase<br/>内部表)]
   P7 -->|Deploy Hook| V[Vercel ビルド]
   SB -->|anon: pub_* のみ| V
 ```
@@ -76,14 +77,14 @@ flowchart LR
 
 ## 5. GA4 Data API からの取得
 
-- クライアント: `@google-analytics/data` の `BetaAnalyticsDataClient`（v1beta）。認証は google-github-actions/auth が書く資格情報ファイル（`GOOGLE_APPLICATION_CREDENTIALS`）を Application Default Credentials として拾う（ADR 0002）。プロパティは `properties/${GA4_PROPERTY_ID}`。
-- `runReport` の規則: `dateRanges` は 1 リクエストに最大 4 つ入れられるので、取り直す期間を 4 つずつまとめる。`limit` は既定 10,000 行、最大 250,000 行（2026-11-03 に公式リファレンスで確認）。行数が 10,000 を超えうる問い合わせ（pagePath × 日）は `limit = 100000` を指定し、`rowCount` が上回れば `offset` でページングする。`returnPropertyQuota: true` を常に付け、`propertyQuota.tokensPerDay.remaining` と `tokensPerHour.remaining`、`tokensPerProjectPerHour.remaining` を `batch_run.counts` に件数として記録する。
+- クライアント: `google-analytics-data`（`google.analytics.data_v1beta`）の `BetaAnalyticsDataClient`。認証は google-github-actions/auth が書く資格情報ファイル（`GOOGLE_APPLICATION_CREDENTIALS`）を Application Default Credentials として拾う（ADR 0002）。プロパティは `properties/${GA4_PROPERTY_ID}`。
+- `runReport`（Python の `run_report`）の規則: `dateRanges` は 1 リクエストに最大 4 つ入れられるので、取り直す期間を 4 つずつまとめる。`limit` は既定 10,000 行、最大 250,000 行（2026-11-03 に公式リファレンスで確認）。行数が 10,000 を超えうる問い合わせ（pagePath × 日）は `limit = 100000` を指定し、`rowCount` が上回れば `offset` でページングする。`returnPropertyQuota: true` を常に付け、`propertyQuota.tokensPerDay.remaining` と `tokensPerHour.remaining`、`tokensPerProjectPerHour.remaining` を `batch_run.counts` に件数として記録する。
 - 同時実行はしない（逐次。同時リクエストの割当 10 を使わない）。リクエスト間に 200 ms 空ける。429 / `RESOURCE_EXHAUSTED` は 60 秒待って 1 回だけ再試行し、だめなら `quota` で失敗にする。
 - 取得する次元・指標は 03_data_sources.md §2.4 の範囲に限る。`pageReferrer`、`pageLocation`、`pageTitle`、ユーザー系、検索語、`customEvent:*`（D-15 の結論により page_type も）は使わない。
 
 ### 5.1 pagePath の正規化（D-05）と page_type（D-15）
 
-規則（`packages/shared/src/page-path.ts`、単体テスト付き）:
+規則（`apps/batch/src/takatsu_batch/page_path.py`、単体テスト付き）:
 
 1. 小文字化し、前後の空白を除く。
 2. クエリ文字列とフラグメントは pagePath には含まれない（GA4 の仕様。`pagePathPlusQueryString` は使わない）。含まれていれば `?` 以降を捨てる。
@@ -98,7 +99,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 ### 5.2 SNS 参照元の正規化（D-02）
 
-規則（`packages/shared/src/sns-source.ts`、単体テスト付き）。`sessionSource` を小文字化し、次の順で判定する。
+規則（`apps/batch/src/takatsu_batch/sns_source.py`、単体テスト付き）。`sessionSource` を小文字化し、次の順で判定する。
 
 | 区分 | 完全一致 | 後方一致（`.` を含むドメインの末尾） |
 | --- | --- | --- |
@@ -156,7 +157,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 ### 6.1 伏せ値と二次伏せのアルゴリズム
 
-`packages/shared/src/mask.ts`（単体テスト付き。入力はバケット名と生値の配列、出力は値と `_mask`）。
+`apps/batch/src/takatsu_batch/mask.py`（単体テスト付き。入力はバケット名と生値の配列、出力は値と `_mask`）。
 
 1. 排他的な区分のすべてのバケットを揃える。GA4 が返さなかったバケットは 0 として格納し、伏せない（0 は個人に結び付かない。D-16 確定、設計レビュー M-1）。
 2. `1 ≤ 値 < T` のセルを `threshold` で伏せる（値を null にする）。0 は伏せない。
@@ -168,12 +169,12 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 ### 6.2 派生指標の計算
 
-派生指標のうち累積（M-18）、判定（M-22、M-23）、自分の過去との比較の基準値（M-24）はバッチ（TypeScript）が `article_daily` と `wp_post` から計算する。全記事の分布（M-19、M-27）と帯（band）は `internal.benchmark_curve` ビューと公開ビューが可視記事から計算し、バッチは計算しない（02 §4.1、ADR 0003 判断 4。最終確認 低-1 で文言を修正）。計算式は 02_metrics.md §4.3。
+派生指標のうち累積（M-18）、判定（M-22、M-23）、自分の過去との比較の基準値（M-24）はバッチ（Python）が `article_daily` と `wp_post` から計算する。全記事の分布（M-19、M-27）と帯（band）は `internal.benchmark_curve` ビューと公開ビューが可視記事から計算し、バッチは計算しない（02 §4.1、ADR 0003 判断 4。最終確認 低-1 で文言を修正）。計算式は 02_metrics.md §4.3。
 
 - `article_period.pageviews` = 期間内の `article_daily.pageviews` の合計。
 - 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
-- 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが可視記事（`excluded_author` に当たらない著者の記事。広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、除外著者でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は可視記事の件数。バッチが除外リストを読まない方針（ADR 0005）を保つため、DB 側で計算する（代替案と推奨は ADR 0003 判断 4 追記）。`packages/shared` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
-- 帯（band）: **バッチは計算しない**。公開ビュー `pub_article_summary` が `band_7d`（`pv_7d` を曲線 (all, 7) の p25 / p75 と比べる。age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積を曲線 (all, N) と比べる。「◯日目」として同じ日数の帯と比べる。M-20）を、`pub_author_summary` が `band_30d`（`own_median_30d` を曲線 (all, 30) と比べる）を計算する。p75 と等しいときも p25 と等しいときも `middle`。age_days < 3、曲線の行がない、値が null のときは null。`packages/shared` の `band()` は参照実装（07 U-08、I-DB-17）。
+- 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが可視記事（`excluded_author` に当たらない著者の記事。広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、除外著者でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は可視記事の件数。バッチが除外リストを読まない方針（ADR 0005）を保つため、DB 側で計算する（代替案と推奨は ADR 0003 判断 4 追記）。`apps/batch/tests/support/reference.py` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
+- 帯（band）: **バッチは計算しない**。公開ビュー `pub_article_summary` が `band_7d`（`pv_7d` を曲線 (all, 7) の p25 / p75 と比べる。age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積を曲線 (all, N) と比べる。「◯日目」として同じ日数の帯と比べる。M-20）を、`pub_author_summary` が `band_30d`（`own_median_30d` を曲線 (all, 30) と比べる）を計算する。p75 と等しいときも p25 と等しいときも `middle`。age_days < 3、曲線の行がない、値が null のときは null。`apps/batch/tests/support/reference.py` の `band()` は参照実装（07 U-08、I-DB-17）。
 - M-22: `is_recent_hot` = age_days ≥ 15 かつ 直近 7 日の PV ≥ 20 かつ 直近 7 日 PV ≥ 2 × (その前 28 日の PV ÷ 4)。`is_revival` = `is_recent_hot` かつ age_days ≥ 91。表示件数の上限（各著者 5、全体 10）は BI 側で `is_recent_hot` の記事を直近 7 日 PV の多い順に切る。
 - M-23: 節目（500、1,000、5,000、10,000）を初めて超えた日 = 累積がその値以上になった最初の `day`。`is_evergreen_365` = age_days ≥ 365 かつ 直近 28 日の PV ≥ 20。
 - M-24: 著者の記事のうち 直近 12 か月公開・age_days ≥ 30 の `pv_30d` の中央値。該当 5 本未満なら null。
@@ -187,14 +188,16 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 ## 7. 格納
 
-- supabase-js（service role キー）で `upsert`（`onConflict` に PK）。1,000 行ずつ。upsert の前に `period` を更新する（FK のため）。
-- 全置換する表（`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（一瞬でも空にならないようにする）。`benchmark_curve` はビューなので書き込みはない（02 §4.1）。`truncate` は使わない（service_role に truncate の grant を付けない。最終確認 低-2）。
+- psycopg で `internal.<表>` に `insert ... on conflict (<PK>) do update` を `cursor.executemany` で流す。1,000 行ずつ。`period` を先に書く（FK のため）。列名とキーは表ごとの固定の定義から組み立て、利用者の入力を SQL に埋め込まない（値はすべてパラメータで渡す）。
+- 接続（ADR 0009）: `psycopg.connect(url, prepare_threshold=None, connect_timeout=10)`。接続先は shared pooler の session mode（`SUPABASE_BATCH_DB_URL`）、ロールは `batch_writer`。工程ごとに開いて閉じ、GA4 と WP を待つ間は接続を持たない。同時に開くのは 1 本だけ。
+- トランザクション: 工程 6 全体を `with conn.transaction():` の 1 つにまとめ、先頭で `set local statement_timeout = '120s'` を実行する。例外で抜ければロールバックする。
+- 全置換する表（`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（同じトランザクションの中なので、BI のビルドから空の状態は見えない）。`benchmark_curve` はビューなので書き込みはない（02 §4.1）。`truncate` は使わない（`batch_writer` に truncate の grant を付けない。最終確認 低-2）。
 - 移動窓（`period.kind = window`）の期間別行は upsert で上書きされる（キーが固定 ID なので古い日付範囲の行は残らない）。記事が増減した分は「今回のキー集合にない行を delete」で揃える。
 - 書き込み件数は `batch_run.counts` に残す。行の内容はログに出さない。
 
 ## 8. 公開（キャッシュ更新）
 
-- 工程 7 で Vercel の Deploy Hook（Secrets `VERCEL_DEPLOY_HOOK_URL`）を POST する。呼び方は `curl -fsS -X POST "$VERCEL_DEPLOY_HOOK_URL" -o /dev/null` で、応答本文と URL をログに出さない（設計レビュー L-8。失敗は終了コードで判定し、`error_kind = network`）。Vercel がリポジトリの main をビルドし、ビルド時に `pub_*` ビューを anon キーで読んで全ページを静的生成する（ADR 0006）。
+- 工程 7 で Vercel の Deploy Hook（Secrets `VERCEL_DEPLOY_HOOK_URL`）を `httpx.post` で呼ぶ。応答本文を読まず、URL と応答をログに出さない（設計レビュー L-8）。`httpx` の例外は URL を含みうるので §14 の扱いで種別だけにする（失敗は `error_kind = network`）。Vercel がリポジトリの main をビルドし、ビルド時に `pub_*` ビューを anon キーで読んで全ページを静的生成する（ADR 0006）。
 - ビルドが失敗したときは前回のデプロイが残り、`pub_meta.base_date` は進んでいるが画面は古いままになる。Vercel のビルド失敗通知（メール）を運用担当が受ける。BI の FR-02 表示はビルド時の `pub_meta` を埋め込むので、画面の「◯月◯日までのデータ」はその画面が生成された時点の値になる。
 - 除外リストの変更後は `workflow_dispatch` の `publish_only` で Deploy Hook だけを呼ぶ（NFR-11）。`publish_only` は設定変更後の再ビルドなど他の用途にも使い、`batch_run` に行を書かない（§2、設計レビュー L-7）。除外変更後は Vercel の旧デプロイを削除する（06 §2.4）。
 
@@ -245,11 +248,11 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 public リポジトリの定期実行は 60 日間リポジトリに活動がないと止まる（親が確認）。対策は 2 段。
 
-1. 止めない: 日次ワークフローとは**別のワークフロー** `.github/workflows/heartbeat.yml` を置く（設計レビュー M-3。日次ワークフロー内のジョブに `contents: write` を置くと、そのジョブで動く依存や Action が侵害されたときに main へコードを push でき、翌日のバッチが service role と WIF の下でそれを実行してしまうため）。
+1. 止めない: 日次ワークフローとは**別のワークフロー** `.github/workflows/heartbeat.yml` を置く（設計レビュー M-3。日次ワークフロー内のジョブに `contents: write` を置くと、そのジョブで動く依存や Action が侵害されたときに main へコードを push でき、翌日のバッチが接続文字列と WIF の下でそれを実行してしまうため）。
    - トリガー: `schedule`（月 1 回、例: 毎月 1 日 03:00 UTC）と `workflow_dispatch`。main のみ。
    - 権限: ワークフロー全体で `permissions: contents: write` のみ。`id-token` は付けない。
    - 中身: `actions/checkout`（GitHub 製、SHA 固定、`sparse-checkout: ops/`、`fetch-depth: 1`）と `git` CLI だけ。main の最新コミット（`git log -1 --format=%ct`）が 45 日以上前なら `ops/heartbeat.txt` に実行日（UTC の日付）を書き、固定メッセージ（「heartbeat: 定期実行の維持」）でコミット・push する。45 日以内なら何もしない。
-   - 置かないもの: `pnpm install`、プロジェクトのコード（`apps/`、`packages/`）、サードパーティ Action、Secrets の参照。
+   - 置かないもの: 依存のインストール（`pip install`、`pnpm install`）、プロジェクトのコード（`apps/`）、サードパーティ Action、Secrets の参照。
    - 日次ワークフロー（`daily.yml`）は `permissions: contents: read` と、バッチジョブだけの `id-token: write`（06 §9）。
    通常は Dependabot や文書更新のコミットで 45 日以内に活動があり、heartbeat はコミットしない。
 2. 止まったことに気づく: BI の FR-02 表示は、ビルド時の `pub_meta.base_date` が前日より古ければ「更新が遅れています」と出す。ただし、ワークフローが止まると再ビルドも起きず、画面は最後のビルドの状態で固まる。そこで BI のクライアント側で「今日の日付 − 表示中の基準日 ≥ 3 日」なら同じ注記を出す（JavaScript で現在日付と比較する。データは読まない）。加えて、運用担当が月 1 回 Actions の実行一覧を確認する手順を docs/operations/ に書く（デプロイ工程）。
@@ -265,7 +268,21 @@ Supabase Free は 1 週間アクセスがないと一時停止するが、日次
 ## 14. 失敗時の扱いと通知
 
 - どの工程で失敗しても `batch_run` を `failed` にし、`failed_step` と `error_kind` だけを記録する。例外のメッセージとスタックは Actions のログにも出さない（NFR-44。エラーの種別に分類できないものは `unknown`）。
-- 未処理例外の既定出力を止める（設計レビュー M-8）: Node は未処理例外のメッセージとスタックを stderr に出し、supabase-js のエラーはプロジェクト URL と表名、GA4 のエラーは `properties/<ID>` を含みうる（Secrets の自動マスクは値の完全一致にしか効かない）。対策は 3 つ。(1) エントリ（`apps/batch/src/main.ts`）で全工程を `try / catch` で囲み、捕まえた例外を `classifyError(e): ErrorKind` で `quota` / `auth` / `network` / `validation` / `db` / `unknown` に分類し、`logError(step, kind)`（種別だけ）を出して終了コード 1 で終える。メッセージ・スタック・例外オブジェクトはどこにも渡さない。(2) `process.on('uncaughtException', ...)` と `process.on('unhandledRejection', ...)` を起動直後に登録し、同じ扱い（分類 → 種別のみ出力 → `process.exit(1)`）にする。(3) `batch_run` への `failed` の書き込みが自体失敗しても、そのエラーも出さず終了コードだけで知らせる。テスト: 07 I-B-11（例外時のログに `https://`、`properties/`、6 桁以上の数字列が出ない）。
+- 未処理例外の既定出力を止める（設計レビュー M-8）: Python は未処理例外のメッセージとスタックを stderr に出す。例外のメッセージには次のものが含まれうる（Secrets の自動マスクは値の完全一致にしか効かない）。
+  - psycopg の接続エラー（`OperationalError`）: pooler の host、ポート、ユーザー名（`batch_writer.<PROJECT-REF>`）。接続文字列の解析エラーは接続文字列の一部を含みうる（パスワードを含む可能性を前提にする）。
+  - psycopg の SQL エラー: 行の値（`diag.message_detail` の `Failing row contains (...)`、`Key (...)=(...)`）、表名、列名、SQL 文の断片（`diag.statement_position` など）。
+  - GA4 のエラー（`google.api_core.exceptions`）: `properties/<ID>`。
+  - `httpx` のエラー: リクエストの URL（Deploy Hook の URL を含む）。
+  - pydantic の `ValidationError`: 入力値。
+- 対策は次の 6 つ。
+  1. エントリ（`apps/batch/src/takatsu_batch/__main__.py`）で全工程を `try / except BaseException` で囲み、`errors.classify_error(e) -> ErrorKind` で種別に分類し、`log.log_error(step, kind)`（工程名と種別だけ）を出して `sys.exit(1)` で終える。`SystemExit` はそのまま通す。例外オブジェクト、メッセージ、スタックをどこにも渡さない。再送出しない。
+  2. 分類は例外の型と `sqlstate` だけを見る。`str(e)`、`repr(e)`、`e.args`、`e.diag`、`e.pgconn`、`e.pgresult`、`e.__cause__`、`traceback` の関数を使わない（ruff の `banned-api` と S-18 で検査）。
+  3. 分類の規則: pydantic の `ValidationError` → `validation`。GA4 の `ResourceExhausted` → `quota`、`PermissionDenied` / `Unauthenticated` → `auth`、それ以外の `GoogleAPICallError` → `network`。`httpx.HTTPError` → `network`。`psycopg.Error` は `sqlstate` で分け、class `28` → `auth`、class `08`・`53`・`57`、および `sqlstate` なしの `OperationalError`（接続の失敗）→ `network`、それ以外（`22`、`23`、`42` など）→ `db`。`psycopg.ProgrammingError` で `sqlstate` がないもの（接続文字列の解析エラーを含む）→ `validation`。その他 → `unknown`。
+  4. フックを起動直後に登録する: `sys.excepthook`、`threading.excepthook`、`sys.unraisablehook` を、種別のみを出力して終える関数（unraisable は何も出さない）に置き換える。`warnings.simplefilter("ignore")` を設定する。`faulthandler` を有効にしない。
+  5. ライブラリのログを止める: `httpx` は INFO でリクエストの URL をログに出すので、`logging.basicConfig` を呼ばず、ルートロガーに `NullHandler` を付けてレベルを `CRITICAL + 1` にし、`logging.lastResort = None` にする。ワークフローのステップに `GRPC_VERBOSITY=NONE` を設定する（gRPC の C 実装が stderr に直接書くのを止める）。
+  6. `batch_run` への `failed` の書き込みが失敗しても、そのエラーも出さず終了コードだけで知らせる。
+- 接続文字列の扱い: `pydantic.SecretStr` で持ち、`psycopg.connect` に渡す直前にだけ `get_secret_value()` を呼ぶ。`repr` に出ない。
+- テスト: 07 U-29、I-B-11（例外時のログに `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、6 桁以上の数字列、`Traceback` が出ない）。
 - 通知（FR-74）: 通知先は Q-12 で未確定。実装は GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。Q-12 の回答まではワークフロー失敗時の GitHub のメール通知（リポジトリの管理者に届く）で代える。
 - BI は前回の成功時のデータで表示を続ける（NFR-90）。失敗した日は Deploy Hook を呼ばないので画面は変わらず、FR-02 の表示が「更新が遅れています」になる（§12 のクライアント側の判定）。
 
@@ -276,12 +293,14 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 - 工程の開始・終了、所要時間。
 - 件数: GA4 リクエスト数と消費トークン、WP リクエスト数、取り込んだ記事数、削除した記事数、書き込んだ行数。
 - エラーの種別（§14）。
-- 出さないもの: API の応答本文、行データ（記事タイトル、著者名、pagePath、参照元ドメイン、市名を含む）、トークン、プロパティ ID、Supabase の URL とキー、除外リストの内容。環境変数の一覧を出す `env` や `printenv` を使わない。`ACTIONS_STEP_DEBUG` は使わない。
-- ロガーは `packages/shared/src/log.ts` に 1 つだけ置き、引数を件数・文字列の種別・所要時間に限った関数（`logCount(step, name, n)` など）だけを公開する。任意のオブジェクトを出す関数を作らない。
+- 出さないもの: API の応答本文、行データ（記事タイトル、著者名、pagePath、参照元ドメイン、市名を含む）、トークン、プロパティ ID、接続文字列とその部品（pooler の host、ユーザー名、PROJECT-REF、パスワード）、SQL 文、SQLSTATE 以外の DB のエラー情報、除外リストの内容。環境変数の一覧を出す `env` や `printenv` を使わない。`ACTIONS_STEP_DEBUG` は使わない。
+- ロガーは `apps/batch/src/takatsu_batch/log.py` に 1 つだけ置き、引数を件数・固定の種別・所要時間に限った関数（`log_count(step: Step, name: CountName, n: int)` など。`Step` と `CountName` は `Literal`）だけを公開する。任意のオブジェクトを出す関数を作らない。出力は `sys.stdout.write`。`print` は ruff の T201 で禁止する。
+- pydantic のモデルは `model_config = ConfigDict(hide_input_in_errors=True)` を付けた共通の基底クラスから作る（検証エラーが入力値を含まないようにする。S-18 で検査）。環境変数の検証エラーでは `e.errors(include_input=False)` の `loc` だけを見て、変数名を種別と一緒に出してよい。値は出さない。
+- pytest は CI で `--tb=short` を使い、`--showlocals` を使わない。結合テストの接続先はローカルだけなので本番の秘密は出ないが、習慣として揃える。
 
 ## 16. 設定値と環境変数
 
-公開してよい設定（リポジトリ内、`packages/shared/src/config.ts`。変更はコミットで記録。NFR-22 (1)）:
+公開してよい設定（リポジトリ内。バッチは `apps/batch/src/takatsu_batch/config.py`、BI は `apps/web/src/lib/config.ts`。変更はコミットで記録。NFR-22 (1)）。下表の `RATIO_MIN_DENOMINATOR` は BI だけ、`SITE_ORIGIN` は両方（`contracts/constants.json` と突き合わせる。07 S-16）、それ以外はバッチだけ。`BENCHMARK_MIN_POPULATION` は `internal.benchmark_curve` の SQL にも現れる（I-DB-17 で一致を確かめる）:
 
 | 名前 | 既定 | 根拠 |
 | --- | --- | --- |
@@ -310,15 +329,18 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | GCP_WORKLOAD_IDENTITY_PROVIDER | Actions Secrets | WIF（initial_setup.md §2） |
 | GCP_SERVICE_ACCOUNT | Actions Secrets | 同上 |
 | GA4_PROPERTY_ID | Actions Secrets | Data API のプロパティ |
-| SUPABASE_URL | Actions Secrets、Vercel 環境変数 | プロジェクト URL |
-| SUPABASE_SERVICE_ROLE_KEY | Actions Secrets のみ | 内部表への書き込み |
+| SUPABASE_URL | Vercel 環境変数のみ | プロジェクト URL（ビルド時に `pub_*` を読む） |
+| SUPABASE_BATCH_DB_URL | Actions Secrets のみ。日次の取得・書き込みのステップだけに渡す | `batch_writer` の接続文字列（shared pooler の session mode。形式は `postgresql://batch_writer.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:5432/postgres?sslmode=verify-full`。ADR 0009）。読み書きの対象は内部表だけ |
 | SUPABASE_ANON_KEY | Vercel 環境変数のみ（`NEXT_PUBLIC_` を付けない） | ビルド時に `pub_*` を読む |
 | VERCEL_DEPLOY_HOOK_URL | Actions Secrets | 再ビルドの起動 |
 | NOTIFY_WEBHOOK_URL など | Actions Secrets | 失敗通知（Q-12 の回答後に名前を決める） |
 | BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行 |
 
+`env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。
+
 ## 17. 未確定
 
+- ADR 0009 の未確定: pooler の TLS（`sslmode=verify-full`）、`executemany` の挙動、IPv4 での到達（実装時と 07 A-11）。
 - Q-13: 実行時刻 T（仮 17:00 JST、鮮度 18:00）。cron の遅延を踏まえ、1 回目を 16:30 JST に前倒しする案も依頼者に示す。
 - Q-12: 失敗通知の宛先。
 - D-05 の残り: `/<ID>/<何か>/` の pagePath が実測で現れるか（親が GA4 で確認）。

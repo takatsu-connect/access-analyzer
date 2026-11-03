@@ -2,8 +2,10 @@
 
 - 状態: レビュー中（2026-11-03。security-auditor の設計レビュー 3 回と analytics-advisor の画面レビューを反映し、構築に進んでよいと判定された。依頼者の確認待ち）
 - 更新日: 2026-11-03
-- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
-- 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0006、ADR 0007
+- 変更履歴:
+  - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
+  - 2026-11-03: バッチを Python に変更し `packages/shared` を廃止（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。除外リストの変更を SQL エディタに変更（ADR 0005）
+- 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0005、ADR 0006、ADR 0007、ADR 0009
 
 ## 1. 概要
 
@@ -22,8 +24,8 @@ flowchart TB
   end
 
   subgraph GH[GitHub（public リポジトリ）]
-    REPO[リポジトリ<br/>apps/batch, apps/web, packages/shared,<br/>supabase/migrations, .github/workflows]
-    ACT[GitHub Actions<br/>日次バッチ cron 17:00 JST<br/>Secrets: WIF, GA4_PROPERTY_ID,<br/>SUPABASE_SERVICE_ROLE_KEY, VERCEL_DEPLOY_HOOK_URL]
+    REPO[リポジトリ<br/>apps/batch (Python), apps/web (TypeScript),<br/>supabase/migrations, .github/workflows]
+    ACT[GitHub Actions<br/>日次バッチ cron 17:00 JST<br/>Secrets: WIF, GA4_PROPERTY_ID,<br/>SUPABASE_BATCH_DB_URL, VERCEL_DEPLOY_HOOK_URL]
   end
 
   subgraph GCP[Google Cloud]
@@ -34,7 +36,7 @@ flowchart TB
   subgraph SB[Supabase（Free）]
     INT[(内部表<br/>RLS 有効・anon 権限なし)]
     PUB[公開ビュー pub_*<br/>anon select のみ]
-    EXC[(excluded_author<br/>内部表)]
+    EXC[(excluded_author<br/>内部表・batch_writer 権限なし)]
   end
 
   subgraph VC[Vercel（Hobby）]
@@ -43,13 +45,15 @@ flowchart TB
   end
 
   USER[運営者 / ライター / URL を知る人<br/>ブラウザ]
+  OPS[運用担当<br/>Supabase SQL エディタ]
 
   ACT -->|OIDC トークン| WIF --> SA -->|1 時間の AT| GA
   GA -->|集計値| ACT
   WP -->|記事メタデータ| ACT
-  ACT -->|service role: upsert| INT
+  ACT -->|psycopg, shared pooler session mode<br/>batch_writer: upsert| INT
   INT --> PUB
   EXC -.->|除外| PUB
+  OPS -->|除外の追加・解除| EXC
   ACT -->|Deploy Hook| BUILD
   REPO -->|push main| BUILD
   PUB -->|anon: select| BUILD
@@ -61,12 +65,12 @@ flowchart TB
 
 | コンポーネント | 置き場所 | 責務 | 持つ秘密 | 担当 |
 | --- | --- | --- | --- | --- |
-| 日次バッチ（`apps/batch`） | GitHub Actions（ubuntu、Node.js LTS、TypeScript） | WP REST API と GA4 Data API から取得、pagePath・参照元の正規化、期間集計、伏せ値・二次伏せ、派生指標（分布、帯、判定）、Supabase への書き込み、実行記録、Deploy Hook の呼び出し | WIF 経由の短命トークン、Supabase service role、Deploy Hook URL | backend-engineer |
-| 共有パッケージ（`packages/shared`） | リポジトリ | 設定値（T など）、正規化規則（pagePath、SNS、チャネル）、伏せ値アルゴリズム、公開ビューの型、ロガー、環境変数の検証 | なし | backend-engineer |
-| Supabase（Postgres） | Supabase Free | 内部表（蓄積、全期間保持）、公開ビュー（伏せ済み・除外済みの投影）、除外リスト、実行記録。マイグレーションで管理 | service role は Actions に、anon は Vercel に | backend-engineer（スキーマ）、devops-engineer（プロジェクト） |
-| BI（`apps/web`） | Vercel Hobby | ビルド時に公開ビューを読み、6 画面を静的生成。期間切り替え・フィルタ・並べ替え・CSV はクライアント側。応答ヘッダ、noindex | Supabase anon キー（ビルド時のみ） | frontend-engineer |
+| 日次バッチ（`apps/batch`） | GitHub Actions（ubuntu、Python） | WP REST API と GA4 Data API から取得、pagePath・参照元の正規化、期間集計、伏せ値・二次伏せ、派生指標（累積、判定）、Supabase への書き込み（psycopg）、実行記録、Deploy Hook の呼び出し。設定値、ロガー、環境変数の検証もここに置く | WIF 経由の短命トークン、`SUPABASE_BATCH_DB_URL`（`batch_writer`）、Deploy Hook URL | backend-engineer |
+| 定数の突き合わせ（`contracts/constants.json`） | リポジトリ | 言語をまたぐ定数（`SITE_ORIGIN`、バケット名など）の正。実行時には読まず、両言語のテストが突き合わせる（ADR 0004、07 S-16） | なし | backend-engineer、frontend-engineer |
+| Supabase（Postgres） | Supabase Free | 内部表（蓄積、全期間保持）、公開ビュー（伏せ済み・除外済みの投影）、除外リスト、実行記録。マイグレーションで管理 | `batch_writer` の接続文字列は Actions に、anon キーは Vercel に。service role キーは配らない | backend-engineer（スキーマ）、devops-engineer（プロジェクト） |
+| BI（`apps/web`） | Vercel Hobby | ビルド時に公開ビューを読み、6 画面を静的生成。期間切り替え・フィルタ・並べ替え・CSV はクライアント側。応答ヘッダ、noindex。辞書、公開ビューの型、埋め込み JSON の型もここに置く | Supabase anon キー（ビルド時のみ） | frontend-engineer |
 | ワークフロー（`.github/workflows`） | GitHub | cron とディスパッチ、WIF 認証、バッチの実行、失敗通知、heartbeat、CI（lint / test / audit） | Secrets の参照 | devops-engineer |
-| 運用スクリプト（`apps/batch` の `exclude-author`） | 運用担当のローカル | 除外リストの追加・削除 | ローカル `.env` の service role | 運用担当 |
+| 除外リストの変更 | Supabase の SQL エディタ（固定の SQL。ADR 0005） | 除外リストの追加・削除 | なし（ダッシュボードのログイン） | 運用担当 |
 
 ## 4. データの流れ
 
@@ -74,7 +78,7 @@ flowchart TB
 2. 正規化: pagePath / landingPage → 記事 ID（`^/(\d+)/$`）。sessionSource → SNS 5 区分。sessionDefaultChannelGroup → 5 区分。city → 川崎市 / 国内その他 / 不明。
 3. 集計と伏せ値: 05 §4.1 の表どおりに、日別は生値（全体、記事）、期間別は生値を合算してから T = 5 と二次伏せを適用。著者 × 内訳軸 は記事の生値を著者で合算してから伏せる。合計・累積は伏せる前の値から。
 4. 派生: 累積（M-18）、分布（M-19）、帯、M-22〜M-24 の判定、節目。
-5. 格納: Supabase の内部表へ upsert（service role）。移動窓は上書き、月は確定後に固定、確定した暦月の参照元・市別と記事の公開後 30 日時点の参照元は 1 回だけ書く。実行記録を `batch_run` に残す。
+5. 格納: Supabase の内部表へ upsert（psycopg、`batch_writer`、1 トランザクション。ADR 0009）。移動窓は上書き、月は確定後に固定、確定した暦月の参照元・市別と記事の公開後 30 日時点の参照元は 1 回だけ書く。実行記録を `batch_run` に残す。
 6. 公開: Deploy Hook で Vercel を再ビルド。ビルドは anon キーで `pub_*` ビューだけを読み、除外著者の記事・著者が存在しない前提で全ページを静的生成。CDN から配信。
 7. 閲覧: ブラウザは静的ファイルだけを受け取る。期間の切り替えはページに埋め込んだ全期間ぶんのデータをクライアントで切り替える。記事・著者へのリンクは takatsu-connect.com へ。
 
@@ -84,9 +88,9 @@ flowchart TB
 
 | 境界 | 内側 | 外側 | 通るもの | 守り |
 | --- | --- | --- | --- | --- |
-| B1: GitHub Actions ランナー | バッチのプロセス、Secrets | インターネット | GA4・WP への HTTPS 読み出し、Supabase への HTTPS 書き込み、Deploy Hook | Secrets は main の workflow だけが参照。fork PR は Secrets に触れない。ログに秘密・行データを出さない（NFR-44、NFR-45） |
+| B1: GitHub Actions ランナー | バッチのプロセス、Secrets | インターネット | GA4・WP への HTTPS 読み出し、Supabase の pooler への Postgres 接続（TLS）、Deploy Hook | Secrets は main の workflow だけが参照。fork PR は Secrets に触れない。ログに秘密・行データを出さない（NFR-44、NFR-45） |
 | B2: GCP | WIF プール・プロバイダ、SA | GitHub の OIDC 発行者 | OIDC トークン → 連携トークン → SA のアクセストークン | 属性条件（repository と ref が main）。SA は GA4 閲覧者のみ。JSON 鍵なし（ADR 0002） |
-| B3: Supabase | 内部表、除外リスト | Actions（service role）、Vercel ビルド（anon） | service role の読み書き、anon の `pub_*` select | RLS + grant。anon は公開ビュー以外に触れない。公開ビューの列を対応表で統制（02 §4〜§6） |
+| B3: Supabase | 内部表、除外リスト | Actions（`batch_writer`）、Vercel ビルド（anon）、運用担当（SQL エディタ） | `batch_writer` の内部表の読み書き（除外リストを除く）、anon の `pub_*` select、除外リストの変更 | RLS + grant。`batch_writer` は許可した表だけ。anon は公開ビュー以外に触れない。公開ビューの列を対応表で統制（02 §4〜§6） |
 | B4: Vercel ビルド | ビルドのプロセス、環境変数（anon） | Supabase、CDN | `pub_*` の select、静的ファイルの出力 | anon キーのみ。`NEXT_PUBLIC_` を使わない。fork PR のプレビューを止める |
 | B5: CDN と閲覧者 | 静的ファイル | 誰でも | HTTPS の GET | 公開ビューに載るものだけが載る。noindex、CSP、frame-ancestors。実行時のサーバー処理なし（入力はクライアント側で許可リスト検証） |
 | B6: 対象サイト | takatsu-connect.com | バッチ、閲覧者のブラウザ | wp/v2 の読み出し（バッチ）、記事ページへのリンク（閲覧者） | 日次・差分・間隔 1 秒（NFR-72）。リンク先は固定ドメイン（FR-04） |
@@ -95,25 +99,33 @@ flowchart TB
 
 ## 6. リポジトリ構成
 
-pnpm workspace の monorepo（ADR 0004）。CLAUDE.md の「src/、tests/」は次の形に読み替える。
+1 つのリポジトリに Python のバッチと TypeScript の BI を置く（ADR 0004）。workspace は使わない。CLAUDE.md の「src/、tests/」は次の形に読み替える。
 
 ```
 apps/
-  batch/            日次バッチ（TypeScript、Node.js LTS）。src/、tests/
-  web/              BI（Next.js App Router、静的生成）。src/、tests/
-packages/
-  shared/           設定値、正規化規則、伏せ値、公開ビューの型、ロガー、env 検証。src/、tests/
+  batch/            日次バッチ（Python）
+    src/takatsu_batch/   __main__.py、config.py、env.py、log.py、errors.py、db.py、page_path.py、sns_source.py、mask.py、period.py、derive.py、ga4.py、wp.py
+    tests/               unit/、integration/、db/（マイグレーションと公開ビューの検査）、support/（参照実装）
+    requirements.in、requirements.txt、requirements-dev.in、requirements-dev.txt（ハッシュ固定）
+    pyproject.toml       ruff、mypy、pytest の設定
+    .python-version
+  web/              BI（Next.js App Router、静的生成、pnpm）
+    src/lib/             ui-text.ts、pub-types.ts、page-data.ts、query.ts、derive/、config.ts
+    src/data/            公開ビューの読み出しと組み立て
+    tests/
+    package.json、pnpm-lock.yaml
+contracts/
+  constants.json    言語をまたぐ定数の正（07 S-16）
 supabase/
   migrations/       NNNN_*.sql（02 §8）
 .github/
   workflows/        daily.yml（バッチ。contents: read）、heartbeat.yml（月 1 回。contents: write のみ、checkout と git だけ。03 §12）、ci.yml（lint / test / audit）
 docs/               要件・設計・運用
 .env.example        環境変数の名前だけ
-pnpm-workspace.yaml、package.json、pnpm-lock.yaml
 ```
 
-- Vercel のプロジェクトは Root Directory を `apps/web` に設定し、pnpm workspace をそのまま使う。
-- バッチは `pnpm --filter batch run daily` / `backfill` / `publish-only` / `exclude-author` のコマンドを持つ。
+- Vercel のプロジェクトは Root Directory を `apps/web` に設定する。
+- バッチは `apps/batch` で `PYTHONPATH=src python -m takatsu_batch daily`（`backfill`、`publish-only` も同様）で動かす。
 
 ## 7. 設計文書の構成と 2 回目で書くもの
 
@@ -127,5 +139,5 @@ pnpm-workspace.yaml、package.json、pnpm-lock.yaml
 | 05_screens.md | 6 画面の構成、指標と要件 ID の対応、埋め込む説明文、クライアント側の検証 | 2 回目 |
 | 06_security.md | 認証・認可、秘密情報、公開範囲、ヘッダ、ログ | 1 回目 |
 | 07_test_plan.md | 単体（正規化、伏せ値、派生指標）、結合（マイグレーション + ビューの権限検査）、E2E（画面）、受入基準との対応 | 2 回目 |
-| adr/0001〜0007 | 判断の記録 | 1 回目 |
+| adr/0001〜0009 | 判断の記録 | 1 回目（0008 は 2 回目、0009 は 2026-11-03 の改訂） |
 | traceability.md | 要件 ID → 設計要素 | 1 回目は骨子と 02・03・06 の範囲、2 回目で完成 |

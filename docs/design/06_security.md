@@ -2,12 +2,14 @@
 
 - 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
-- 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36、ADR 0002、ADR 0003、ADR 0005、ADR 0006、docs/operations/initial_setup.md
-- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
+- 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36、ADR 0002、ADR 0003、ADR 0004、ADR 0005、ADR 0006、ADR 0009、docs/operations/initial_setup.md
+- 変更履歴:
+  - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
+  - 2026-11-03: バッチを Python に（ADR 0004）、書き込みを専用ロール `batch_writer` と接続文字列 `SUPABASE_BATCH_DB_URL` に（ADR 0009）、除外リストの変更を SQL エディタに（ADR 0005）。service role キーを配らない形に変更
 
 ## 1. 守る資産と前提
 
-- 守る資産は 3 つ: 訪問者のプライバシー（公開するのは集計値だけ）、秘密情報（GA4 への認証、Supabase の service role キー、Vercel の環境変数、Deploy Hook、除外リスト）、BI データの完全性（第三者が Supabase に書けない、BI が改ざんされない）。
+- 守る資産は 3 つ: 訪問者のプライバシー（公開するのは集計値だけ）、秘密情報（GA4 への認証、Supabase の接続文字列 `SUPABASE_BATCH_DB_URL`、Vercel の環境変数、Deploy Hook、除外リスト）、BI データの完全性（第三者が Supabase に書けない、BI が改ざんされない）。
 - 前提: ログインなし（NFR-20）、URL を知る人だけが見る形で noindex（NFR-21）、public リポジトリ、無料枠。「運営が見る」と「全員が見る」が同じ。
 - BI は静的サイト（ADR 0006）。実行時にサーバー側のコードが利用者の入力を受け取る経路はない。利用者の入力はブラウザ内の状態（期間、フィルタ）と URL のパスだけ。
 
@@ -28,28 +30,30 @@
 - トークンは 1 時間有効。バッチの所要時間は通常 2〜4 分、バックフィルで 10 分未満。1 時間を超える設計にしない。
 - `id-token: write` は認証するジョブ（バッチ本体）だけに付ける。heartbeat は別ワークフロー（`heartbeat.yml`、03 §12、§9）で、`id-token` を持たず Secrets も参照しない。
 
-### 2.3 Supabase の権限（RLS、公開ビュー、service role の置き場所）
+### 2.3 Supabase の権限（RLS、公開ビュー、専用ロール）
 
 | ロール | 使う場所 | 権限 |
 | --- | --- | --- |
-| service role | GitHub Actions のバッチだけ。Secrets `SUPABASE_SERVICE_ROLE_KEY`。運用担当のローカル `.env`（除外リストの運用スクリプト、マイグレーションの適用。ADR 0005） | すべての内部表（`internal` スキーマ）への読み書き（RLS を通過） |
+| `batch_writer` | GitHub Actions のバッチだけ。Secrets `SUPABASE_BATCH_DB_URL`（shared pooler の session mode、TLS。ADR 0009） | 許可した内部表の select / insert / update / delete、必要なシーケンスの usage、`internal.counts_is_numeric` の execute。`excluded_author`、`internal.article_cumulative`、`internal.benchmark_curve`、`pub_*` への権限なし。`bypassrls` なし（表ごとのポリシー。02 §6） |
+| service role | 使わない。キーをどこにも置かない | `internal` の権限なし（02 §6） |
 | anon | Vercel のビルド（サーバー側）。環境変数 `SUPABASE_ANON_KEY`（`NEXT_PUBLIC_` を付けない） | `public.pub_*` ビューの select のみ。`internal` スキーマへの usage なし |
 | authenticated、PUBLIC | 使わない | grant なし。`internal` への usage なし。関数の EXECUTE も PUBLIC から取り消す（L-4） |
-| 運用担当（人） | Supabase ダッシュボード / CLI | スキーマはマイグレーションだけで変える。`excluded_author` への行の追加・削除はローカルの運用スクリプトで行う（ADR 0005） |
+| 運用担当（人） | Supabase ダッシュボード / CLI | スキーマはマイグレーションだけで変える。`excluded_author` への行の追加・削除は SQL エディタの固定の SQL で行う（ADR 0005）。`batch_writer` のパスワードの設定とローテーションも SQL エディタで行う（ADR 0009） |
 
 - 内部表は `internal` スキーマに置き、Supabase の API 設定「Exposed schemas」に含めない（設計レビュー M-7。多層防御: 誤って `grant select on all tables in schema public to anon` を流しても、`internal` の表は PostgREST から見えない）。公開ビュー `pub_*` だけを `public` に置く。`public` には他のオブジェクトを置かない。
-- 全表で RLS 有効、ポリシーなし、anon / authenticated / PUBLIC への grant なし。既定権限も取り消す（02 §6）。
+- 全表で RLS 有効。ポリシーは `batch_writer` 用だけで、`excluded_author` にはない。anon / authenticated / PUBLIC / service_role への grant なし。既定権限も取り消す（02 §6）。
 - 公開ビューは所有者（postgres）の権限で `internal` の表を読む（既定のビュー。`security_invoker` を付けない）。anon は内部表に触れず、ビューの投影だけを読む。**所有者権限のビューは base 表の RLS を通らないので、RLS は守りに数えない。実効的な守りは grant（anon は `pub_*` の select だけ）と `internal` スキーマの非公開（usage なし、Exposed schemas に含めない）である。** 各ビューの列は 02 §4・§5 の対応表で「公開してよい列だけ」を確認し、CI で列集合のスナップショットと照合する（07 I-DB-16）。列を足すときは NFR-39 の手順。
 - anon キーはブラウザに渡さない（NFR-42）。BI は静的サイトなので、ブラウザから Supabase に接続するコードを持たない。`NEXT_PUBLIC_SUPABASE_*` という名前の環境変数を作らない（CI で名前を検査する。07 S-01）。名前の検査だけでは `apps/web/src/data/` がクライアントコンポーネントから import されたときの混入を防げないため、ビルド後の `.next/static` に `SUPABASE_URL` の値と anon キーの先頭 20 文字が含まれないことも CI で検査する（設計レビュー L-5。07 S-14、E-04）。
-- anon キーが漏れた場合の影響は「公開ビューを誰でも直接読める」で、BI に出ているものと同じ。影響が小さいからこそ Vercel には anon キーだけを置く。service role キーは Actions Secrets 以外のどこにも置かない。
+- anon キーが漏れた場合の影響は「公開ビューを誰でも直接読める」で、BI に出ているものと同じ。影響が小さいからこそ Vercel には anon キーだけを置く。
+- `SUPABASE_BATCH_DB_URL` が漏れた場合の影響は「内部表の読み書き」で、BI の完全性を失う。伏せ値の適用前の生値（05 §4.1 で伏せ値なしとされた値）も読める。除外リストは読めない。パスワードを変更して Secret を更新する。
 - Supabase の API 設定で「Exposed schemas」は `public` のみ（`internal` を含めない。M-7）。`graphql_public` は使わないので無効にする。Realtime、Storage、Auth は使わない。
-- 書き込み経路は Actions だけ。BI から Supabase に書く機能はない（NFR-22）。
+- 自動の書き込み経路は Actions だけ。手動の書き込みは運用担当の SQL エディタ（除外リストだけ）。BI から Supabase に書く機能はない（NFR-22）。
 
 ### 2.4 Vercel
 
 - 環境変数: `SUPABASE_URL`、`SUPABASE_ANON_KEY` の 2 つだけ。Production と Preview に同じ値（データは公開ビューだけ）。
 - Git 連携: main への push で本番をビルド。fork からの PR はプレビューをビルドしない設定にする（Vercel の Git 設定で確認。確認できなければ Preview の環境変数を空にして、プレビューはビルドだけ通す）。
-- Deploy Hook の URL は Actions Secrets `VERCEL_DEPLOY_HOOK_URL` にだけ置く。呼び出しは `curl -fsS -X POST "$URL" -o /dev/null` で、応答本文と URL をログに出さない（L-8、03 §8）。漏れた場合の影響は「第三者が再ビルドを起こせる」（Hobby のデプロイ 1 日 100 回の消費で日次ビルドが失敗）。漏れたら Vercel 側で Hook を作り直す。
+- Deploy Hook の URL は Actions Secrets `VERCEL_DEPLOY_HOOK_URL` にだけ置く。呼び出しはバッチの `httpx.post` で、応答本文と URL をログに出さない（L-8、03 §8）。漏れた場合の影響は「第三者が再ビルドを起こせる」（Hobby のデプロイ 1 日 100 回の消費で日次ビルドが失敗）。漏れたら Vercel 側で Hook を作り直す。
 - 過去デプロイ（設計レビュー M-6）: Deployment Protection の Standard Protection（§2.1）で本番ドメイン以外のデプロイ URL を閉じる。保持するデプロイ数は最小にし、除外リストの変更後の再ビルド（NFR-11）の後は、除外前のページを含む旧デプロイを Vercel のダッシュボードまたは CLI で削除する。この手順は docs/operations/（デプロイ工程、devops-engineer）に書く。
 - Vercel のアカウント所有者は docs/operations/ に記録する（NFR-60）。
 
@@ -59,7 +63,9 @@
 | --- | --- | --- | --- |
 | GCP_WORKLOAD_IDENTITY_PROVIDER、GCP_SERVICE_ACCOUNT | Actions Secrets | YAML、文書 | 秘密ではないが公開 YAML に埋め込まない。属性条件があるので単体では使えない |
 | GA4_PROPERTY_ID | Actions Secrets | 文書、ログ | 単体では読めないが、文書に書かない（NFR-40） |
-| SUPABASE_SERVICE_ROLE_KEY | Actions Secrets、運用担当のローカル `.env`（gitignore 済み。除外リストの運用スクリプトとマイグレーションの適用に使う） | Vercel、上記以外のどこか | Supabase で JWT シークレットをローテーション → Secrets と各運用担当の `.env` を更新。運用担当のローカルの鍵は人が持つ鍵なので、定期ローテーション（例: 半年）と、運用担当の退任時に即時ローテーションする手順を docs/operations/ の対象に含める（設計レビュー L-9、ADR 0005） |
+| SUPABASE_BATCH_DB_URL（`batch_writer` のパスワードを含む） | Actions Secrets のみ。日次の取得・書き込みのステップだけに渡す。`publish_only` のステップには渡さない | Vercel、マイグレーション、文書、ログ、開発者のローカル（開発ではローカルの Supabase に接続する） | SQL エディタで `alter role batch_writer with password` → Secret を更新。定期ローテーション（例: 年 1 回）と、運用担当の退任時の変更を docs/operations/ の対象に含める |
+| Supabase の service role キー | どこにも置かない（使わない。ADR 0009） | すべて | Supabase で再発行する |
+| Supabase の `postgres` のパスワード | マイグレーションの適用のときに運用担当が入力する（保存先は docs/operations/ で決める。リポジトリには置かない） | リポジトリ、Actions、Vercel | Supabase でリセットする |
 | SUPABASE_ANON_KEY | Vercel 環境変数（サーバー / ビルド）、Actions には不要 | `NEXT_PUBLIC_*`、クライアントのバンドル | 影響は公開ビューの直接読み出しのみ。ローテーションは任意 |
 | VERCEL_DEPLOY_HOOK_URL | Actions Secrets | ― | Hook を再作成 |
 | 通知先（Q-12） | Actions Secrets | ― | 再発行 |
@@ -69,7 +75,7 @@
 - `.env.example` には名前だけを書く（03 §16 の表の名前）。
 - 秘密を含みうる値はログ、エラーメッセージ、コミットメッセージ、Issue（beads を含む）、文書に書かない（NFR-44）。
 - 秘密が git 履歴に入ったら、履歴を消す前に無効化と再発行をする。
-- 設定ファイルで秘密を読むのは `packages/shared/src/env.ts` の 1 か所に限り、zod で必須・形式を検証する。検証に失敗したときのメッセージは変数名だけ（値を出さない）。
+- バッチで秘密を読むのは `apps/batch/src/takatsu_batch/env.py` の 1 か所に限り、pydantic（`hide_input_in_errors=True`、`SecretStr`）で必須・形式を検証する。host が `localhost` / `127.0.0.1` でない接続文字列に `sslmode=verify-full` がなければ失敗にする（ADR 0009）。検証に失敗したときのメッセージは変数名だけ（値を出さない）。
 
 ## 4. 公開範囲（データ）
 
@@ -85,11 +91,11 @@
 
 ADR 0005 の決定を実装する。
 
-- 置き場所: Supabase の内部表 `excluded_author(author_slug, excluded_at)`。RLS 有効、anon の grant なし、どの公開ビューにもこの表の列を出さない。NFR-40 の経路に含める。
+- 置き場所: Supabase の内部表 `excluded_author(author_slug, excluded_at)`。RLS 有効、anon と `batch_writer` の grant もポリシーもなし、どの公開ビューにもこの表の列を出さない。NFR-40 の経路に含める。
 - 効き方: 記事行・著者行を出す公開ビュー（`pub_post`、`pub_author`、`pub_article_*`、`pub_author_*`、`pub_post_category`、`pub_post_tag`）は `not exists (select 1 from internal.excluded_author ...)` で除外する。記事の値から合算する集計もすべて除外後（`pub_category_period` の親行・子行、`pub_tag_period`、`pub_site_period_freshness`、`pub_author_*`）。除外込みは GA4 のサイト全体値（`pub_site_daily*`、`pub_site_period*`、`pub_site_month_*`）と公開本数の件数（`pub_posting_*`）だけ（FR-36、ADR 0003 判断 4。設計レビュー H-1 で親カテゴリと鮮度区分を除外後に変更）。
 - 「存在しない」と同じ応答: BI は静的生成時に `pub_post` と `pub_author` にある ID / slug だけをページにする（`dynamicParams = false`）。除外著者の記事 ID や slug を URL に指定すると、Next.js の 404（存在しない記事・著者と同じページ）になる。クライアント側のフィルタや一覧も `pub_*` だけを元にするので、除外著者は現れない（FR-06、FR-23、FR-30）。
 - 画面: 「非表示」の表示や列は置かない。「一部の記事は本人の希望により個別には表示していません」を全画面共通の説明文に常に入れる（NFR-99）。
-- 変更の手順: 運用担当がローカルで `pnpm --filter batch run exclude-author -- --slug <slug>`（`.env` の service role キーを使う）を実行し、続けて `workflow_dispatch` の `publish_only` で再ビルドし、Vercel の旧デプロイを削除する（NFR-11、§2.4）。コマンドの引数に著者名を入れない（slug のみ）。シェルの履歴に残るのが気になる場合は対話入力にする。削除（解除）も同じスクリプトの `--remove`。`publish_only` は設定変更後の再ビルドにも使い、除外変更の一意の信号にしない。`batch_run` に行を書かない（L-7）。
+- 変更の手順: 運用担当が Supabase の SQL エディタで ADR 0005 の固定の SQL を実行し（slug だけを差し替え、スニペットとして保存しない）、続けて `workflow_dispatch` の `publish_only` で再ビルドし、Vercel の旧デプロイを削除する（NFR-11、§2.4）。著者名は入れない（slug のみ）。`publish_only` は設定変更後の再ビルドにも使い、除外変更の一意の信号にしない。`batch_run` に行を書かない（L-7）。
 - 記録: 誰を、いつ、誰の申し出で除外したかの台帳はリポジトリ外（依頼者が指定する非公開の場所。Q-30 と運用手順）。リポジトリ内の運用手順には台帳の置き場所と更新手順だけを書く（NFR-73）。Issue・コミットメッセージに著者名・slug を書かない（NFR-44）。
 - 読み出し: 運用担当は Supabase ダッシュボードの Table Editor で `excluded_author` を見てよい（スキーマは変えない）。
 
@@ -128,18 +134,19 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 NFR-45 と security.md「GitHub Actions」をワークフローの形に落とす。詳細な YAML はデプロイ工程（devops-engineer）。
 
 - 日次ワークフロー（`daily.yml`）: 先頭で `permissions: contents: read`。バッチジョブに `id-token: write` を追加。`contents: write` を持つジョブを置かない。
-- heartbeat（`heartbeat.yml`、設計レビュー M-3、03 §12）: 別ワークフロー。月 1 回の `schedule`、ワークフロー全体で `permissions: contents: write` のみ。中身は `actions/checkout`（GitHub 製、SHA 固定、`sparse-checkout: ops/`、`fetch-depth: 1`）と `git` CLI だけで、`pnpm install`、プロジェクトコード、サードパーティ Action、Secrets の参照を置かない。理由: 日次ワークフロー内に `contents: write` があると、そのジョブの依存や Action が侵害されたときに main へコードを push でき（GITHUB_TOKEN はワークフローファイルは変えられないが `packages/` は変えられる）、翌日のバッチが service role と WIF の下でそれを実行する。CI（07 S-10）で「`contents: write` は `heartbeat.yml` だけ」「`heartbeat.yml` に `actions/checkout` 以外の `uses:` と `run: pnpm` がない」を検査する。
+- heartbeat（`heartbeat.yml`、設計レビュー M-3、03 §12）: 別ワークフロー。月 1 回の `schedule`、ワークフロー全体で `permissions: contents: write` のみ。中身は `actions/checkout`（GitHub 製、SHA 固定、`sparse-checkout: ops/`、`fetch-depth: 1`）と `git` CLI だけで、依存のインストール、プロジェクトコード、サードパーティ Action、Secrets の参照を置かない。理由: 日次ワークフロー内に `contents: write` があると、そのジョブの依存や Action が侵害されたときに main へコードを push でき（GITHUB_TOKEN はワークフローファイルは変えられないが `apps/` は変えられる）、翌日のバッチが接続文字列と WIF の下でそれを実行する。CI（07 S-10）で「`contents: write` は `heartbeat.yml` だけ」「`heartbeat.yml` に `actions/checkout` 以外の `uses:` と、`run:` の `pnpm`・`pip`・`python` がない」を検査する。
 - `pull_request_target` を使わない。PR 用の CI（lint、test）は `pull_request` で、Secrets を参照しない。
-- サードパーティ Action は commit SHA 固定（`actions/checkout`、`actions/setup-node`、`pnpm/action-setup`、`google-github-actions/auth`）。コメントにバージョン。Dependabot（`github-actions` エコシステム、週 1）で更新。
-- `schedule` は main のみ。`workflow_dispatch` の入力は `mode`（`daily` / `backfill` / `publish_only`）、`from`、`to`、`base_date` に限り、文字列はバッチ側で zod で検証する。
-- 未処理例外はエントリと `process.on('uncaughtException' / 'unhandledRejection')` で捕まえ、種別だけを出す（M-8、03 §14）。
+- Action はすべて commit SHA 固定。`daily.yml` は `actions/checkout`、`actions/setup-python`、`google-github-actions/auth` だけ。`ci.yml` は加えて `actions/setup-node` と `pnpm/action-setup`。`astral-sh/setup-uv` など許可の確認が要る Action は使わない（ADR 0004）。コメントにバージョン。Dependabot（`github-actions` エコシステム、週 1）で更新。
+- `schedule` は main のみ。`workflow_dispatch` の入力は `mode`（`daily` / `backfill` / `publish_only`）、`from`、`to`、`base_date` に限り、文字列はバッチ側で pydantic で検証する。
+- 未処理例外はエントリの `try / except BaseException` と `sys.excepthook`、`threading.excepthook`、`sys.unraisablehook` で捕まえ、種別だけを出す（M-8、03 §14）。psycopg の例外（接続先、ユーザー名、行の値を含みうる）のメッセージと `diag` を使わない。
 - Secrets を `echo` しない。`::add-mask::` は使う機会がないようにする（秘密を出力しない）。
 - 設定済みのリポジトリ側の制限（initial_setup.md §1）: Action は SHA 固定必須、許可は GitHub 製 + verified creators + google-github-actions/*、fork PR のワークフローは承認制、main の force push と削除を禁止。
 
 ## 10. 依存の管理
 
-- pnpm のロックファイルをコミットする。Dependabot を `npm`（ルート）と `github-actions` で有効にする。
-- CI で `pnpm audit --audit-level=high` を実行し、致命的・高が残った状態でデプロイしない（Vercel のビルドは CI とは別なので、main への merge 前の CI で止める）。
+- バッチの `requirements.txt`、`requirements-dev.txt`（ハッシュ固定）と BI の `apps/web/pnpm-lock.yaml` をコミットする。Dependabot を `pip`（`/apps/batch`）、`npm`（`/apps/web`）、`github-actions`（`/`）で有効にする。
+- CI で `pip-audit --require-hashes -r apps/batch/requirements.txt` と `pnpm audit --audit-level=high`（`apps/web`）を実行し、致命的・高が残った状態でデプロイしない（Vercel のビルドは CI とは別なので、main への merge 前の CI で止める）。`pip-audit` は深刻度で絞れないので、脆弱性が 1 件でもあれば失敗にし、誤検知や修正版のないものは `--ignore-vuln` に理由つきで足す。
+- Python の依存は wheel だけを入れる（`--only-binary :all:`）。インストール時にビルドスクリプトを実行しない。
 - 依存を足すときは必要性と保守状況を確かめ、コミットメッセージに理由を書く。初回の依存一覧は 01_tech_stack.md。
 
 ## 11. 対象サイトへの配慮
@@ -178,6 +185,8 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 - CSP の `script-src`: Next.js App Router の静的生成が出すインライン `<script>`（RSC ペイロード）の扱い（hash の列挙か、`'unsafe-inline'` + `'strict-dynamic'`）。実装時に `next build` の出力で確認し、security-auditor と決める（D-17、ADR 0008「結果」）。`style-src` は `'self'` で確定した（2026-11-03、ADR 0008）。
 - Vercel（依頼者の確認事項、設計レビュー §6）: (a) Hobby プランで Deployment Protection の Standard Protection（本番ドメイン以外のすべてのデプロイ URL の保護）が設定できるか、過去デプロイの保持数と削除の可否（M-6）。(b) fork からの PR でプレビューが作られるか、Preview の環境変数が渡るか（§2.4 の代替で足りるか）。
 - GCP（依頼者の確認事項）: WIF の属性条件に `assertion.repository_id` を加える（L-10）。SA が GA4 閲覧者のみで GCP ロールを持たないこと、「サービス アカウント トークン作成者」の削除。
-- Supabase（依頼者の確認事項）: Exposed schemas が `public` のみで `internal` を含まないこと、`graphql_public` の無効化。
+- Supabase（依頼者の確認事項）: Exposed schemas が `public` のみで `internal` を含まないこと、`graphql_public` の無効化。`batch_writer` のパスワードの設定。
+- pooler の TLS（`sslmode=verify-full` と CA の入手）、ADR 0009 の未確定（実装時と 07 A-11）。
+- SQL エディタの履歴に除外の slug が残るか（ADR 0005、運用手順の作成時に確認）。
 - Q-12（通知先）、Q-30（除外の窓口・文面と台帳の置き場所）。
 - 確定: D-16（0 は伏せない。02 §2.3、M-1）、Q-33（ADR 0003 判断 5）、Q-36（ADR 0003 判断 6）。

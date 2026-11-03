@@ -5,6 +5,7 @@
 - 関係: ADR 0006（ビルド時生成）、02_data_model.md §4（公開ビュー）、05_screens.md、06_security.md §7、NFR-11、NFR-42、NFR-91、FR-01、FR-03、FR-06
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
+  - 2026-11-03: `packages/shared` の廃止に伴いパスを `apps/web/src/lib/` に変更（ADR 0004）。契約の内容は変わらない
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（ArticleDetailData の period から prev* を外す、AuthorPageData の siteMedianPostCount を削除、PostRow の band7 を埋め込まない、一覧の benchmark を n = 30 だけに、ActivityData.authorCounts は 1 本以上の著者だけ。N-1: pub_benchmark_curve と帯の列はビューが可視記事から計算するが列集合は変わらない）
 
 ## 1. 方針（HTTP API はない）
@@ -12,7 +13,7 @@
 - この BI に HTTP API はない（ADR 0006 案 A）。Route Handler、Server Actions、Middleware を作らない。
 - 「API」に当たるものは 2 つの契約である。
   1. **公開ビューの契約**: BI がビルド時に anon キーで読む `pub_*` ビューと列（02 §4）。読むのは `apps/web/src/data/` の 1 モジュールだけ。`pub_` 以外のテーブル名は lint で禁止する（07 §7）。
-  2. **埋め込み JSON の契約**: 各ページが HTML に埋め込み、クライアントが期間切り替え・絞り込み・並べ替えに使うデータの形。型は `packages/shared/src/page-data.ts` に置き、ビルド時の組み立て（`apps/web/src/data/pages/*.ts`）とクライアント部品の両方が同じ型を使う。
+  2. **埋め込み JSON の契約**: 各ページが HTML に埋め込み、クライアントが期間切り替え・絞り込み・並べ替えに使うデータの形。型は `apps/web/src/lib/page-data.ts` に置き、ビルド時の組み立て（`apps/web/src/data/pages/*.ts`）とクライアント部品の両方が同じ型を使う。
 - 利用者の操作（期間、フィルタ、並べ替え、検索語）はすべてクライアント側で、埋め込んだ JSON に対して行う。Supabase にも Vercel の関数にも、実行時のリクエストは発生しない（NFR-11、NFR-42）。
 - 埋め込む値はすべて `pub_*` に載っている値か、その値から BI が計算した派生値（差、比率、順序、最多区分）に限る。`pub_*` にない値は埋め込めない。
 
@@ -105,7 +106,7 @@ type Period = {
 
 - 「選べる期間」は `last7`、`last28`、`last90`、`m2025-10` 以降の全月（基準日の属する月を含む）。`prev7` / `prev28` / `prev90` は選択肢に出さず、`prevId` の参照先としてだけ使う。
 - 月の上限: 直近 36 か月まで埋め込む。超えた分は選択肢から外す（ADR 0006「将来」。3 年後に見直す。§9）。
-- 画面の言葉と注記（glossary §1「添える注記」）は JSON に埋め込まず、`packages/shared/src/ui-text.ts`（1 つの辞書ファイル）に置く（05 §2.1）。
+- 画面の言葉と注記（glossary §1「添える注記」）は JSON に埋め込まず、`apps/web/src/lib/ui-text.ts`（1 つの辞書ファイル）に置く（05 §2.1）。
 
 ### 3.2 全体ダッシュボード（S-01、`/`）
 
@@ -184,7 +185,7 @@ type ArticleDetailData = PageCommon & {
 };
 ```
 
-- `SelectablePeriodId` = `PeriodId` から `prev7` / `prev28` / `prev90` を除いた型（`packages/shared/src/page-data.ts`）。月の前月は選べる期間に含まれるが、S-03 はそれを比較に使わない（`compare()` を呼ばない）。
+- `SelectablePeriodId` = `PeriodId` から `prev7` / `prev28` / `prev90` を除いた型（`apps/web/src/lib/page-data.ts`）。月の前月は選べる期間に含まれるが、S-03 はそれを比較に使わない（`compare()` を呼ばない）。
 - 「公開からの合計」は `post.pvTotal`。帯の文の p25 / p50 / p75 は `benchmark` の n = 30（30 日未満の記事は n = `post.ageDays`）の要素を使う。
 - `daily` は従来どおり公開日から基準日まで。S-03 の `LineChart` は前期間の線を描かない（05 §5）。
 
@@ -257,12 +258,12 @@ type Band = 'upper' | 'middle' | 'lower';
 
 `null` の意味は 1 つだけ: **伏せ値**（`pub_*` で null の値）。「該当なし」「まだ比較できません」「前年のデータなし」は、行や期間が**存在しない**か、専用の状態値（`referrer30d.status`、`band = null` は「比較できない」で例外として明記）で表す。画面側の描き分けは 05 §2.3。
 
-## 4. 型定義（packages/shared）
+## 4. 型定義（apps/web/src/lib）
 
-- `packages/shared/src/pub-types.ts`: 公開ビューの行の型（`PubMeta`、`PubPeriod`、`PubPost`、`PubArticlePeriod`、…）。02 §4 の表と列名・型を一致させ、手書きで固定する。`supabase gen types` の出力と突き合わせるテストを置く（01 §4、07 §3）。
-- `packages/shared/src/page-data.ts`: §3 の `PageCommon` と各 `*Data` 型。`zod` スキーマも併置し、ビルド時に組み立てた JSON を一度 `parse` してから埋め込む（列の欠け・型違いをビルド失敗で検出する）。
-- `packages/shared/src/ui-text.ts`: 画面の言葉と注記の辞書（05 §2.1）。
-- `packages/shared/src/query.ts`: URL クエリの許可リスト検証（§8）。
+- `apps/web/src/lib/pub-types.ts`: 公開ビューの行の型（`PubMeta`、`PubPeriod`、`PubPost`、`PubArticlePeriod`、…）。02 §4 の表と列名・型を一致させ、手書きで固定する。`supabase gen types` の出力と突き合わせるテストを置く（01 §4、07 §3）。
+- `apps/web/src/lib/page-data.ts`: §3 の `PageCommon` と各 `*Data` 型。`zod` スキーマも併置し、ビルド時に組み立てた JSON を一度 `parse` してから埋め込む（列の欠け・型違いをビルド失敗で検出する）。
+- `apps/web/src/lib/ui-text.ts`: 画面の言葉と注記の辞書（05 §2.1）。
+- `apps/web/src/lib/query.ts`: URL クエリの許可リスト検証（§8）。
 - 列指向配列（`pvByPeriod` など）は `posts` の順序に依存する。順序は `post_id` 昇順で固定し、組み立て関数が保証する。
 
 ## 5. `apps/web/src/data/` の関数一覧
@@ -305,7 +306,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `buildActivity(cache)` | ― | `ActivityData` | §3.7 |
 | `buildReactions(cache)` | ― | `ReactionsData` | FR-61 を含めるときだけ |
 
-共通の派生計算（`packages/shared/src/derive/`。バッチとは別。表示用）: `compare(cur, prev)` → `{ diff, ratio | null }`（分母 20 未満は ratio = null）、`share(values)` → 構成比（伏せ値を含む行は分母を「表示している値の和」ではなく**合計列**にし、伏せ値セルの構成比は出さない）、`topChannel(record)`、`fold6(heatmap168)`（スマホの 6 区分）、`unconfirmedFrom(baseDate)`（直近 3 日）、`latestConfirmedDay(baseDate)`（グラフの固定行の既定日 = 基準日 − 3 日。05 §2.6）。`median(numbers)` は `siteMedianPostCount` の削除で使う場所がなくなったため置かない（`quantiles` / `band` は `packages/shared/src/derive/` にテスト用の参照実装として置く。07 U-07、U-08、I-DB-17）。
+共通の派生計算（`apps/web/src/lib/derive/`。バッチとは別。表示用）: `compare(cur, prev)` → `{ diff, ratio | null }`（分母 20 未満は ratio = null）、`share(values)` → 構成比（伏せ値を含む行は分母を「表示している値の和」ではなく**合計列**にし、伏せ値セルの構成比は出さない）、`topChannel(record)`、`fold6(heatmap168)`（スマホの 6 区分）、`unconfirmedFrom(baseDate)`（直近 3 日）、`latestConfirmedDay(baseDate)`（グラフの固定行の既定日 = 基準日 − 3 日。05 §2.6）。`median(numbers)` は `siteMedianPostCount` の削除で使う場所がなくなったため置かない（`quantiles` / `band` は `apps/batch/tests/support/reference.py` にテスト用の参照実装として置く。07 U-07、U-08、I-DB-17）。
 
 ## 6. サイズの見積もりと絞り込み
 
@@ -342,7 +343,7 @@ HTML 全体はこれに初期表示の DOM（既定期間 = 直近 28 日の描�
 
 ## 8. クライアント側の許可リスト検証
 
-`packages/shared/src/query.ts` の `parseQuery(search, allow)` が、URL のクエリを検証済みの状態に変える。許可されない値は**無視して既定値**にし、エラーを出さない（NFR-91、FR-03）。URL への書き戻し（`history.replaceState`）は検証済みの値だけで行い、未知のパラメータは落とす。
+`apps/web/src/lib/query.ts` の `parseQuery(search, allow)` が、URL のクエリを検証済みの状態に変える。許可されない値は**無視して既定値**にし、エラーを出さない（NFR-91、FR-03）。URL への書き戻し（`history.replaceState`）は検証済みの値だけで行い、未知のパラメータは落とす。
 
 | パラメータ | 形式（正規表現） | 許可リスト | 既定 | 使う画面 |
 | --- | --- | --- | --- | --- |

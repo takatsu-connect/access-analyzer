@@ -2,19 +2,20 @@
 
 - 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
-- 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36、FR-73、FR-76、ADR 0003、ADR 0005、ADR 0007
+- 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36、FR-73、FR-76、ADR 0003、ADR 0005、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 全記事の分布の母集団を除外後にし、`benchmark_curve` と帯の列をビューで計算する（§3.5、§4.1、§5、§9）。N-3: service_role への `internal` スキーマの grant（§6））
+  - 2026-11-03: 書き込みを専用ロール `batch_writer` に変更（ADR 0009）。§6 の service_role への grant を取り消し、表ごとの grant とポリシーに置き換え（§1、§6、§8、§9）。バッチの言語を Python に変更（ADR 0004）
 
 ## 1. 方針
 
 - 05 §4.1 の表を「そのまま実装」する。表にない組み合わせの表・列・ビューは作らない（NFR-33）。
 - 表は 2 種類に分け、スキーマも分ける（設計レビュー M-7）。
-  - 内部表（§3）: スキーマ `internal`。日次バッチ（GitHub Actions、service role）だけが読み書きする。anon / authenticated / PUBLIC には `internal` スキーマへの usage を与えず、Supabase の API 設定「Exposed schemas」にも含めない（PostgREST から見えない）。加えて全表で RLS 有効、grant なし。
+  - 内部表（§3）: スキーマ `internal`。日次バッチ（GitHub Actions、専用ロール `batch_writer`。psycopg で pooler に接続。ADR 0009）だけが読み書きする。`excluded_author` は `batch_writer` からも読み書きできない。anon / authenticated / PUBLIC には `internal` スキーマへの usage を与えず、Supabase の API 設定「Exposed schemas」にも含めない（PostgREST から見えない）。加えて全表で RLS 有効、grant なし。
   - 公開ビュー（§4、名前は `pub_` で始まる）: スキーマ `public`。anon ロールが select できる唯一の対象。BI（Vercel のビルド）はこのビューだけを読む。ビューは所有者（postgres）権限で `internal` の表を読む。伏せ値を適用済みの値だけを置き、生の内訳セルは置かない。除外著者（FR-36）の記事行・著者行は公開ビューで除く（ADR 0005）。
 - 合計・累積は伏せる前の値から計算する。内部表のうち「記事 × 日」「全体 × 日」「読まれていた時間の合計」など 05 §4.1 で「伏せ値なし」とされたものは生値で持ち、それ以外の内訳セルは伏せ処理後の値だけを持つ（内部表にも生の内訳セルは残さない。バッチのメモリ上でだけ生値を扱う）。
-- 集計の実行場所は ADR 0007 のとおり。GA4 から期間ごとに取得する集計値と、伏せ値・二次伏せ・分布（M-19）・判定（M-22、M-23、M-24）はバッチ（TypeScript）が計算して表に書く。記事の期間合計から導ける著者・カテゴリ（親・子）・タグ・鮮度区分の合計と公開本数は、公開ビュー（SQL）が計算する。
+- 集計の実行場所は ADR 0007 のとおり。GA4 から期間ごとに取得する集計値と、伏せ値・二次伏せ・分布（M-19）・判定（M-22、M-23、M-24）はバッチ（Python）が計算して表に書く。記事の期間合計から導ける著者・カテゴリ（親・子）・タグ・鮮度区分の合計と公開本数は、公開ビュー（SQL）が計算する。
 - 除外（FR-36）の規則（05 §4.1 用語「除外後」、設計レビュー H-1）: 記事の値から合算する集計（著者、カテゴリの親・子、タグ、鮮度区分の合計・記事数・1 本あたりの中央値）はすべて除外後。除外込みは GA4 のサイト全体値（`site_daily`、`site_daily_*`、`site_period`、`site_period_breakdown`、`site_period_heatmap`、`site_month_*`）と公開本数の件数（`pub_posting_monthly`、`pub_posting_period` の `post_count`）だけ。
 - シェア数（M-41、FR-61）は初回対象外。表・列・問い合わせを作らない（設計レビュー M-4）。実装するときは NFR-39 の手順で 05 §4.1 に行を追加してから着手する。
 - スキーマ変更はマイグレーションファイル（`supabase/migrations/NNNN_*.sql`）で行う（NFR-73、§8）。
@@ -305,7 +306,7 @@
 | failed_step | text | null。失敗した工程名（`wp_fetch` / `ga4_daily` / `ga4_period` / `derive` / `write` / `publish`） |
 | error_kind | text | null。エラーの種別だけ（`quota` / `auth` / `network` / `validation` / `db` / `unknown`）。メッセージ本文は入れない（NFR-44） |
 | mask_threshold | smallint | not null。実行時の T |
-| counts | jsonb | not null default '{}'。件数と所要時間だけ。キーは固定（ga4_requests、ga4_tokens、ga4_tokens_remaining_day、ga4_tokens_remaining_hour、wp_requests、posts_upserted、posts_deleted、rows_written、duration_ms）で値はすべて数値。バッチ側は固定キー・数値のみの zod スキーマで書き、DB にも `check` 制約（immutable 関数 `internal.counts_is_numeric(jsonb)`: すべての値が `jsonb_typeof = 'number'` で、キーが上の一覧に含まれる）を置く（設計レビュー L-6）。API の応答や行データは入れない |
+| counts | jsonb | not null default '{}'。件数と所要時間だけ。キーは固定（ga4_requests、ga4_tokens、ga4_tokens_remaining_day、ga4_tokens_remaining_hour、wp_requests、posts_upserted、posts_deleted、rows_written、duration_ms）で値はすべて数値。バッチ側は固定キー・数値のみの pydantic モデル（`extra="forbid"`、`strict=True`）で書き、DB にも `check` 制約（immutable 関数 `internal.counts_is_numeric(jsonb)`: すべての値が `jsonb_typeof = 'number'` で、キーが上の一覧に含まれる）を置く（設計レビュー L-6）。API の応答や行データは入れない |
 | github_run_id | text | null。Actions の run ID（ログを辿るため。秘密ではない） |
 
 `excluded_author`（FR-36、D-10、ADR 0005。秘密情報として扱う、NFR-40）
@@ -436,30 +437,65 @@ alter table internal.<表> enable row level security;
 revoke all on internal.<表> from anon, authenticated;
 ```
 
-`service_role`（バッチが使うロール）には `internal` スキーマへの権限を明示的に与える（2026-11-03、再確認 N-3）。`create schema internal` で作った新しいスキーマには Supabase の既定権限が付かず、`service_role` が `permission denied` になりうる（fail-closed なので露出はしないが、実装者が `to public` などの広い grant で直すのが危険）。マイグレーション 0001 の上の `revoke` に続けて次を置く。
+バッチが使うロールは `batch_writer`（ADR 0009）。`service_role` には `internal` の権限を与えない（2026-11-03。前回の再確認 N-3 の grant を取り消す。バッチが PostgREST を使わなくなり、service role キーを使う場所がなくなったため）。
+
+マイグレーション 0001 の上の `revoke` に続けて次を置く。パスワードはマイグレーションに書かない。設定は docs/operations/ の手順で行う（`alter role batch_writer with password '...'`。保存済みスニペットに残さない）。パスワードが未設定の間はログインできない。
 
 ```sql
--- service_role だけに internal の usage と、表・シーケンスの権限を与える（N-3）。anon / authenticated / PUBLIC には与えない
-grant usage on schema internal to service_role;
-alter default privileges for role postgres in schema internal grant select, insert, update, delete on tables to service_role;
-alter default privileges for role postgres in schema internal grant usage, select on sequences to service_role;
--- 既に作った表・シーケンスがあれば（0001 以降のマイグレーションで表を足したとき）
-grant select, insert, update, delete on all tables in schema internal to service_role;
-grant usage, select on all sequences in schema internal to service_role;
+-- ロールはクラスタ全体のオブジェクトなので、再適用に備えて存在を確認する
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'batch_writer') then
+    create role batch_writer login noinherit nobypassrls;
+  end if;
+end
+$$;
+
+grant usage on schema internal to batch_writer;
+
+-- service_role には internal の権限を与えない
+revoke all on schema internal from service_role;
+alter default privileges for role postgres in schema internal revoke all on tables from service_role;
+alter default privileges for role postgres in schema internal revoke all on sequences from service_role;
+alter default privileges for role postgres in schema internal revoke all on functions from service_role;
 ```
 
-- 関数には grant しない（`internal` に関数を置かない。§4.1 のビューも `case` 式で書く）。
-- Supabase の既定権限（`service_role` が新しいスキーマにどこまで権限を持つか、`postgres` 以外の所有者で作られるオブジェクトの有無）の正確な内容は外部の事実として未確認。実装時に `supabase start` のローカル環境で `has_schema_privilege('service_role','internal','USAGE')` と `information_schema.role_table_grants` を確認し、足りなければ上の grant を明示的に足す。広い grant（`to public`、`to anon`）で直さない。07 I-DB-01 で service_role の権限と anon / authenticated / PUBLIC の無権限を同時に検査する。
-ポリシーは作らない（service role は RLS を通過する。anon は `internal` への usage もポリシーも grant もないので何も読めない）。各公開ビュー（`public` スキーマ）の作成直後に
+`batch_writer` の権限は表の名前を列挙して与える。`grant ... on all tables in schema internal` と `alter default privileges ... to batch_writer` は使わない（`excluded_author` と、それを参照する `internal.article_cumulative`、`internal.benchmark_curve` まで届いてしまう）。§3.1〜§3.5 と `batch_run`、`sns_source_unmapped` の各表の作成直後に、上の `enable row level security` と `revoke` に続けて次を置く。
+
+```sql
+grant select, insert, update, delete on internal.<表> to batch_writer;
+create policy batch_writer_all on internal.<表> for all to batch_writer using (true) with check (true);
+```
+
+シーケンスを持つ表（`batch_run` など、実装時に確定）は `grant usage on sequence internal.<シーケンス> to batch_writer;` を足す。`batch_run.counts` の check 制約が使う関数は、実行時に書き込むロールの EXECUTE 権限が要るので `grant execute on function internal.counts_is_numeric(jsonb) to batch_writer;` を足す（§3.6。上の `revoke execute ... from public` で閉じているため。07 I-DB-18 の insert で確かめる）。これ以外の関数は `internal` に置かない（§4.1 のビューも `case` 式で書く）。
+
+`internal.excluded_author` には次のとおり何も与えない。
+
+```sql
+alter table internal.excluded_author enable row level security;
+revoke all on internal.excluded_author from anon, authenticated, service_role, batch_writer;
+-- grant も policy も作らない。バッチが除外リストを読まない方針（ADR 0005）をロールでも強制する
+```
+
+RLS の扱い（ADR 0009 判断 4）:
+
+- 内部表の RLS は有効のまま。`batch_writer` は `bypassrls` を持たないので、ポリシーがないと読み書きできない。そこで許可する表ごとに `batch_writer_all` を作る。
+- 公開ビューは所有者（postgres）の権限で内部表を読む。表の所有者は RLS を通過する（`force row level security` は使わない）。cascade の削除も表の所有者の権限で動く。
+- anon は `internal` への usage もポリシーも grant もないので何も読めない。
+- `batch_writer` には `public` の表・ビューへの grant を与えない。`public` スキーマの usage が PUBLIC 経由で残っていても、`pub_*` の select は anon にだけ与えるので読めない。
+
+Supabase の既定権限（新しいスキーマや `postgres` 以外の所有者で作られるオブジェクトの扱い）の正確な内容は外部の事実として未確認。実装時に `supabase start` のローカル環境で `information_schema.role_table_grants` と `has_schema_privilege` を確認し、07 I-DB-01、I-DB-18 で検査する。足りないときに広い grant（`to public`、`to anon`、`all tables in schema`）で直さない。
+
+各公開ビュー（`public` スキーマ）の作成直後に
 
 ```sql
 grant select on public.pub_<名前> to anon;
 ```
 
 - `authenticated` ロールは使わない（ログインなし）。grant も与えない。
-- service role キーは GitHub Actions の Secrets だけに置く（06 §2.3）。Vercel には anon キーだけを置き、ビルド時に `pub_*` を読む。
+- 接続文字列 `SUPABASE_BATCH_DB_URL` は GitHub Actions の Secrets だけに置く（06 §3）。service role キーはどこにも置かない。Vercel には anon キーだけを置き、ビルド時に `pub_*` を読む。
 - Supabase の API 設定「Exposed schemas」は `public` のみ（`internal` を含めない）。この設定はダッシュボードで行うため、初期設定手順（docs/operations/）に書き、受入（07 §8）で確認する。
-- マイグレーションの最後に次を検査する SQL を置き、CI（07 §4 I-DB-01、I-DB-15、I-DB-16）でも同じ検査を行う。
+- マイグレーションの最後に次を検査する SQL を置き、CI（07 §4 I-DB-01、I-DB-15、I-DB-16、I-DB-18）でも同じ検査を行う。
   1. `information_schema.role_table_grants` で anon / authenticated / PUBLIC に grant があるのは `public.pub_%` の `SELECT` だけ。関数（`information_schema.routine_privileges`）・シーケンスへの grant がない。
   2. anon / authenticated / PUBLIC が `public` 以外のスキーマ（`internal` を含む）に usage を持たない（`has_schema_privilege`）。
   3. `pub_*` の列名に `_mask` を含むものがなく、`excluded_author` に由来する列（`excluded_at` など）を含まない。
@@ -485,7 +521,7 @@ grant select on public.pub_<名前> to anon;
 ## 8. マイグレーションの運用
 
 - `supabase/migrations/NNNN_<内容>.sql` に置き、Supabase CLI（`supabase db push`）で適用する。適用は運用担当がローカルから行い、手順は docs/operations/（デプロイ工程）に書く。ダッシュボードでの手変更はしない（NFR-73）。
-- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し、service_role への grant（§6、N-3）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表（`article_summary`、`author_summary`、`article_milestone`。帯の列なし）。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: `internal.article_cumulative`・`internal.benchmark_curve` ビュー（§4.1。`excluded_author` を参照するため 0004 の後）、公開ビューと grant、権限の検査 SQL。番号は実装時に確定。
+- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し、`batch_writer` ロールの作成と usage の grant（§6、ADR 0009）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表（`article_summary`、`author_summary`、`article_milestone`。帯の列なし）。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: `internal.article_cumulative`・`internal.benchmark_curve` ビュー（§4.1。`excluded_author` を参照するため 0004 の後。`batch_writer` に grant しない）、公開ビューと grant、権限の検査 SQL。番号は実装時に確定。ロールのパスワードはどのマイグレーションにも書かない。CI とローカルのパスワードは `supabase/seed/test/` のテスト用の値を使う。
 - ビューの列を変えるときは ADR と security-auditor のレビュー（NFR-39）。05 §4.1 の表を変えずに済む変更（列名の修正など）はレビュー不要だが、§5 の対応表を更新する。
 
 ## 9. 未確定
@@ -493,7 +529,8 @@ grant select on public.pub_<名前> to anon;
 - `wp_post.title` の HTML エンティティ復号と長さ上限（表示側で省略するので DB には全文を置く）は実装で確認。
 - Supabase の「Exposed schemas」の設定値はダッシュボード側にあるためマイグレーションで固定できない。初期設定手順で `public` のみとし、受入で確認する（§6）。
 - `internal.benchmark_curve` ビュー（§4.1）の計算時間は実装時に `explain analyze` で確認する（07 I-DB-17。目安 2 秒以内）。超えるときは ADR 0003 判断 4 追記の (c) に切り替える。母集団の定義（除外後）は変えない。
-- Supabase の既定権限で `service_role` が新しいスキーマに持つ権限の正確な内容は未確認（外部の事実）。§6 の grant をマイグレーションに置き、ローカル環境で確認する（N-3）。
+- Supabase の既定権限の正確な内容は未確認（外部の事実）。§6 の grant と revoke をマイグレーションに置き、ローカル環境で確認する（07 I-DB-01、I-DB-18）。
+- `batch_writer` のパスワードの設定手順と、未設定の間に pooler 経由で確実に拒否されることの確認（ADR 0009、実装時）。
 
 確定した事項（2026-11-03、設計レビューの反映で「未確定」から移動）:
 
