@@ -3,7 +3,9 @@
 - 状態: 草案
 - 更新日: 2026-11-03
 - 関係: ADR 0006（ビルド時生成）、02_data_model.md §4（公開ビュー）、05_screens.md、06_security.md §7、NFR-11、NFR-42、NFR-91、FR-01、FR-03、FR-06
-- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
+- 変更履歴:
+  - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
+  - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（ArticleDetailData の period から prev* を外す、AuthorPageData の siteMedianPostCount を削除、PostRow の band7 を埋め込まない、一覧の benchmark を n = 30 だけに、ActivityData.authorCounts は 1 本以上の著者だけ。N-1: pub_benchmark_curve と帯の列はビューが可視記事から計算するが列集合は変わらない）
 
 ## 1. 方針（HTTP API はない）
 
@@ -56,7 +58,7 @@
 | S-05 | pub_author_summary | own_median_30d、eligible_count、band_30d | author_slug = :slug |
 | S-05 | pub_article_milestone | post_id、milestone、reached_on | post_id in 著者の記事 |
 | S-05 | pub_article_period_breakdown | post_id、period_id、bucket、sessions | post_id in 著者の記事、axis = channel（最多区分を BI が決める） |
-| S-05 | pub_posting_period | period_id、post_count | 全行（FR-31 (a) の参考値「1 人あたりの中央値」は pub_author_period.post_count の全著者の中央値を BI が計算） |
+| S-05 | pub_posting_period | ― | 読まない（FR-31 (a) の参考値「1 人あたりの中央値」は 2026-11-03 に削除。advice §5 高。05 §6.2） |
 | S-05 | pub_site_period_breakdown | period_id、axis、bucket、value | axis = sns / channel（FR-33 の全体との比較。channel は Q-36 の確定で期間値） |
 | S-06 カテゴリ | pub_category | category_id、name、parent_id、path | 全行 |
 | S-06、S-06b | pub_category_period | category_id、period_id、pageviews、post_count_total、post_count_published、median_30d_pv、published_post_count_30d | 全行 |
@@ -142,8 +144,8 @@ type PostRow = {
   publishedOn: string;       // 'YYYY-MM-DD'
   isAd: boolean; ageDays: number; freshness: Freshness;
   pv7: number | null; pv30: number | null;       // 未経過は null（画面は「◯日目」と現時点の累積）
-  band7: Band | null; band30: Band | null;        // 'upper' | 'middle' | 'lower'。null = まだ比較できません
-  pvTotal: number;                                // 現時点の累積（未経過のときの表示に使う）
+  band30: Band | null;                            // 'upper' | 'middle' | 'lower'。公開から N 日目（N = min(ageDays, 30)）の累積を同じ N 日目の分布と比べた値（pub_article_summary.band_30d。02 §4.1 でビューが可視記事の母集団から計算）。null = まだ比較できません（ageDays < 3、母集団不足）。pub_article_summary.band_7d は画面で使わないので埋め込まない
+  pvTotal: number;                                // 現時点の累積（未経過のときの表示と、S-03 の「公開からの合計」に使う）
   isRecentHot: boolean; isRevival: boolean;
   categoryIds: number[]; tagIds: number[];        // S-02e（検索）だけ。他は空配列
 };
@@ -153,9 +155,11 @@ type ArticleListData = PageCommon & {
   topIndex?: Record<PeriodId, number[]>;          // S-02a / S-02c: 期間ごとの上位 50 の posts インデックス（降順）。他は省略
   categories: { id: number; name: string; parentId: number | null; path: string }[];   // S-02e と絞り込みの許可リスト
   authors: { slug: string; name: string }[];      // 絞り込みの許可リスト（名前順）
-  benchmark: Record<7 | 30, { p25: number; p50: number; p75: number } | null>;        // S-02b の帯
+  benchmark: { p25: number; p50: number; p75: number } | null;                         // n = 30 の 1 行（文言「多くの記事は ◯〜◯回（真ん中は ◯回）」用）。母集団不足は null
 };
 ```
+
+- 一覧に埋め込む帯の情報は `band30`（3 値）と `benchmark`（n = 30 の 1 行）で足りる。`BandDot` の点は 3 区分の固定位置に置き、値に比例した位置を描かない（05 §2.4）ので、記事ごとの位置計算に p25 / p75 は要らない。n = 7 や n = ageDays の曲線は一覧には埋め込まない（`band30` がビュー側で同じ日数の曲線と比べた結果を持つ）。
 
 - S-02a（よく読まれた記事）: `posts` は「いずれかの期間で上位 50 に入る記事」の和集合、`topIndex` に期間ごとの順序。順位の数字は埋め込まない（インデックス順が降順であるだけ）。
 - S-02b（新着の立ち上がり）: `posts` は全記事（広告を除く）。期間内に公開された記事はクライアントが `publishedOn` で絞る。`pvByPeriod` は不要なので省略する。
@@ -171,14 +175,18 @@ type ArticleDetailData = PageCommon & {
   daily: { firstDay: string; pageviews: number[] };                 // 公開日（または 2025-10-08 の遅い方）から基準日まで
   cumulative: (number | null)[];                                     // index 0 = 1 日目 … 89 = 90 日目。未経過は null
   benchmark: { p25: number[]; p50: number[]; p75: number[]; populationSize: number; populationWindow: string } | null;   // n = 1..90
-  period: Record<PeriodId, { pageviews: number; landingSessions: number | null; scrollCount: number | null; engagementSeconds: number | null }>;
-  breakdown: Record<PeriodId, { channel: Record<Channel, number | null>; sns: Record<SnsBucket, number | null>; device: Record<Device, number | null> }>;
-  referrer30d: { status: 'ready'; rows: { domain: string; sessions: number }[] } | { status: 'pending' };   // pending = 公開後 30 日で集計します
+  period: Record<SelectablePeriodId, { pageviews: number; landingSessions: number | null; scrollCount: number | null; engagementSeconds: number | null }>;   // 選べる期間だけ。prev7 / prev28 / prev90 の行を含めない（記事単位の前期間比を出さない。05 §5、advice §4 高）
+  breakdown: Record<SelectablePeriodId, { channel: Record<Channel, number | null>; sns: Record<SnsBucket, number | null>; device: Record<Device, number | null> }>;   // 同上
+  referrer30d: { status: 'ready'; rows: { domain: string; sessions: number }[] } | { status: 'pending' };   // pending = 「公開 30 日後に出ます」
   milestones: { milestone: 500 | 1000 | 5000 | 10000; reachedOn: string }[];
   isEvergreen365: boolean;
-  ownMedian30d: { value: number } | null;                            // M-24。eligible_count < 5 は null
+  ownMedian30d: { value: number } | null;                            // M-24。eligible_count < 5 は null。「◯◯さん」の名前は post.authorName
 };
 ```
+
+- `SelectablePeriodId` = `PeriodId` から `prev7` / `prev28` / `prev90` を除いた型（`packages/shared/src/page-data.ts`）。月の前月は選べる期間に含まれるが、S-03 はそれを比較に使わない（`compare()` を呼ばない）。
+- 「公開からの合計」は `post.pvTotal`。帯の文の p25 / p50 / p75 は `benchmark` の n = 30（30 日未満の記事は n = `post.ageDays`）の要素を使う。
+- `daily` は従来どおり公開日から基準日まで。S-03 の `LineChart` は前期間の線を描かない（05 §5）。
 
 ### 3.5 著者一覧（S-04、`/authors`）と著者ページ（S-05、`/authors/[slug]`）
 
@@ -191,15 +199,17 @@ type AuthorPageData = PageCommon & {
   breakdown: Record<PeriodId, { channel: Record<Channel, number | null>; sns: Record<SnsBucket, number | null> }>;
   siteBreakdown: Record<PeriodId, { channel: Record<Channel, number | null>; sns: Record<SnsBucket, number | null> }>;  // FR-33 の比較相手。channel は期間値（Q-36 確定）
   categoryMix: Record<PeriodId, { categoryId: number; path: string; postCount: number; pageviews: number }[]>;
-  summary: { ownMedian30d: number | null; eligibleCount: number; band30: Band | null };
+  summary: { ownMedian30d: number | null; eligibleCount: number; band30: Band | null };   // FR-31 (b)（(e) を統合）。band30 は pub_author_summary.band_30d（ビューが計算。02 §4.1）
   posts: PostRow[];                                                  // 著者の記事
   pvByPeriod: Record<PeriodId, number[]>;                            // posts と同じ順
   topChannelByPeriod: Record<PeriodId, (Channel | null)[]>;          // FR-32 の「流入の主な経路」。全区分が伏せなら null
   milestones: { postId: number; milestone: number; reachedOn: string }[];
-  siteMedianPostCount: Record<PeriodId, number>;                     // FR-31 (a) 参考値。全著者の post_count の中央値
-  benchmark: Record<7 | 30, { p25: number; p50: number; p75: number } | null>;
+  benchmark: { p25: number; p50: number; p75: number } | null;       // n = 30 の 1 行（(b) の文言用）。母集団不足は null
 };
 ```
+
+- `siteMedianPostCount`（全著者の post_count の中央値。FR-31 (a) の参考値）は削除した（2026-11-03、advice §5 高。著者の本数の分布との比較で、比較の相手 3 つのどれでもない。05 §6.2）。他の著者の値から導く値は `siteBreakdown`（サイト全体の構成比。FR-33 の比較相手）だけ。
+- (a) の前期間比は `period[prevId]` から `compare()` で差だけ出す（% は出さない）。
 
 ### 3.6 カテゴリ（S-06 `/categories`、S-06b `/categories/seasonal`）とタグ（S-07 `/tags`、S-07b `/tags/[id]`）
 
@@ -226,7 +236,7 @@ type TagPageData = PageCommon & { tag: { id: number; name: string }; posts: Post
 type ActivityData = PageCommon & {
   monthly: { month: string; postCount: number }[];                   // 'YYYY-MM'。直近 24 か月
   posting: Record<PeriodId, { postCount: number }>;   // 人数は置かない（M-5）。主表示は「この期間に ◯本の記事が公開されました」
-  authorCounts: Record<PeriodId, { name: string; slug: string; postCount: number }[]>;   // 名前順で固定。並べ替え不可（NFR-36）。除外後
+  authorCounts: Record<PeriodId, { name: string; slug: string; postCount: number }[]>;   // 名前順で固定。並べ替え不可（NFR-36）。除外後。**期間内に 1 本以上公開した著者だけ**（postCount ≥ 1。0 本の著者はビルド時に落とす。FR-51、advice §6 高）
   categoryMix: Record<PeriodId, { categoryId: number; path: string; postCountPublished: number }[]>;   // 除外後（H-1）
 };
 ```
@@ -278,7 +288,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `getAuthorPeriodAll()` / `getAuthorPeriodBreakdownAll()` / `getAuthorCategoryPeriodAll()` / `getAuthorSummaryAll()` | ― | 全行 | 対応するビュー |
 | `getCategoryPeriodAll()` / `getTagPeriodAll()` | ― | 全行 | pub_category_period / pub_tag_period |
 | `getPostingMonthly()` / `getPostingPeriod()` | ― | 全行 | pub_posting_monthly / pub_posting_period |
-| `getBenchmarkCurve()` | ― | scope = all の 90 行 | pub_benchmark_curve |
+| `getBenchmarkCurve()` | ― | scope = all の行（n = 1〜90。母集団 30 未満の n は行がない）。ビューが可視記事から計算した値（02 §4.1、N-1） | pub_benchmark_curve |
 
 組み立て層（`apps/web/src/data/pages/*.ts`）。`PubCache` から各ページの JSON を作り、`zod` で検証して返す。
 
@@ -295,7 +305,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `buildActivity(cache)` | ― | `ActivityData` | §3.7 |
 | `buildReactions(cache)` | ― | `ReactionsData` | FR-61 を含めるときだけ |
 
-共通の派生計算（`packages/shared/src/derive/`。バッチとは別。表示用）: `compare(cur, prev)` → `{ diff, ratio | null }`（分母 20 未満は ratio = null）、`share(values)` → 構成比（伏せ値を含む行は分母を「表示している値の和」ではなく**合計列**にし、伏せ値セルの構成比は出さない）、`topChannel(record)`、`median(numbers)`、`fold6(heatmap168)`（スマホの 6 区分）、`unconfirmedFrom(baseDate)`（直近 3 日）。
+共通の派生計算（`packages/shared/src/derive/`。バッチとは別。表示用）: `compare(cur, prev)` → `{ diff, ratio | null }`（分母 20 未満は ratio = null）、`share(values)` → 構成比（伏せ値を含む行は分母を「表示している値の和」ではなく**合計列**にし、伏せ値セルの構成比は出さない）、`topChannel(record)`、`fold6(heatmap168)`（スマホの 6 区分）、`unconfirmedFrom(baseDate)`（直近 3 日）、`latestConfirmedDay(baseDate)`（グラフの固定行の既定日 = 基準日 − 3 日。05 §2.6）。`median(numbers)` は `siteMedianPostCount` の削除で使う場所がなくなったため置かない（`quantiles` / `band` は `packages/shared/src/derive/` にテスト用の参照実装として置く。07 U-07、U-08、I-DB-17）。
 
 ## 6. サイズの見積もりと絞り込み
 
@@ -309,7 +319,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | S-02c 長く | posts 和集合 ≒ 15 KB、topIndex ≒ 4 KB | 約 20 KB | ― |
 | S-02d 最近 | posts ≤ 10 | 約 3 KB | ― |
 | S-02e 検索 | posts 225 × 180 B（category / tag ID を含む）≒ 40 KB、pvByPeriod 19 × 225 ≒ 17 KB、categories / authors ≒ 3 KB | **約 60 KB** | 記事 +250 B / 本、月 +1 KB |
-| S-03 記事詳細 | daily ≤ 390 × 4 B ≒ 1.6 KB、cumulative 0.4 KB、benchmark 90 × 3 ≒ 1.5 KB、period 19 × 80 B ≒ 1.5 KB、breakdown 19 × 13 セル ≒ 4 KB、その他 ≒ 1.5 KB | **約 11 KB** | 年 +3 KB。50 KB を超える見込みはない |
+| S-03 記事詳細 | daily ≤ 390 × 4 B ≒ 1.6 KB、cumulative 0.4 KB、benchmark 90 × 3 ≒ 1.5 KB、period 16 × 80 B ≒ 1.3 KB（prev* を含めない）、breakdown 16 × 13 セル ≒ 3.5 KB、その他 ≒ 1.5 KB | **約 10 KB** | 年 +3 KB。50 KB を超える見込みはない |
 | S-05 著者（最大、120 本） | posts 120 × 150 B ≒ 18 KB、pvByPeriod 19 × 120 ≒ 9 KB、topChannel 19 × 120 ≒ 8 KB、breakdown / categoryMix ≒ 8 KB | 約 45 KB（典型は 10 KB） | 記事 +250 B / 本 |
 | S-06 / S-06b / S-07 / S-08 | 期間 × カテゴリ（約 30）またはタグ（約 50） | 各 10〜20 KB | 月 +1 KB |
 
@@ -358,3 +368,5 @@ HTML 全体はこれに初期表示の DOM（既定期間 = 直近 28 日の描�
 - 月の埋め込み上限（36 か月）と、S-02e のサイズが上限を超えたときの案の順（§6）は設計の判断で、依頼者への質問ではない。実測はビルドの出力サイズで確認する（07 §6）。
 - S-02e（検索）に広告カテゴリの記事を含めるか。FR-24 は除外を書いていないため含める。FR-20 / FR-22 / S-02b は除く。依頼者への確認は不要と見るが、05 §13 に記す。
 - シェア数（FR-61、`pub_author_period_share`）は初回対象外で確定（設計レビュー M-4）。未確定ではない。
+- 2026-11-03 の画面レビュー反映で変えた契約（確定。依頼者への質問ではない）: `ArticleDetailData.period` / `breakdown` から prev* を外した（記事単位の前期間比を出さない）、`AuthorPageData.siteMedianPostCount` を削除、`PostRow.band7` を埋め込まない、一覧の `benchmark` を n = 30 の 1 行に、`ActivityData.authorCounts` は 1 本以上の著者だけ。公開ビューの列は変わらない（N-1 の対策はビューの計算方法の変更で、02 §4.1）。
+- `PostRow.band30` の意味（N = min(ageDays, 30) 日目の帯）は 02 §4.1 のビューに依存する。ビューの `band_30d` の定義を変えるときは本書 §3.3 と 05 §4.2 も合わせる。

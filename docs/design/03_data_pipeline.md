@@ -3,7 +3,9 @@
 - 状態: 草案
 - 更新日: 2026-11-03
 - 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0006、ADR 0007
-- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
+- 変更履歴:
+  - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
+  - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 分布 `benchmark_curve` と帯をバッチで計算せず、公開ビューが可視記事から計算する。§1、§6.2、§7）
 
 ## 1. 全体の流れ
 
@@ -16,7 +18,7 @@
 | 2 | period | 基準日 | `period` の移動窓 6 行の日付更新、月行の追加、`is_confirmed` の更新。今回取り直す期間の集合（§3） | ― |
 | 3 | ga4_daily | GA4 Data API | `site_daily`、`site_daily_channel`、`site_daily_device`、`article_daily`（直近 7 日ぶん、またはバックフィル範囲） | quota / auth / network |
 | 4 | ga4_period | GA4 Data API | 取り直す期間の `site_period`、`site_period_breakdown`、`site_period_heatmap`、`article_period`（landing_sessions、scroll_count、engagement_seconds）、`article_period_breakdown`。確定した月の `site_month_referrer`、`site_month_city`。30 日が経過した記事の `article_referrer_30d` | 同上 |
-| 5 | derive | 内部表（メモリ上の生値を含む） | `article_period.pageviews`、`author_period_breakdown`、`benchmark_curve`、`article_summary`、`article_milestone`、`author_summary`、`sns_source_unmapped` | validation |
+| 5 | derive | 内部表（メモリ上の生値を含む） | `article_period.pageviews`、`author_period_breakdown`、`article_summary`（帯の列を除く）、`article_milestone`、`author_summary`（帯の列を除く）、`sns_source_unmapped`。分布 `benchmark_curve` と帯はバッチで計算せず、公開ビューが可視記事から計算する（02 §4.1、N-1） | validation |
 | 6 | write | 上記 | Supabase への upsert（1,000 行単位）。移動窓の古い行の削除 | db |
 | 7 | publish | ― | Vercel の Deploy Hook を呼び、BI を再ビルドする（ADR 0006）。`batch_run` を `success` に更新 | network |
 
@@ -170,8 +172,8 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 - `article_period.pageviews` = 期間内の `article_daily.pageviews` の合計。
 - 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
-- 分布（M-19、`benchmark_curve`）: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は線形補間（`percentile_cont` と同じ）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。
-- 帯（band）: `pv_7d` を `benchmark_curve(all, 7)` の p25 / p75 と比べて `lower` / `middle` / `upper`。`band_30d` は age_days ≥ 30 なら n = 30、未満なら n = age_days（「◯日目」として同じ日数の帯と比べる。M-20）。age_days < 3 は null。
+- 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが可視記事（`excluded_author` に当たらない著者の記事。広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、除外著者でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は可視記事の件数。バッチが除外リストを読まない方針（ADR 0005）を保つため、DB 側で計算する（代替案と推奨は ADR 0003 判断 4 追記）。`packages/shared` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
+- 帯（band）: **バッチは計算しない**。公開ビュー `pub_article_summary` が `band_7d`（`pv_7d` を曲線 (all, 7) の p25 / p75 と比べる。age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積を曲線 (all, N) と比べる。「◯日目」として同じ日数の帯と比べる。M-20）を、`pub_author_summary` が `band_30d`（`own_median_30d` を曲線 (all, 30) と比べる）を計算する。p75 と等しいときも p25 と等しいときも `middle`。age_days < 3、曲線の行がない、値が null のときは null。`packages/shared` の `band()` は参照実装（07 U-08、I-DB-17）。
 - M-22: `is_recent_hot` = age_days ≥ 15 かつ 直近 7 日の PV ≥ 20 かつ 直近 7 日 PV ≥ 2 × (その前 28 日の PV ÷ 4)。`is_revival` = `is_recent_hot` かつ age_days ≥ 91。表示件数の上限（各著者 5、全体 10）は BI 側で `is_recent_hot` の記事を直近 7 日 PV の多い順に切る。
 - M-23: 節目（500、1,000、5,000、10,000）を初めて超えた日 = 累積がその値以上になった最初の `day`。`is_evergreen_365` = age_days ≥ 365 かつ 直近 28 日の PV ≥ 20。
 - M-24: 著者の記事のうち 直近 12 か月公開・age_days ≥ 30 の `pv_30d` の中央値。該当 5 本未満なら null。
@@ -186,7 +188,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 ## 7. 格納
 
 - supabase-js（service role キー）で `upsert`（`onConflict` に PK）。1,000 行ずつ。upsert の前に `period` を更新する（FK のため）。
-- 全置換する表（`benchmark_curve`、`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（一瞬でも空にならないようにする）。
+- 全置換する表（`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（一瞬でも空にならないようにする）。`benchmark_curve` はビューなので書き込みはない（02 §4.1）。
 - 移動窓（`period.kind = window`）の期間別行は upsert で上書きされる（キーが固定 ID なので古い日付範囲の行は残らない）。記事が増減した分は「今回のキー集合にない行を delete」で揃える。
 - 書き込み件数は `batch_run.counts` に残す。行の内容はログに出さない。
 

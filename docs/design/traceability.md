@@ -30,7 +30,7 @@
 | M-17 ランディングページ | article_period.landing_sessions、article_period_breakdown | G10、G13〜G15 | ― | 04 §3.4 period.landingSessions、breakdown。05 S-03「この記事から読み始めた訪問の内訳です」。07 A-01 |
 | M-18 累積 | pub_article_cumulative（窓関数）、article_summary.pv_total | §6.2 | ADR 0003 判断 1 | 04 §3.4 cumulative。05 S-03 Curve。07 U-06、A-03 |
 | M-19 分布 | benchmark_curve | §6.2（母集団 30、12 か月 → 全期間） | ― | 04 §3.2 benchmark30、§3.3 / §3.4 / §3.5 benchmark。05 §2.4 BandDot、S-02b、S-03、S-05。07 U-07、U-08 |
-| M-20 7 日 / 30 日 PV | article_summary.pv_7d、pv_30d、band_7d、band_30d | §6.2 | ― | 04 §3.3 PostRow.pv7 / pv30 / band7 / band30。05 S-02b、S-02e、S-05 の列。07 U-06 |
+| M-20 7 日 / 30 日 PV | article_summary.pv_7d、pv_30d。帯 band_7d、band_30d は pub_article_summary（ビュー）が可視記事の分布から計算（02 §4.1、N-1） | §6.2 | ― | 04 §3.3 PostRow.pv7 / pv30 / band30（band7 は埋め込まない）。05 S-02b、S-02e、S-05 の列。07 U-06、U-08、I-DB-17 |
 | M-21 鮮度区分 | article_summary.freshness、age_days | §6.2 | ― | 04 PostRow.freshness。05 S-02a「新着」バッジ、S-02c、S-03 属性。07 U-09 |
 | M-22 最近読まれている / 久しぶり | article_summary.is_recent_hot、is_revival | §6.2 | ― | 04 §3.3 S-02d（10 件は BI で切る）、§3.5 posts。05 S-02d、S-05「最近 / 久しぶり」（各 5 件）。07 U-10、E-08 |
 | M-23 到達のお知らせ | article_milestone、article_summary.is_evergreen_365 | §6.2 | ― | 04 §3.4 milestones、isEvergreen365、§3.5 milestones。05 S-03、S-05 (d)。07 U-11 |
@@ -72,7 +72,7 @@
 | FR-24 検索と絞り込み | pub_post、pub_post_category、pub_article_summary | ― | 06 §7 | 04 §3.3 S-02e、§8 `cat` / `author` / `ym` / `q` / `sort`。05 S-02e（並べ替えの許可）。07 U-18、E-07 |
 | FR-25 最近読まれている（全体） | pub_article_summary.is_recent_hot / is_revival、pub_post.is_ad | §6.2 | ― | 04 §3.3 S-02d（10 件）。05 S-02d。07 U-10、E-08 |
 | FR-30 著者の選択 | pub_author（除外、数値なし） | ― | ADR 0005、06 §5 | 04 §3.5 AuthorIndexData。05 S-04（名前だけ、slug は href）。07 E-03、E-15 |
-| FR-31 著者サマリ | pub_author_period、pub_author_summary、pub_article_milestone、pub_posting_period | §6.2 | ― | 04 §3.5 period、summary、milestones、siteMedianPostCount。05 S-05「この期間のまとめ」(a)〜(e)。07 A-03、E-11 |
+| FR-31 著者サマリ | pub_author_period、pub_author_summary、pub_article_milestone、pub_benchmark_curve | §6.2 | ― | 04 §3.5 period、summary、milestones、benchmark（siteMedianPostCount は 2026-11-03 に削除）。05 S-05「この期間のまとめ」(a)〜(d)（(b) に旧 (e) を統合）。07 A-03、E-11、E-22 |
 | FR-32 著者の記事一覧 | pub_post、pub_article_period、pub_article_summary、pub_article_period_breakdown(channel の最多) | ― | ― | 04 §3.5 posts、pvByPeriod、topChannelByPeriod。05 S-05「記事の一覧」（スマホ 4 列）。07 E-07、E-13 |
 | FR-33 著者の流入元・カテゴリ構成 | pub_author_period_breakdown、pub_author_category_period | G13、G14（著者合算 → 伏せ） | ADR 0003 判断 2 | 04 §3.5 breakdown、siteBreakdown、categoryMix。05 S-05「読者はどこから来たか（全体と並べて）」「どんなカテゴリを書いたか」。07 I-DB-07、A-03 |
 | FR-34 著者の最近読まれている | pub_article_summary | §6.2 | ― | 04 §3.5 posts.isRecentHot / isRevival。05 S-05（各 5 件）。07 U-10 |
