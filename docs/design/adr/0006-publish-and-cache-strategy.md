@@ -1,6 +1,6 @@
 # ADR 0006: BI の配信方式（ビルド時生成 + Deploy Hook による日次再ビルド）
 
-- 状態: 草案
+- 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
 - 関係: NFR-10、NFR-11、NFR-12、NFR-42、NFR-90、NFR-91、FR-02、FR-06、FR-36、01_tech_stack.md §5、06_security.md
 

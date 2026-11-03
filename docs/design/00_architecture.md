@@ -1,6 +1,6 @@
 # 00 全体構成
 
-- 状態: 草案
+- 状態: レビュー中（2026-11-03。security-auditor の設計レビュー 3 回と analytics-advisor の画面レビューを反映し、構築に進んでよいと判定された。依頼者の確認待ち）
 - 更新日: 2026-11-03
 - 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
 - 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0006、ADR 0007

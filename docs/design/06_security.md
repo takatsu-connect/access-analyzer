@@ -1,6 +1,6 @@
 # 06 セキュリティ
 
-- 状態: 草案
+- 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
 - 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36、ADR 0002、ADR 0003、ADR 0005、ADR 0006、docs/operations/initial_setup.md
 - 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映

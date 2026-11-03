@@ -1,6 +1,6 @@
 # ADR 0008: グラフと UI のライブラリ（CSP の `style-src` を含む）
 
-- 状態: 草案
+- 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
 - 関係: NFR-10、NFR-80、NFR-81、NFR-91、NFR-97、NFR-99、01_tech_stack.md §3・§5、05_screens.md §2.8、06_security.md §6、ADR 0006
 - 事実の出典: context7 で 2026-11-03 に確認（Chart.js 公式文書「Accessibility」「Why Chart.js > Canvas rendering」、Recharts リポジトリ `ResponsiveContainer.tsx` / `Tooltip.tsx` / 3.0 移行ガイド）

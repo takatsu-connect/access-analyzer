@@ -1,6 +1,6 @@
 # ADR 0003: 公開データの線引き（記事 × 日、二次伏せ、識別性、除外後の集計、二次伏せの非公開、期間の流入チャネル・デバイス）
 
-- 状態: 草案（N-1 の反映後、security-auditor の最終確認待ち。再確認（audits/2026-11-03-design-review-recheck.md）は N-1 の 1 件を残して条件付き承認。NFR-39）
+- 状態: 承認（security-auditor の最終確認 2026-11-03、audits/2026-11-03-design-review-final.md。設計レビュー → 再確認 → 最終確認の 3 段を経て条件付き承認を解消。NFR-39）
 - 更新日: 2026-11-03
 - 関係: NFR-33、05 §4.1、FR-10、FR-13、FR-14、FR-17、FR-21、FR-23、FR-36、FR-40、FR-41、FR-42、M-10、M-12、M-13、M-14、M-18、M-19、M-25、M-27、D-14、D-16、Q-36、02_data_model.md、03_data_pipeline.md §6、ADR 0005
 - 変更履歴:
@@ -76,4 +76,4 @@
 - 03_data_pipeline.md §6.1 の伏せ値アルゴリズム（0 の扱い、候補の条件、階層差分の手順 5）、§6.2 の「分布と帯はバッチで計算しない」、§6.3 の遅延データの扱いはこの判断に従う。
 - 変えるときは NFR-39 の手順（要件更新、ADR 改訂、security-auditor のレビュー）。
 - 確定: D-16（追記 1）、Q-33（判断 5）、Q-36（判断 6）、D-14（判断 4 追記: 全記事の分布の母集団も除外後。2026-11-03、再確認 N-1）。
-- 再確認（audits/2026-11-03-design-review-recheck.md）の残り: N-1 は判断 4 追記で反映した。N-2（NFR-43 の文言）は requirements-analyst、N-3（service_role の grant）は 02 §6。本 ADR は N-1 の反映について security-auditor の最終確認を待つ。
+- 再確認（audits/2026-11-03-design-review-recheck.md）の残り: N-1 は判断 4 追記で反映した。N-2（NFR-43 の文言）は requirements-analyst、N-3（service_role の grant）は 02 §6。本 ADR は N-1 の反映について security-auditor の最終確認（audits/2026-11-03-design-review-final.md、2026-11-03）で承認された。帯の計算もビューに移した判断は「必要な帰結」と評価された。(c) マテリアライズドビューに切り替える場合は、除外登録と refresh を同じ操作で行う手順を docs/operations/ に書いてから切り替える（最終確認 低-3）。

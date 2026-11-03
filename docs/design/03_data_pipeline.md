@@ -1,6 +1,6 @@
 # 03 データパイプライン
 
-- 状態: 草案
+- 状態: レビュー中（2026-11-03）
 - 更新日: 2026-11-03
 - 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0006、ADR 0007
 - 変更履歴:
@@ -168,7 +168,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 ### 6.2 派生指標の計算
 
-すべてバッチ（TypeScript）が `article_daily` と `wp_post` から計算する。計算式は 02_metrics.md §4.3。
+派生指標のうち累積（M-18）、判定（M-22、M-23）、自分の過去との比較の基準値（M-24）はバッチ（TypeScript）が `article_daily` と `wp_post` から計算する。全記事の分布（M-19、M-27）と帯（band）は `internal.benchmark_curve` ビューと公開ビューが可視記事から計算し、バッチは計算しない（02 §4.1、ADR 0003 判断 4。最終確認 低-1 で文言を修正）。計算式は 02_metrics.md §4.3。
 
 - `article_period.pageviews` = 期間内の `article_daily.pageviews` の合計。
 - 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
@@ -188,7 +188,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 ## 7. 格納
 
 - supabase-js（service role キー）で `upsert`（`onConflict` に PK）。1,000 行ずつ。upsert の前に `period` を更新する（FK のため）。
-- 全置換する表（`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（一瞬でも空にならないようにする）。`benchmark_curve` はビューなので書き込みはない（02 §4.1）。
+- 全置換する表（`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（一瞬でも空にならないようにする）。`benchmark_curve` はビューなので書き込みはない（02 §4.1）。`truncate` は使わない（service_role に truncate の grant を付けない。最終確認 低-2）。
 - 移動窓（`period.kind = window`）の期間別行は upsert で上書きされる（キーが固定 ID なので古い日付範囲の行は残らない）。記事が増減した分は「今回のキー集合にない行を delete」で揃える。
 - 書き込み件数は `batch_run.counts` に残す。行の内容はログに出さない。
 
