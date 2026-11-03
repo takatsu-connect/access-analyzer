@@ -1,0 +1,130 @@
+# 00 全体構成
+
+- 状態: 草案
+- 更新日: 2026-11-03
+- 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0006、ADR 0007
+
+## 1. 概要
+
+- 高津コネクト（WordPress）のアクセス集計を、GA4 Data API と WP REST API から日次で取り込み、Supabase に蓄積し、Vercel 上の静的な BI として公開する。
+- 依頼者の決定（00_overview.md §5）に従い、構成は 2 つに分ける。(1) 取得・集計・格納: GitHub Actions の日次バッチ。Web サービスとしては公開しない。(2) 表示: Supabase から読む BI。Vercel で動かし、Supabase はブラウザからではなくサーバー側（ビルド時）から読む。
+- 選定の優先順位は、ランニングコスト（無料枠、NFR-60）と運用負荷（無人運用、NFR-70）、公開データの安全（NFR-30〜NFR-45）、対象サイトへの負荷（NFR-72）。この順で小さい構成を選んだ（ADR 0001）。
+- 実行時にサーバーが動く部分をなくした。BI は日次バッチの終わりに再ビルドされる静的サイトで、リクエストごとに Supabase を読まない（NFR-11、ADR 0006）。
+
+## 2. 全体構成図
+
+```mermaid
+flowchart TB
+  subgraph EXT[外部（読むだけ）]
+    GA[GA4 Data API<br/>プロパティ: 高津コネクト ウェブサイト]
+    WP[WP REST API<br/>takatsu-connect.com/wp-json/wp/v2]
+  end
+
+  subgraph GH[GitHub（public リポジトリ）]
+    REPO[リポジトリ<br/>apps/batch, apps/web, packages/shared,<br/>supabase/migrations, .github/workflows]
+    ACT[GitHub Actions<br/>日次バッチ cron 17:00 JST<br/>Secrets: WIF, GA4_PROPERTY_ID,<br/>SUPABASE_SERVICE_ROLE_KEY, VERCEL_DEPLOY_HOOK_URL]
+  end
+
+  subgraph GCP[Google Cloud]
+    WIF[Workload Identity Federation<br/>pool: github / provider: access-analyzer]
+    SA[サービスアカウント<br/>GA4 閲覧者]
+  end
+
+  subgraph SB[Supabase（Free）]
+    INT[(内部表<br/>RLS 有効・anon 権限なし)]
+    PUB[公開ビュー pub_*<br/>anon select のみ]
+    EXC[(excluded_author<br/>内部表)]
+  end
+
+  subgraph VC[Vercel（Hobby）]
+    BUILD[ビルド<br/>Next.js 静的生成<br/>env: SUPABASE_URL, SUPABASE_ANON_KEY]
+    CDN[CDN<br/>静的 HTML / JS / JSON<br/>noindex, CSP]
+  end
+
+  USER[運営者 / ライター / URL を知る人<br/>ブラウザ]
+
+  ACT -->|OIDC トークン| WIF --> SA -->|1 時間の AT| GA
+  GA -->|集計値| ACT
+  WP -->|記事メタデータ| ACT
+  ACT -->|service role: upsert| INT
+  INT --> PUB
+  EXC -.->|除外| PUB
+  ACT -->|Deploy Hook| BUILD
+  REPO -->|push main| BUILD
+  PUB -->|anon: select| BUILD
+  BUILD --> CDN --> USER
+  USER -->|記事・著者ページへのリンク| WP
+```
+
+## 3. コンポーネントと責務
+
+| コンポーネント | 置き場所 | 責務 | 持つ秘密 | 担当 |
+| --- | --- | --- | --- | --- |
+| 日次バッチ（`apps/batch`） | GitHub Actions（ubuntu、Node.js LTS、TypeScript） | WP REST API と GA4 Data API から取得、pagePath・参照元の正規化、期間集計、伏せ値・二次伏せ、派生指標（分布、帯、判定）、Supabase への書き込み、実行記録、Deploy Hook の呼び出し | WIF 経由の短命トークン、Supabase service role、Deploy Hook URL | backend-engineer |
+| 共有パッケージ（`packages/shared`） | リポジトリ | 設定値（T など）、正規化規則（pagePath、SNS、チャネル）、伏せ値アルゴリズム、公開ビューの型、ロガー、環境変数の検証 | なし | backend-engineer |
+| Supabase（Postgres） | Supabase Free | 内部表（蓄積、全期間保持）、公開ビュー（伏せ済み・除外済みの投影）、除外リスト、実行記録。マイグレーションで管理 | service role は Actions に、anon は Vercel に | backend-engineer（スキーマ）、devops-engineer（プロジェクト） |
+| BI（`apps/web`） | Vercel Hobby | ビルド時に公開ビューを読み、6 画面を静的生成。期間切り替え・フィルタ・並べ替え・CSV はクライアント側。応答ヘッダ、noindex | Supabase anon キー（ビルド時のみ） | frontend-engineer |
+| ワークフロー（`.github/workflows`） | GitHub | cron とディスパッチ、WIF 認証、バッチの実行、失敗通知、heartbeat、CI（lint / test / audit） | Secrets の参照 | devops-engineer |
+| 運用スクリプト（`apps/batch` の `exclude-author`） | 運用担当のローカル | 除外リストの追加・削除 | ローカル `.env` の service role | 運用担当 |
+
+## 4. データの流れ
+
+1. 取得（毎日 JST 17:00 ごろ、基準日 = 前日）: WP REST API から追加・更新された記事と ID 一覧、カテゴリ、タグ、必要な著者を差分で取る（約 7 リクエスト）。GA4 Data API から直近 7 日の日別値と、取り直す期間（移動窓 6 + 当月 + 未確定の前月）の期間別値を取る（約 30 リクエスト、約 450 トークン）。詳細は 03 §4、§5。
+2. 正規化: pagePath / landingPage → 記事 ID（`^/(\d+)/$`）。sessionSource → SNS 5 区分。sessionDefaultChannelGroup → 5 区分。city → 川崎市 / 国内その他 / 不明。
+3. 集計と伏せ値: 05 §4.1 の表どおりに、日別は生値（全体、記事）、期間別は生値を合算してから T = 5 と二次伏せを適用。著者 × 内訳軸 は記事の生値を著者で合算してから伏せる。合計・累積は伏せる前の値から。
+4. 派生: 累積（M-18）、分布（M-19）、帯、M-22〜M-24 の判定、節目。
+5. 格納: Supabase の内部表へ upsert（service role）。移動窓は上書き、月は確定後に固定、確定した暦月の参照元・市別と記事の公開後 30 日時点の参照元は 1 回だけ書く。実行記録を `batch_run` に残す。
+6. 公開: Deploy Hook で Vercel を再ビルド。ビルドは anon キーで `pub_*` ビューだけを読み、除外著者の記事・著者が存在しない前提で全ページを静的生成。CDN から配信。
+7. 閲覧: ブラウザは静的ファイルだけを受け取る。期間の切り替えはページに埋め込んだ全期間ぶんのデータをクライアントで切り替える。記事・著者へのリンクは takatsu-connect.com へ。
+
+時刻の基準は Asia/Tokyo（保存は `date` = JST 暦日、`timestamptz` = UTC。表示は JST 明示。02 §2.1）。
+
+## 5. 信頼境界
+
+| 境界 | 内側 | 外側 | 通るもの | 守り |
+| --- | --- | --- | --- | --- |
+| B1: GitHub Actions ランナー | バッチのプロセス、Secrets | インターネット | GA4・WP への HTTPS 読み出し、Supabase への HTTPS 書き込み、Deploy Hook | Secrets は main の workflow だけが参照。fork PR は Secrets に触れない。ログに秘密・行データを出さない（NFR-44、NFR-45） |
+| B2: GCP | WIF プール・プロバイダ、SA | GitHub の OIDC 発行者 | OIDC トークン → 連携トークン → SA のアクセストークン | 属性条件（repository と ref が main）。SA は GA4 閲覧者のみ。JSON 鍵なし（ADR 0002） |
+| B3: Supabase | 内部表、除外リスト | Actions（service role）、Vercel ビルド（anon） | service role の読み書き、anon の `pub_*` select | RLS + grant。anon は公開ビュー以外に触れない。公開ビューの列を対応表で統制（02 §4〜§6） |
+| B4: Vercel ビルド | ビルドのプロセス、環境変数（anon） | Supabase、CDN | `pub_*` の select、静的ファイルの出力 | anon キーのみ。`NEXT_PUBLIC_` を使わない。fork PR のプレビューを止める |
+| B5: CDN と閲覧者 | 静的ファイル | 誰でも | HTTPS の GET | 公開ビューに載るものだけが載る。noindex、CSP、frame-ancestors。実行時のサーバー処理なし（入力はクライアント側で許可リスト検証） |
+| B6: 対象サイト | takatsu-connect.com | バッチ、閲覧者のブラウザ | wp/v2 の読み出し（バッチ）、記事ページへのリンク（閲覧者） | 日次・差分・間隔 1 秒（NFR-72）。リンク先は固定ドメイン（FR-04） |
+
+最も強い前提は B3 と B5: 「公開ビューに載っているもの = 誰でも読めるもの」。設計文書では公開ビューの列（02 §4）を 05 §4.1 の表と 1 対 1 で対応づけ、security-auditor の設計レビューの対象にする。
+
+## 6. リポジトリ構成
+
+pnpm workspace の monorepo（ADR 0004）。CLAUDE.md の「src/、tests/」は次の形に読み替える。
+
+```
+apps/
+  batch/            日次バッチ（TypeScript、Node.js LTS）。src/、tests/
+  web/              BI（Next.js App Router、静的生成）。src/、tests/
+packages/
+  shared/           設定値、正規化規則、伏せ値、公開ビューの型、ロガー、env 検証。src/、tests/
+supabase/
+  migrations/       NNNN_*.sql（02 §8）
+.github/
+  workflows/        daily.yml（バッチ + heartbeat）、ci.yml（lint / test / audit）
+docs/               要件・設計・運用
+.env.example        環境変数の名前だけ
+pnpm-workspace.yaml、package.json、pnpm-lock.yaml
+```
+
+- Vercel のプロジェクトは Root Directory を `apps/web` に設定し、pnpm workspace をそのまま使う。
+- バッチは `pnpm --filter batch run daily` / `backfill` / `publish-only` / `exclude-author` のコマンドを持つ。
+
+## 7. 設計文書の構成と 2 回目で書くもの
+
+| 文書 | 内容 | 状態 |
+| --- | --- | --- |
+| 00_architecture.md | 本文書 | 1 回目 |
+| 01_tech_stack.md | 技術選定の要約 | 1 回目 |
+| 02_data_model.md | Supabase のスキーマ、公開ビュー、05 §4.1 との対応 | 1 回目 |
+| 03_data_pipeline.md | 日次バッチの流れ、割当、再実行、バックフィル | 1 回目 |
+| 04_api.md | BI が読むデータの契約。本設計では HTTP の API は作らず、公開ビュー（`pub_*`）とページに埋め込む JSON の形を「API」として定義する | 2 回目 |
+| 05_screens.md | 6 画面の構成、指標と要件 ID の対応、埋め込む説明文、クライアント側の検証 | 2 回目 |
+| 06_security.md | 認証・認可、秘密情報、公開範囲、ヘッダ、ログ | 1 回目 |
+| 07_test_plan.md | 単体（正規化、伏せ値、派生指標）、結合（マイグレーション + ビューの権限検査）、E2E（画面）、受入基準との対応 | 2 回目 |
+| adr/0001〜0007 | 判断の記録 | 1 回目 |
+| traceability.md | 要件 ID → 設計要素 | 1 回目は骨子と 02・03・06 の範囲、2 回目で完成 |

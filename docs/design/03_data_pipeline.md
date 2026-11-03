@@ -1,0 +1,312 @@
+# 03 データパイプライン
+
+- 状態: 草案
+- 更新日: 2026-11-03
+- 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0006、ADR 0007
+
+## 1. 全体の流れ
+
+日次バッチ（GitHub Actions、`apps/batch`、TypeScript）は 1 回の実行で次の工程を順に行う。工程名は `batch_run.failed_step` の値と同じ。
+
+| # | 工程 | 入力 | 出力 | 失敗時 |
+| --- | --- | --- | --- | --- |
+| 0 | preflight | 環境変数、設定値 | `batch_run` に `running` の行。同じ基準日の `success` が既にあれば何もせず終了（二重実行の防止） | validation |
+| 1 | wp_fetch | WP REST API（wp/v2） | `wp_author`、`wp_post`、`wp_category`、`wp_tag`、`wp_post_category`、`wp_post_tag` の upsert と削除 | network / validation |
+| 2 | period | 基準日 | `period` の移動窓 6 行の日付更新、月行の追加、`is_confirmed` の更新。今回取り直す期間の集合（§3） | ― |
+| 3 | ga4_daily | GA4 Data API | `site_daily`、`site_daily_channel`、`site_daily_device`、`article_daily`（直近 7 日ぶん、またはバックフィル範囲） | quota / auth / network |
+| 4 | ga4_period | GA4 Data API | 取り直す期間の `site_period`、`site_period_breakdown`、`site_period_heatmap`、`article_period`（landing_sessions、scroll_count、engagement_seconds）、`article_period_breakdown`。確定した月の `site_month_referrer`、`site_month_city`。30 日が経過した記事の `article_referrer_30d` | 同上 |
+| 5 | derive | 内部表（メモリ上の生値を含む） | `article_period.pageviews`、`author_period_breakdown`、`benchmark_curve`、`article_summary`、`article_milestone`、`author_summary`、`sns_source_unmapped` | validation |
+| 6 | write | 上記 | Supabase への upsert（1,000 行単位）。移動窓の古い行の削除 | db |
+| 7 | publish | ― | Vercel の Deploy Hook を呼び、BI を再ビルドする（ADR 0006）。`batch_run` を `success` に更新 | network |
+
+工程 1〜5 はメモリ上で完結させ、工程 6 でまとめて書く（途中失敗で半端な状態を残しにくくするため。それでも書き込み途中で失敗したときは次回の再実行が同じ基準日で上書きする）。公開（工程 7）は書き込みが成功したときだけ行うので、BI に半端なデータが載らない。
+
+```mermaid
+flowchart LR
+  WP[WP REST API<br/>wp/v2] -->|差分取得| B
+  GA[GA4 Data API<br/>runReport] -->|日別 + 期間別| B
+  subgraph B[GitHub Actions 日次バッチ]
+    direction TB
+    P0[preflight] --> P1[wp_fetch] --> P2[period] --> P3[ga4_daily] --> P4[ga4_period] --> P5[derive<br/>正規化・伏せ値・二次伏せ・分布] --> P6[write] --> P7[publish]
+  end
+  P6 -->|service role| SB[(Supabase<br/>内部表)]
+  P7 -->|Deploy Hook| V[Vercel ビルド]
+  SB -->|anon: pub_* のみ| V
+```
+
+## 2. 実行時刻とトリガー
+
+- `schedule`: `cron: '0 8 * * *'`（UTC 08:00 = JST 17:00、FR-70 の仮置き。Q-13 で T を確定したら合わせる）。GA4 の日次データが揃う JST 15:30 より後、NFR-02 の T = 18:00（仮）より前。
+- GitHub の cron は遅延・欠落することがあるため、`cron: '0 9 * * *'`（JST 18:00）にも登録し、preflight で「同じ基準日の success があれば終了」とする。2 回目は保険であり、通常は 1 回目で終わる。
+- `workflow_dispatch`: 手動の再実行（FR-70）。入力は `mode`（`daily` / `backfill`）、`from`、`to`（バックフィル時）。除外リストの変更後の再公開は `mode = publish_only`（工程 7 だけ）で行う（ADR 0005）。
+- 定期実行は main ブランチのワークフローだけが動く（NFR-45 (4)。schedule は既定ブランチでしか動かないが、ジョブ側でも `if: github.ref == 'refs/heads/main'` を付ける）。
+- 所要時間の見込み: 通常 2〜4 分（GA4 約 30 リクエスト、WP 約 7 リクエスト、書き込み数万行）。`timeout-minutes: 30`。
+
+## 3. 基準日と期間の決め方
+
+- 基準日 = 実行時刻を Asia/Tokyo に変換した日付の前日（NFR-02）。環境変数 `BASE_DATE` で上書きできる（再実行・試験用）。
+- 移動窓: `last7` = [基準日 − 6, 基準日]、`prev7` = [基準日 − 13, 基準日 − 7]。28、90 も同様。
+- 月: 2025-10 から基準日の属する月まで。基準日の属する月の `end_date` は基準日。
+- 今回「取り直す期間」= 移動窓 6 つ + 基準日の属する月 + 前月（`is_confirmed` がまだ false のとき。月末 + 7 日 ≤ 基準日 で true になり、その実行で最後に取り直して以後は触らない）。それ以前の月は変えない。
+- 確定した月の参照元ドメイン・市別（§4.1 行 5）は、その月が `is_confirmed` になった実行で 1 回だけ取得する。行がない確定月があれば（失敗で飛んだ場合）同じ実行で補う。
+- 公開後 30 日時点（§4.1 行 10）: `published_on + 29`（30 日目）+ 7 日 ≤ 基準日 かつ `article_summary.referrer_30d_computed_on` が null の記事を対象にする。
+
+## 4. WP REST API からの取得（差分取得、D-03）
+
+事実（親が確認）: `modified` / `modified_gmt` がある、`per_page` 上限 100、`X-WP-Total` / `X-WP-TotalPages` で総数とページ数、`_fields` でネストしたフィールドを指定できる。WP 5.7 以降の `modified_after` パラメータが使えるかは最初の実装で 1 回確認し、使えなければ `orderby=modified&order=desc` で `modified_gmt` が前回実行時刻より新しいものを読み切る。
+
+| 順 | リクエスト | 目的 | 回数 / 日 |
+| --- | --- | --- | --- |
+| 1 | `GET /wp-json/wp/v2/categories?per_page=100&_fields=id,name,parent` | カテゴリ（二階層、同名の子を `path` で区別） | 1（100 を超えればページング） |
+| 2 | `GET /wp-json/wp/v2/tags?per_page=100&_fields=id,name` | タグ | 1〜2 |
+| 3 | `GET /wp-json/wp/v2/posts?status=publish&per_page=100&modified_after=<前回成功の started_at − 1 日>&_fields=id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected` | 追加・更新された記事 | 1（通常 0〜5 件） |
+| 4 | `GET /wp-json/wp/v2/posts?status=publish&per_page=100&_fields=id&page=1..N` | 公開記事の ID 一覧（削除・非公開化の検出） | 3（225 本） |
+| 5 | `GET /wp-json/wp/v2/users/<id>?_fields=name,slug,link` | 3 で現れた、まだ slug に解決していない author ID | 0〜数回 |
+| 6 | 週 1 回（日曜）: `posts?_fields=id,author` 3 回 + 全著者の `users/<id>` | 表示名・URL の変更を反映 | 週 24 回 |
+
+- 間隔: リクエスト間に 1 秒以上空ける（NFR-72）。`User-Agent` に BI の名前とリポジトリ URL を入れる。失敗は 3 回まで指数バックオフで再試行し、それでも失敗したら `wp_fetch` で失敗にする。
+- 処理: `content.protected = true` の記事は取り込まない。既に `wp_post` にあって、今回 (a) ID 一覧にない、または (b) `content.protected = true` になった記事は `wp_post` から削除する（cascade で記事に関する行がすべて消える。FR-72、NFR-34、NFR-52）。
+- 著者: `author`（数値 ID）は `users/<id>` で slug・表示名・URL に解決してから捨てる。ID → slug の対応はメモリにだけ持ち、Supabase には置かない（NFR-35）。
+- 検証: `link` と著者 `link` が `https://takatsu-connect.com/` で始まることを確認する（FR-04、NFR-91）。違えば validation で失敗にする。
+- 初回（バックフィル）は 3 の `modified_after` を付けずに全件を取る（3 回）。
+- 固定ページ（`/wp-json/wp/v2/pages`）は Q-17 が未確定のため取得しない。「記事以外」にまとまる。
+
+## 5. GA4 Data API からの取得
+
+- クライアント: `@google-analytics/data` の `BetaAnalyticsDataClient`（v1beta）。認証は google-github-actions/auth が書く資格情報ファイル（`GOOGLE_APPLICATION_CREDENTIALS`）を Application Default Credentials として拾う（ADR 0002）。プロパティは `properties/${GA4_PROPERTY_ID}`。
+- `runReport` の規則: `dateRanges` は 1 リクエストに最大 4 つ入れられるので、取り直す期間を 4 つずつまとめる。`limit` は既定 10,000 行、最大 250,000 行（2026-11-03 に公式リファレンスで確認）。行数が 10,000 を超えうる問い合わせ（pagePath × 日）は `limit = 100000` を指定し、`rowCount` が上回れば `offset` でページングする。`returnPropertyQuota: true` を常に付け、`propertyQuota.tokensPerDay.remaining` と `tokensPerHour.remaining`、`tokensPerProjectPerHour.remaining` を `batch_run.counts` に件数として記録する。
+- 同時実行はしない（逐次。同時リクエストの割当 10 を使わない）。リクエスト間に 200 ms 空ける。429 / `RESOURCE_EXHAUSTED` は 60 秒待って 1 回だけ再試行し、だめなら `quota` で失敗にする。
+- 取得する次元・指標は 03_data_sources.md §2.4 の範囲に限る。`pageReferrer`、`pageLocation`、`pageTitle`、ユーザー系、検索語、`customEvent:*`（D-15 の結論により page_type も）は使わない。
+
+### 5.1 pagePath の正規化（D-05）と page_type（D-15）
+
+規則（`packages/shared/src/page-path.ts`、単体テスト付き）:
+
+1. 小文字化し、前後の空白を除く。
+2. クエリ文字列とフラグメントは pagePath には含まれない（GA4 の仕様。`pagePathPlusQueryString` は使わない）。含まれていれば `?` 以降を捨てる。
+3. 末尾にスラッシュがなければ付ける。連続するスラッシュは 1 つにする。
+4. `^/(\d+)/$` に一致すれば記事 ID。`wp_post` にある ID なら「記事」、なければ「削除済み・未知の記事」（記事単位では格納しない。02_metrics.md §3）。
+5. 一致しなければ「記事以外」（トップ `/`、`/category/...`、`/tag/...`、`/author/...`、固定ページ、検索結果、404）。記事単位では格納しない。全体の値は全体の問い合わせ（pagePath なし）から取るので、分類はここでは不要。
+6. `/<数字>/<何か>/`（ページ分割 `/4812/2/`、`/4812/amp/`、`/4812/feed/` など）は「記事以外」とする。該当する pagePath が実測で現れるかは未確定（D-05 の残り。親が GA4 で確認し、現れるなら規則 4 を `^/(\d+)/(?:\d+/)?$` に広げるかを決める）。
+
+`/?p=<ID>` 形式は pagePath では `/` になり区別できないが、WordPress は `?p=` をパーマリンクに 301 で転送し GA4 は転送後の URL を記録するため、無視できると見る。
+
+D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は規則 4 で足り、`customEvent:page_type` を次元に足すと行が分割されて pagePath 問い合わせのトークンが増える、(2) 03_data_sources.md §2.4 の取得する次元を増やす必要がある、(3) `page_type = post` でも pagePath が記事 ID でない行（転送前の URL など）の扱いを別に決めることになる。規則 4 を正とする。実装の検証として、バックフィル時に 1 回だけ「page_type = post の表示回数の合計」と「規則 4 で記事と判定した表示回数の合計」を比べ、差が 1% を超えたら Issue にする（この 1 回の問い合わせは診断用で、結果は件数しか記録しない）。
+
+### 5.2 SNS 参照元の正規化（D-02）
+
+規則（`packages/shared/src/sns-source.ts`、単体テスト付き）。`sessionSource` を小文字化し、次の順で判定する。
+
+| 区分 | 完全一致 | 後方一致（`.` を含むドメインの末尾） |
+| --- | --- | --- |
+| instagram | `l.instagram.com`、`instagram.com`、`ig`、`instagram` | `.instagram.com` |
+| facebook | `facebook.com`、`lm.facebook.com`、`l.facebook.com`、`m.facebook.com`、`facebook`、`fb` | `.facebook.com` |
+| x | `t.co`、`twitter.com`、`x.com`、`twitter` | `.twitter.com`、`.x.com` |
+| line | `line.me`、`lin.ee`、`line`、`timeline.line.me` | `.line.me` |
+| other | 上のいずれにも当たらないもの（`threads`、`threads.net` を含む） | ― |
+
+- LINE の値は 2026-11-03 の実測に現れないが、現れたときに拾えるよう規則に入れる。注記（M-11「LINE は実際より少なく見えることがあります」）は維持する。
+- 対応づけられなかった Organic Social の参照元は `sns_source_unmapped` に upsert する（ドメイン名を Actions のログには出さない。NFR-44）。運用担当が月 1 回この表を見て、必要なら規則に追加し、コミットで記録する（規則は公開してよい設定。NFR-22 (1)）。
+- 流入チャネル（M-10）の正規化: `Organic Search` → `search`、`Organic Social` → `social`、`Direct` → `direct`、`Referral` → `referral`、それ以外（AI Assistant、Email、Organic Video、Unassigned、Paid 系、Cross-network、Display、Affiliates、Audio、SMS、Mobile Push Notifications）→ `other`。「その他」に含めた区分の一覧は画面の注記に出す（05_screens.md、2 回目）。
+
+### 5.3 ユーザー数の期間取得（D-06）
+
+- `activeUsers` は期間単位でだけ取る（日別の合計はしない）。取り直す期間（最大 8 つ）を 4 つずつ `dateRanges` にまとめ、次元なしで `activeUsers` と `userEngagementDuration` を同時に取る（1 期間集合あたり 2 リクエスト）。
+- `newVsReturning × activeUsers` も同じまとめ方で 2 リクエスト。`new` / `returning` 以外（空、`(not set)`）は `unknown` に入れる。
+- 日別推移の切り替え表示（FR-11）で日別のユーザー数を見せる要件は M-03 の粒度欄にあるが、05 §4.1 の表に「全体 × 日: 読んだ人の数」の行はないため、初回では日別のユーザー数は格納・表示しない（M-03 と 05 §4.1 の不一致。Q-35 として依頼者と security-auditor に確認する）。
+- 月ごとの値は `period` の月行ごとに持つので、FR-01 の月別と前年同月も同じ表から引ける。
+
+### 5.4 問い合わせの一覧
+
+「期間集合」= 取り直す期間（通常 8 つ、4 つずつ 2 リクエスト）。「直近 7 日」= `dateRanges: [{startDate: 基準日 − 6, endDate: 基準日}]`。日次の回数は通常日。
+
+| # | 次元 | 指標 | フィルタ | 期間 | 格納先 | 回数 / 日 |
+| --- | --- | --- | --- | --- | --- | --- |
+| G1 | date | screenPageViews、sessions | ― | 直近 7 日 | site_daily | 1 |
+| G2 | date、sessionDefaultChannelGroup | sessions | ― | 直近 7 日 | site_daily_channel | 1 |
+| G3 | date、deviceCategory | screenPageViews、sessions | ― | 直近 7 日 | site_daily_device | 1 |
+| G4 | date、pagePath | screenPageViews | ― | 直近 7 日 | article_daily | 1（約 2,000 行） |
+| G5 | （なし） | activeUsers、userEngagementDuration | ― | 期間集合 | site_period | 2 |
+| G6 | newVsReturning | activeUsers | ― | 期間集合 | site_period_breakdown(new_returning) | 2 |
+| G7 | sessionSource | sessions | sessionDefaultChannelGroup = Organic Social | 期間集合 | site_period_breakdown(sns) | 2 |
+| G8 | dayOfWeek、hour | screenPageViews | ― | 期間集合 | site_period_heatmap | 2 |
+| G9 | country、region、city | sessions | ― | 期間集合 | site_period_breakdown(local) に 3 区分へ畳んで格納。確定月は site_month_city（上位 10、Japan、T 以上） | 2 |
+| G10 | landingPage | sessions | ― | 期間集合 | article_period.landing_sessions | 2 |
+| G11 | pagePath | userEngagementDuration | ― | 期間集合 | article_period.engagement_seconds | 2 |
+| G12 | pagePath | eventCount | eventName = scroll | 期間集合 | article_period.scroll_count | 2 |
+| G13 | landingPage、sessionDefaultChannelGroup | sessions | ― | 期間集合 | article_period_breakdown(channel)、author_period_breakdown(channel) | 2 |
+| G14 | landingPage、sessionSource | sessions | sessionDefaultChannelGroup = Organic Social | 期間集合 | article_period_breakdown(sns)、author_period_breakdown(sns) | 2 |
+| G15 | landingPage、deviceCategory | sessions | ― | 期間集合 | article_period_breakdown(device) | 2 |
+| G16 | sessionSource | sessions | sessionDefaultChannelGroup = Referral | 確定した月 | site_month_referrer（上位 10、T 以上） | 月 1 |
+| G17 | sessionSource | sessions | landingPage = `/<ID>/` かつ sessionDefaultChannelGroup = Referral | 記事の公開日〜30 日目 | article_referrer_30d（上位 3、T 以上） | 記事 1 本につき 1。1 日 0〜2 |
+| G18 | pagePath | eventCount | eventName = AddToAnyShare | 期間集合 | site_period.share_count、author_period_share | 2（FR-61 を含める場合のみ） |
+
+- G9 の 3 区分: `country = Japan かつ city = Kawasaki` → `kawasaki`、`country = Japan かつ city がそれ以外（(not set) 以外）` → `japan_other`、`country ≠ Japan` または `city` が `(not set)` / 空 → `unknown`（M-14 は「国内」の分母に不明を含めるため、国外も `unknown` に入れる。国外を分けて出す要件はない）。移動窓では市別の行を格納しない（取得はするが 3 区分に畳んでから捨てる）。
+- G13・G14 の landingPage は記事 ID に正規化し、記事以外の landingPage は捨てる。著者別は、同じ応答から著者ごとに記事の生値を合算してから伏せる（新たな問い合わせは不要）。
+- 著者別の SNS（FR-33）も G14 から。カテゴリ・タグ × 内訳軸 は格納しない（05 §4.1）。
+
+## 6. 集計と伏せ値
+
+### 6.1 伏せ値と二次伏せのアルゴリズム
+
+`packages/shared/src/mask.ts`（単体テスト付き。入力はバケット名と生値の配列、出力は値と `_mask`）。
+
+1. 排他的な区分のすべてのバケットを揃える（GA4 が返さなかったバケットは 0。D-16 の既定では 0 は伏せない）。
+2. `1 ≤ 値 < T` のセルを `threshold` で伏せる（値を null にする）。
+3. 二次伏せ: 伏せたセルがちょうど 1 つで、伏せていないセルが 1 つ以上あるとき、伏せていないセルのうち最小のもの（同値なら固定の区分順で先のもの）を `secondary` で伏せる。伏せたセルが 0 または 2 以上のときは何もしない。
+4. 排他的でない集計（曜日 × 時間帯、参照元ドメインの上位 N、市別の上位 N、記事 × 期間の単独値）は手順 2 だけ。上位 N は「T 未満の行を落としてから上位 N を取る」。
+
+適用先は 05 §4.1 のとおり。合計・累積（記事の期間合計、M-18 の累積、著者・カテゴリ・タグの合計、公開本数、全体の読まれていた時間の合計、著者 × カテゴリ）は手順 1 の前の生値から計算する。
+
+### 6.2 派生指標の計算
+
+すべてバッチ（TypeScript）が `article_daily` と `wp_post` から計算する。計算式は 02_metrics.md §4.3。
+
+- `article_period.pageviews` = 期間内の `article_daily.pageviews` の合計。
+- 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
+- 分布（M-19、`benchmark_curve`）: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は線形補間（`percentile_cont` と同じ）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。
+- 帯（band）: `pv_7d` を `benchmark_curve(all, 7)` の p25 / p75 と比べて `lower` / `middle` / `upper`。`band_30d` は age_days ≥ 30 なら n = 30、未満なら n = age_days（「◯日目」として同じ日数の帯と比べる。M-20）。age_days < 3 は null。
+- M-22: `is_recent_hot` = age_days ≥ 15 かつ 直近 7 日の PV ≥ 20 かつ 直近 7 日 PV ≥ 2 × (その前 28 日の PV ÷ 4)。`is_revival` = `is_recent_hot` かつ age_days ≥ 91。表示件数の上限（各著者 5、全体 10）は BI 側で `is_recent_hot` の記事を直近 7 日 PV の多い順に切る。
+- M-23: 節目（500、1,000、5,000、10,000）を初めて超えた日 = 累積がその値以上になった最初の `day`。`is_evergreen_365` = age_days ≥ 365 かつ 直近 28 日の PV ≥ 20。
+- M-24: 著者の記事のうち 直近 12 か月公開・age_days ≥ 30 の `pv_30d` の中央値。該当 5 本未満なら null。
+- 削除された記事は `wp_post` から消えているので、どの計算にも入らない。
+
+### 6.3 遅延データと伏せ値（D-08）
+
+- 直近 7 日の日別値と、移動窓・当月・未確定の前月の期間値は毎回まるごと再計算し、同じキーに upsert する。前回の伏せ判定は参照しない（「一度伏せたら伏せ続ける」などの状態は持たない）。
+- GA4 の値は遅延データで増える方向にしか変わらないため、再取得で変わる判定は「伏せ → 表示」が主で、「表示 → 伏せ」は移動窓がずれたことによる別のセルの判定である。移動窓の日次差分で日別の内訳が復元されうる点は、粗い排他的区分に限って許容した（ADR 0003 判断 3）。識別性の高い次元は確定した値だけを 1 回格納するので、再取得で変わらない。
+- 遅延の最大 7 日を超えて値が変わっても、それ以前の日別値は取り直さない（FR-71 の範囲）。月は `is_confirmed` 後に触らないので、7 日以降の遅延は月の値に反映されない。これは「確定した暦月」の定義（05 §4.1）に沿う。
+
+## 7. 格納
+
+- supabase-js（service role キー）で `upsert`（`onConflict` に PK）。1,000 行ずつ。upsert の前に `period` を更新する（FK のため）。
+- 全置換する表（`benchmark_curve`、`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（一瞬でも空にならないようにする）。
+- 移動窓（`period.kind = window`）の期間別行は upsert で上書きされる（キーが固定 ID なので古い日付範囲の行は残らない）。記事が増減した分は「今回のキー集合にない行を delete」で揃える。
+- 書き込み件数は `batch_run.counts` に残す。行の内容はログに出さない。
+
+## 8. 公開（キャッシュ更新）
+
+- 工程 7 で Vercel の Deploy Hook（Secrets `VERCEL_DEPLOY_HOOK_URL`）を POST する。Vercel がリポジトリの main をビルドし、ビルド時に `pub_*` ビューを anon キーで読んで全ページを静的生成する（ADR 0006）。
+- ビルドが失敗したときは前回のデプロイが残り、`pub_meta.base_date` は進んでいるが画面は古いままになる。Vercel のビルド失敗通知（メール）を運用担当が受ける。BI の FR-02 表示はビルド時の `pub_meta` を埋め込むので、画面の「◯月◯日までのデータ」はその画面が生成された時点の値になる。
+- 除外リストの変更後は `workflow_dispatch` の `publish_only` で Deploy Hook だけを呼ぶ（NFR-11）。
+
+## 9. 直近 7 日の再取得と再実行
+
+- 毎回、基準日から過去 7 日（基準日を含む 7 日）の日別値を取り直して上書きする（FR-71、NFR-03）。
+- 再実行（手動、または 2 本目の cron）は同じ基準日で同じ結果になる（冪等）。`BASE_DATE` を過去日にして実行すると、その日を基準日とした移動窓を上書きするので、通常は使わない（試験用）。
+- 失敗した翌日は、前日ぶんも「直近 7 日」に含まれるので日別値は自動で埋まる。期間値も移動窓なので自動で追いつく。欠けうるのは (a) `is_confirmed` になった月の参照元・市別、(b) 30 日が経過した記事の参照元上位 3、で、いずれも「行がない対象を次回に補う」規則（§3）で埋まる。
+
+## 10. 初回バックフィル
+
+`workflow_dispatch` で `mode = backfill`、`from = 2025-10-08`（設定値 `BACKFILL_START`、FR-75）、`to = 基準日`。手順:
+
+1. wp_fetch を全件で実行（3 リクエスト + 著者 21 人）。
+2. ga4_daily を 90 日ずつに分割して実行（G1〜G4 を 5 回ずつ。G4 は 90 日 × 300 pagePath ≈ 27,000 行 → `limit = 100000` で 1 リクエスト）。
+3. period: 2025-10 以降のすべての月行を作る。
+4. ga4_period を「移動窓 6 + 全月（14）」= 20 期間 = 4 つずつ 5 集合で実行（G5〜G15 の各 11 種 × 5 = 55 リクエスト。G13・G14 は 1 期間で 300 記事 × 5 区分 = 1,500 行なので 4 期間で 6,000 行、既定の 10,000 行に収まる）。
+5. 確定した全月について G16（14 リクエスト）、G9 の確定月ぶんは手順 4 の応答から上位 10 を取る。
+6. 30 日が経過した全記事について G17（約 220 リクエスト）。
+7. derive、write、publish。
+
+- 冪等なので失敗したら最初からやり直してよい。長くなる場合は `--phase` で手順 2、4、6 を別々に実行できるようにする。
+- 割当: §11 のとおり 1 回で収まる見込みだが、`tokensPerProjectPerHour.remaining` が 2,000 を下回ったら処理を止めて `quota` で終了し、1 時間後に再実行する（G17 が最も多いので、手順 6 は記事 50 本ごとに残量を確認する）。
+- 所要時間: リクエスト約 300 × (応答 1 秒 + 間隔 0.2 秒) ≈ 6〜8 分。`timeout-minutes: 60`。
+- 2025-11 の不連続な値（03_data_sources.md §2.6）はそのまま取り込む（理由は確認しない）。
+
+## 11. GA4 の割当の見積もり（D-01）
+
+事実（2026-11-03、親が確認）: Core トークン 1 日 200,000、1 時間 40,000、1 プロジェクト × プロパティ 1 時間 14,000。ほとんどのリクエストは 10 トークン以下。
+
+| 区分 | リクエスト数 | 1 リクエストの見込みトークン | 小計 |
+| --- | --- | --- | --- |
+| 通常日: G1〜G3、G5〜G8、G10〜G12（低カーディナリティ） | 17 | 10 | 170 |
+| 通常日: G4、G13〜G15（pagePath / landingPage を含む） | 7 | 30（高カーディナリティ次元の加算を見込む） | 210 |
+| 通常日: G9（city、約 250 行 × 4 期間） | 2 | 20 | 40 |
+| 通常日: G16、G17（月 1、日 0〜2） | 0〜3 | 10 | 30 |
+| 通常日 合計 | 約 30 | | 約 450（1 時間 14,000 の 3%、1 日 200,000 の 0.3%） |
+| バックフィル: ga4_daily（90 日ずつ 5 回） | 20 | 30〜100（G4 は 27,000 行） | 1,000 |
+| バックフィル: ga4_period（20 期間を 5 集合） | 55 | 10〜30 | 1,200 |
+| バックフィル: G16、G17 | 234 | 10 | 2,400 |
+| バックフィル 合計 | 約 310 | | 約 5,000（1 時間 14,000 の 35%） |
+
+- 見込みが 5 倍外れても、通常日は 2,500、バックフィルは 25,000 で、1 日 200,000 に収まる。バックフィルが 1 時間 14,000 を超える場合だけ §10 の残量チェックで分割される。
+- 実測は `returnPropertyQuota` の値を `batch_run.counts.ga4_tokens` に記録し、初回のバックフィルと最初の 1 週間で見込みと比べる。見込みの 3 倍を超えたら D-01 を開き直す。
+- 同時リクエスト 10、サーバーエラー 1 時間 10 は、逐次実行と再試行 1 回の設計で超えない。
+
+## 12. 60 日停止対策（D-07）
+
+public リポジトリの定期実行は 60 日間リポジトリに活動がないと止まる（親が確認）。対策は 2 段。
+
+1. 止めない: 日次ワークフローの最後に `heartbeat` ジョブを置く。main の最新コミットが 45 日以上前なら `ops/heartbeat.txt` に基準日を書いてコミット・push する（`permissions: contents: write` はこのジョブだけ。NFR-45 (1)）。通常は Dependabot や文書更新のコミットで 45 日以内に活動があり、heartbeat は動かない。コミットメッセージは固定文（「heartbeat: 定期実行の維持」）で、データや秘密を含めない。
+2. 止まったことに気づく: BI の FR-02 表示は、ビルド時の `pub_meta.base_date` が前日より古ければ「更新が遅れています」と出す。ただし、ワークフローが止まると再ビルドも起きず、画面は最後のビルドの状態で固まる。そこで BI のクライアント側で「今日の日付 − 表示中の基準日 ≥ 3 日」なら同じ注記を出す（JavaScript で現在日付と比較する。データは読まない）。加えて、運用担当が月 1 回 Actions の実行一覧を確認する手順を docs/operations/ に書く（デプロイ工程）。
+
+Supabase Free は 1 週間アクセスがないと一時停止するが、日次バッチが書き込むので止まらない。バッチが 60 日停止で止まれば 1 週間後に Supabase も止まり、復旧は Supabase の再開 → バッチ再実行の順になる（運用手順に書く）。
+
+## 13. カテゴリ別ヒートマップの可否（D-12）
+
+- 実現方法はある: バッチが G8 と同じ問い合わせに `pagePath` の `inListFilter`（カテゴリに属する記事の pagePath、最大 ...）を付けて期間ごとに取り、T を適用して `category_period_heatmap` に格納し、公開ビューで出す。記事 × 曜日 × 時間帯 は格納しないので、05 §4.1 の「格納しないもの」には触れない。ただし「カテゴリ × 曜日 × 時間帯」は現在「格納しないもの」に明記されているため、実現には NFR-39 の手順（05 §4.1 の表の変更、ADR、security-auditor のレビュー）が要る。
+- コスト: 子カテゴリ約 20 × 期間 8 ÷ 4 = 40 リクエスト / 日の追加（約 400 トークン）。`inListFilter` の値の上限（記事数が多いカテゴリで 100 本超）に当たる可能性があり、親カテゴリ 4 つに限るのが現実的。
+- 結論: 初回では提供しない（要件のとおり優先度 低）。提供するときは親カテゴリ 4 区分に限り、05 §4.1 に「親カテゴリ × 期間 × 曜日 × 時間帯（伏せ値あり）」の行を追加して NFR-39 の手順を踏む。
+
+## 14. 失敗時の扱いと通知
+
+- どの工程で失敗しても `batch_run` を `failed` にし、`failed_step` と `error_kind` だけを記録する。例外のメッセージとスタックは Actions のログにも出さない（NFR-44。エラーの種別に分類できないものは `unknown`）。
+- 通知（FR-74）: 通知先は Q-12 で未確定。実装は GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。Q-12 の回答まではワークフロー失敗時の GitHub のメール通知（リポジトリの管理者に届く）で代える。
+- BI は前回の成功時のデータで表示を続ける（NFR-90）。失敗した日は Deploy Hook を呼ばないので画面は変わらず、FR-02 の表示が「更新が遅れています」になる（§12 のクライアント側の判定）。
+
+## 15. ログの規律
+
+Actions のログは誰でも読める（public リポジトリ）。出すのは次だけ（NFR-44、security.md「GitHub Actions」）。
+
+- 工程の開始・終了、所要時間。
+- 件数: GA4 リクエスト数と消費トークン、WP リクエスト数、取り込んだ記事数、削除した記事数、書き込んだ行数。
+- エラーの種別（§14）。
+- 出さないもの: API の応答本文、行データ（記事タイトル、著者名、pagePath、参照元ドメイン、市名を含む）、トークン、プロパティ ID、Supabase の URL とキー、除外リストの内容。環境変数の一覧を出す `env` や `printenv` を使わない。`ACTIONS_STEP_DEBUG` は使わない。
+- ロガーは `packages/shared/src/log.ts` に 1 つだけ置き、引数を件数・文字列の種別・所要時間に限った関数（`logCount(step, name, n)` など）だけを公開する。任意のオブジェクトを出す関数を作らない。
+
+## 16. 設定値と環境変数
+
+公開してよい設定（リポジトリ内、`packages/shared/src/config.ts`。変更はコミットで記録。NFR-22 (1)）:
+
+| 名前 | 既定 | 根拠 |
+| --- | --- | --- |
+| MASK_THRESHOLD | 5 | NFR-33、FR-73 |
+| MASK_ZERO | false | D-16（未確定） |
+| RATIO_MIN_DENOMINATOR | 20 | NFR-96 |
+| RECENT_HOT_MIN_PV_7D | 20 | M-22 |
+| RECENT_HOT_MIN_AGE_DAYS | 15 | M-22 |
+| LONG_AGE_DAYS | 91 | M-21 |
+| BENCHMARK_MIN_POPULATION | 30 | M-19 |
+| OWN_MEDIAN_MIN_POSTS | 5 | M-24 |
+| MILESTONES | 500, 1000, 5000, 10000 | M-23 |
+| BACKFILL_START | 2025-10-08 | FR-75、NFR-50 |
+| REFETCH_DAYS | 7 | FR-71 |
+| CONFIRM_DELAY_DAYS | 7 | 05 §4.1「確定した暦月」 |
+| AD_CATEGORY_ID | 188 | Q-08 |
+| TOP_N_REFERRER_SITE / TOP_N_CITY / TOP_N_REFERRER_ARTICLE | 10 / 10 / 3 | M-12、M-14 |
+| SITE_ORIGIN | https://takatsu-connect.com | FR-04 |
+| WP_REQUEST_INTERVAL_MS | 1000 | NFR-72 |
+
+秘密情報（環境変数。`.env.example` には名前だけ。06 §3）:
+
+| 名前 | 置き場所 | 用途 |
+| --- | --- | --- |
+| GCP_WORKLOAD_IDENTITY_PROVIDER | Actions Secrets | WIF（initial_setup.md §2） |
+| GCP_SERVICE_ACCOUNT | Actions Secrets | 同上 |
+| GA4_PROPERTY_ID | Actions Secrets | Data API のプロパティ |
+| SUPABASE_URL | Actions Secrets、Vercel 環境変数 | プロジェクト URL |
+| SUPABASE_SERVICE_ROLE_KEY | Actions Secrets のみ | 内部表への書き込み |
+| SUPABASE_ANON_KEY | Vercel 環境変数のみ（`NEXT_PUBLIC_` を付けない） | ビルド時に `pub_*` を読む |
+| VERCEL_DEPLOY_HOOK_URL | Actions Secrets | 再ビルドの起動 |
+| NOTIFY_WEBHOOK_URL など | Actions Secrets | 失敗通知（Q-12 の回答後に名前を決める） |
+| BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行 |
+
+## 17. 未確定
+
+- Q-13: 実行時刻 T（仮 17:00 JST、鮮度 18:00）。cron の遅延を踏まえ、1 回目を 16:30 JST に前倒しする案も依頼者に示す。
+- Q-12: 失敗通知の宛先。
+- Q-35（新規）: 日別のユーザー数（M-03 の「日別推移の切り替え表示用に日別も取得」、FR-11 の切り替え）は 05 §4.1 の表にないため格納していない。表に「全体 × 日: 読んだ人の数（伏せ値なし）」を追加するか、FR-11 の切り替えからユーザー数を外すかを依頼者と security-auditor に確認する。
+- D-05 の残り: `/<ID>/<何か>/` の pagePath が実測で現れるか（親が GA4 で確認）。
+- D-03 の残り: `modified_after` が対象サイトの WordPress で使えるか（実装時に 1 回確認。使えなければ §4 の代替）。
+- D-09: `AddToAnyShare` のサービス別パラメータは、Data API ではカスタム次元として登録されたイベントパラメータしか取れず、登録済みのカスタム次元 11 個にシェア先に当たるものがない（03_data_sources.md §2.6）ため、取れない。M-41 は合計（全体・著者）だけにする。これで D-09 は確認済みとする。
+- 全体 × 日 × 流入チャネルの「二次伏せ」で、日によっては 5 区分のうち 2〜3 区分が伏さる見込み（other、referral が小さい）。表示の見え方は 05_screens.md（2 回目）で扱う。

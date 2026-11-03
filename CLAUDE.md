@@ -18,7 +18,7 @@ WordPress で運営する「高津コネクト」(https://takatsu-connect.com/) 
 | --- | --- | --- |
 | 要件定義 | requirements-analyst | docs/requirements/ |
 | 設計 | architect | docs/design/（ADR は docs/design/adr/） |
-| 構築 | backend-engineer, frontend-engineer, qa-engineer, code-reviewer | src/, tests/ |
+| 構築 | backend-engineer, frontend-engineer, qa-engineer, code-reviewer | apps/batch/（日次バッチ）, apps/web/（BI）, packages/shared/, supabase/migrations/（ADR 0004 の monorepo 構成。各 apps 配下に tests を置く） |
 | デプロイ | devops-engineer | docs/operations/, .github/workflows/, Dockerfile など |
 | 横断 | tech-writer | docs/ 全体, docs/glossary.md, README.md |
 | 横断 | security-auditor | docs/security/audits/（監査報告。コードや設定は変更しない） |
