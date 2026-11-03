@@ -54,4 +54,4 @@ docs/
 ## 現在の状況
 - 2026-11-03: リポジトリを初期化し、エージェント定義と本ファイルを追加。
 - 2026-11-03: 全体構成を決定（GitHub Actions の日次バッチ → Supabase → Vercel の BI。ログインなしで公開。リポジトリは public）。security-auditor と .claude/rules/security.md を追加し、初期監査を実施。GitHub の設定を堅牢化（docs/operations/initial_setup.md）。
-- 2026-11-03: 要件定義の草案を docs/requirements/ に作成（状態: 草案）。open_questions.md の Q-01〜Q-25 への依頼者の回答待ち。回答を反映し security-auditor のレビューを受けてから「確定」にし、設計へ進む。
+- 2026-11-03: 要件定義の草案を docs/requirements/ に作成。analytics-advisor（指標と見せ方の助言。docs/requirements/advice/）を追加し、助言を全採用。security-auditor の要件レビュー 2 回（docs/security/audits/）の指摘を反映し、状態を「レビュー中」に。残りは open_questions.md の依頼者回答（Q-04〜Q-07 ほか）と GA4 の確認スクリプトの結果。公開データの線引き（05 §4.1）に関する判断は設計工程で ADR に書く（D-14）。
