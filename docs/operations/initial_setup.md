@@ -73,7 +73,7 @@ gh api -X PUT repos/takatsu-connect/access-analyzer/actions/permissions/fork-pr-
 - SA の JSON 鍵が 1 つ作られ、ローカルの `credentials/`（.gitignore 済み、追跡も履歴もなし）にある。WIF の動作確認後に GCP 側とローカルの両方を削除する。
 - GA4 のプロパティ ID（数字）は `credentials/GA4_PropertyID.txt` に控えてある。測定 ID `G-79CFGF83VT` とは別物で、Data API はプロパティ ID を使う。
 - 2026-11-03: 手順 1 の API 有効化は依頼者が実行済み（iam、cloudresourcemanager、iamcredentials、sts、analyticsdata。analyticsadmin は以前から有効）。GA4 の設定と規模を確認するため、GCP プロジェクトの所有者アカウントに SA の「サービス アカウント トークン作成者」ロールを付与し、ローカルから読み取り専用で借用した。この付与はローカル確認用で、WIF 移行後に不要なら外す（運用で使うなら docs/operations/ の権限一覧に載せる）。
-- リポジトリは 2026 年 7 月 15 日より後に作られたため、OIDC トークンの `sub` は新形式 `repo:takatsu-connect@<所有者ID>/access-analyzer@<リポジトリID>:ref:refs/heads/main`。下の手順は `sub` に依存せず、`repository` と `ref` の主張で判定する。
+- リポジトリは 2026 年 7 月 15 日より後に作られたため、OIDC トークンの `sub` は新形式 `repo:takatsu-connect@<所有者ID>/access-analyzer@<リポジトリID>:ref:refs/heads/main`。下の手順は `sub` に依存せず、`repository`、`repository_id`、`ref` の主張で判定する。
 
 ### 仕組み
 
