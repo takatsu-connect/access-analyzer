@@ -21,6 +21,7 @@ WordPress で運営する「高津コネクト」(https://takatsu-connect.com/) 
 | 構築 | backend-engineer, frontend-engineer, qa-engineer, code-reviewer | src/, tests/ |
 | デプロイ | devops-engineer | docs/operations/, .github/workflows/, Dockerfile など |
 | 横断 | tech-writer | docs/ 全体, docs/glossary.md, README.md |
+| 横断 | security-auditor | docs/security/audits/（監査報告。コードや設定は変更しない） |
 
 ## docs/ の構成
 ```
@@ -29,6 +30,7 @@ docs/
   design/         設計（構成、技術選定、データモデル、パイプライン、API、画面、セキュリティ、テスト計画、トレース表）
   design/adr/     Architecture Decision Record（NNNN-題名.md）
   operations/     環境、デプロイ手順、CI/CD、運用手順、監視、コスト
+  security/audits/  セキュリティ監査の報告（YYYY-MM-DD-範囲.md）
   glossary.md     用語集
 ```
 
@@ -43,6 +45,7 @@ docs/
 - 外部の事実（API 仕様、料金、制限）は、依頼する側が先に集めて、確認日と出典つきの事実票として渡す。
 - 読ませるファイルは行範囲つきで列挙し、10 本以内・合計 15 万文字までを目安にする。
 - 依頼に所要時間の上限を書き、終了時に所要時間とツール呼び出し回数を報告させる。
+- セキュリティ監査（security-auditor）は、要件・設計の確定前、初回公開前、.github/workflows/ や Supabase の権限や認証に触れる変更のあと、定期点検のときに依頼する。致命的・高の指摘は Issue にして修正してから次の工程へ進む。
 
 ## 現在の状況
 - 2026-11-03: リポジトリを初期化し、エージェント定義と本ファイルを追加。要件定義は未着手。
