@@ -3,16 +3,18 @@
 - 状態: 草案
 - 更新日: 2026-11-03
 - 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36、FR-73、FR-76、ADR 0003、ADR 0005、ADR 0007
+- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
 
 ## 1. 方針
 
 - 05 §4.1 の表を「そのまま実装」する。表にない組み合わせの表・列・ビューは作らない（NFR-33）。
-- 表は 2 種類に分ける。
-  - 内部表（§3）: 日次バッチ（GitHub Actions、service role）だけが読み書きする。anon ロールには一切の権限を与えない（RLS 有効、grant なし）。
-  - 公開ビュー（§4、名前は `pub_` で始まる）: anon ロールが select できる唯一の対象。BI（Vercel のビルド）はこのビューだけを読む。伏せ値を適用済みの値だけを置き、生の内訳セルは置かない。除外著者（FR-36）の記事行・著者行は公開ビューで除く（ADR 0005）。
+- 表は 2 種類に分け、スキーマも分ける（設計レビュー M-7）。
+  - 内部表（§3）: スキーマ `internal`。日次バッチ（GitHub Actions、service role）だけが読み書きする。anon / authenticated / PUBLIC には `internal` スキーマへの usage を与えず、Supabase の API 設定「Exposed schemas」にも含めない（PostgREST から見えない）。加えて全表で RLS 有効、grant なし。
+  - 公開ビュー（§4、名前は `pub_` で始まる）: スキーマ `public`。anon ロールが select できる唯一の対象。BI（Vercel のビルド）はこのビューだけを読む。ビューは所有者（postgres）権限で `internal` の表を読む。伏せ値を適用済みの値だけを置き、生の内訳セルは置かない。除外著者（FR-36）の記事行・著者行は公開ビューで除く（ADR 0005）。
 - 合計・累積は伏せる前の値から計算する。内部表のうち「記事 × 日」「全体 × 日」「読まれていた時間の合計」など 05 §4.1 で「伏せ値なし」とされたものは生値で持ち、それ以外の内訳セルは伏せ処理後の値だけを持つ（内部表にも生の内訳セルは残さない。バッチのメモリ上でだけ生値を扱う）。
-- 集計の実行場所は ADR 0007 のとおり。GA4 から期間ごとに取得する集計値と、伏せ値・二次伏せ・分布（M-19）・判定（M-22、M-23、M-24）はバッチ（TypeScript）が計算して表に書く。記事の期間合計から導ける著者・カテゴリ・タグの合計と公開本数は、公開ビュー（SQL）が計算する。
-- スキーマはすべて `public` に置く（Supabase の API が公開するスキーマ）。内部表は grant で守り、公開ビューだけを anon に許す（§6）。
+- 集計の実行場所は ADR 0007 のとおり。GA4 から期間ごとに取得する集計値と、伏せ値・二次伏せ・分布（M-19）・判定（M-22、M-23、M-24）はバッチ（TypeScript）が計算して表に書く。記事の期間合計から導ける著者・カテゴリ（親・子）・タグ・鮮度区分の合計と公開本数は、公開ビュー（SQL）が計算する。
+- 除外（FR-36）の規則（05 §4.1 用語「除外後」、設計レビュー H-1）: 記事の値から合算する集計（著者、カテゴリの親・子、タグ、鮮度区分の合計・記事数・1 本あたりの中央値）はすべて除外後。除外込みは GA4 のサイト全体値（`site_daily`、`site_daily_*`、`site_period`、`site_period_breakdown`、`site_period_heatmap`、`site_month_*`）と公開本数の件数（`pub_posting_monthly`、`pub_posting_period` の `post_count`）だけ。
+- シェア数（M-41、FR-61）は初回対象外。表・列・問い合わせを作らない（設計レビュー M-4）。実装するときは NFR-39 の手順で 05 §4.1 に行を追加してから着手する。
 - スキーマ変更はマイグレーションファイル（`supabase/migrations/NNNN_*.sql`）で行う（NFR-73、§8）。
 
 ## 2. 共通の表現（時刻、期間、伏せ値、キー）
@@ -43,7 +45,8 @@
 - 公開ビューには `<指標名>` だけを出し、`_mask` 列は出さない。二次伏せかどうかを公開すると「伏せたセルのうち 1 つは T 以上」と分かり、合計との差から値を狭められるため。画面では一次伏せ・二次伏せの区別なく「—」と表示し、セルの近くに「伏せ値」と添える（確定、2026-11-03、Q-33。理由は ADR 0003 判断 5。表示の規則は 05_screens.md §2.3）。
 - しきい値 T = 5（NFR-33）は設定値 `MASK_THRESHOLD` で、バッチが実行記録（`batch_run.mask_threshold`）に残す。
 - 参照元ドメイン・市別の各行の伏せ値は「T 未満の行を格納しない」で表す（ホスト名・市名そのものが識別性を持つため、値だけ伏せて名前を残さない）。
-- 0 の扱い（GA4 が行を返さない区分）は D-16（未確定。設計の既定は「0 は伏せず 0 と格納し、二次伏せの候補にはなる」。§9）。
+- 0 の扱い（GA4 が行を返さない区分）: 0 として格納し、伏せない（D-16 確定、2026-11-03、設計レビュー M-1）。二次伏せで追加して伏せるセルは「伏せていない、値が T 以上のセルのうち最小」で、0 と T 未満のセルは候補にしない。該当がなければ追加しない（03 §6.1、ADR 0003 判断 2）。
+- 階層差分（設計レビュー M-2）: 著者 × 内訳軸 のセルは、同じ bucket で伏せた記事セルがちょうど 1 本のときは著者セルも伏せる（`_mask = secondary`）。§3.3 `author_period_breakdown`、03 §6.1 手順 5。
 
 ### 2.4 キーと命名
 
@@ -55,7 +58,7 @@
 
 ## 3. 内部表（anon から読めない）
 
-すべて `public` スキーマ。すべて RLS 有効、anon / authenticated への grant なし。`updated_at timestamptz not null default now()` は全表に付け、以下では省く。
+すべて `internal` スキーマ（設計レビュー M-7。以下の表名は `internal.` を省く）。すべて RLS 有効、anon / authenticated への grant なし。`updated_at timestamptz not null default now()` は全表に付け、以下では省く。
 
 ### 3.1 WordPress 由来の次元表
 
@@ -157,22 +160,20 @@
 | engagement_seconds | bigint | not null。userEngagementDuration の合計（M-06 の分子。伏せ値なし） |
 | active_users | integer | null = 伏せ。期間単位で取得した activeUsers（M-03、D-06） |
 | active_users_mask | text | |
-| share_count | integer | null = 伏せ。eventCount（eventName = AddToAnyShare、M-41。優先度 低） |
-| share_count_mask | text | |
 
-読まれた回数・訪問回数の期間合計は `site_daily` から公開ビューが合計する（別表に持たない）。
+読まれた回数・訪問回数の期間合計は `site_daily` から公開ビューが合計する（別表に持たない）。シェア数（`share_count`、M-41）の列は置かない（初回対象外。設計レビュー M-4。FR-61 を実装するときは NFR-39 で 05 §4.1 に行を追加してから列を足す）。
 
-`site_period_breakdown`（行 4: 全体 × 期間 × SNS 種別 / 初めて・また来た、行 6: 地元の読者の目安。いずれも二次伏せあり）
+`site_period_breakdown`（行 4: 全体 × 期間 × SNS 種別 / 初めて・また来た、行 6: 地元の読者の目安、Q-36: 全体 × 期間 × 流入チャネル / デバイス。いずれも二次伏せあり）
 
 | 列 | 型 | 制約・意味 |
 | --- | --- | --- |
 | period_id | text | PK の一部、FK → period |
-| axis | text | PK の一部。`sns`（M-11、値は sessions）/ `new_returning`（M-15、値は activeUsers）/ `local`（M-14 の 3 区分、値は sessions） |
-| bucket | text | PK の一部。sns: `instagram` / `facebook` / `x` / `line` / `other`。new_returning: `new` / `returning` / `unknown`。local: `kawasaki` / `japan_other` / `unknown` |
+| axis | text | PK の一部。`sns`（M-11、値は sessions）/ `new_returning`（M-15、値は activeUsers）/ `local`（M-14 の 3 区分、値は sessions）/ `channel`（M-10 の 5 区分、値は sessions。FR-13）/ `device_pv`（M-13 の 3 区分、値は screenPageViews。FR-14）/ `device_sessions`（M-13 の 3 区分、値は sessions。FR-14）。`channel` と `device_*` は Q-36 の確定（2026-11-03）で追加。期間ごとに GA4 から直接取る（03 §5.4 G19・G20）。日別表 `site_daily_channel` / `site_daily_device` の合算では伏せ値の分だけ過小になるため、合算しない |
+| bucket | text | PK の一部。sns: `instagram` / `facebook` / `x` / `line` / `other`。new_returning: `new` / `returning` / `unknown`。local: `kawasaki` / `japan_other` / `unknown`。channel: `search` / `social` / `direct` / `referral` / `other`。device_pv / device_sessions: `mobile` / `desktop` / `tablet` |
 | value | integer | null = 伏せ |
 | value_mask | text | |
 
-`site_period_heatmap`（行 4: 全体 × 期間 × 曜日 × 時間帯。伏せ値あり、二次伏せなし。168 セルは排他的だが合計 − 他セルで 1 セルを逆算する攻撃は「全体 × 日」の合計からは成立しないため、二次伏せの対象外とする。ADR 0003）
+`site_period_heatmap`（行 4: 全体 × 期間 × 曜日 × 時間帯。伏せ値あり、二次伏せあり。168 セルを 1 つの排他的区分として 03 §6.1 と同じアルゴリズムを適用する。設計 1 回目の「伏せたセルが 1 つだけになることは実質ない」は 90 日窓や月では成立しないため撤回した。設計レビュー L-1、ADR 0003 判断 2）
 
 | 列 | 型 | 制約・意味 |
 | --- | --- | --- |
@@ -217,10 +218,10 @@
 | period_id | text | PK の一部 |
 | axis | text | PK の一部。`channel` / `sns`（デバイスは格納しない。05 §4.1） |
 | bucket | text | PK の一部 |
-| sessions | integer | null = 伏せ。著者の記事の生値（伏せる前）を合算してから T と二次伏せを適用 |
-| sessions_mask | text | |
+| sessions | integer | null = 伏せ。著者の記事の生値（伏せる前）を合算してから T と二次伏せを適用。除外後（FR-36 の除外著者は行自体を公開ビューで除く） |
+| sessions_mask | text | null / `threshold` / `secondary`。階層差分の対策（設計レビュー M-2、03 §6.1 手順 5）: 同じ period_id・axis・bucket で、その著者の記事セル（`article_period_breakdown`）のうち伏せたものがちょうど 1 本のときは、著者セルの値が T 以上でも `secondary` で伏せる（著者の値 − 可視記事の表示値の和 = 伏せた記事の値 になるため）。0 本または 2 本以上なら伏せない |
 
-`author_period_share`（M-41、優先度 低）: `author_slug`、`period_id`、`share_count integer`、`share_count_mask text`、PK (author_slug, period_id)。FR-61 を初回に含めない場合は表も作らない。
+著者 × 期間 シェア数（`author_period_share`、M-41）の表は作らない（初回対象外。設計レビュー M-4）。
 
 ### 3.4 確定した暦月・公開後 30 日時点の表
 
@@ -316,7 +317,7 @@
 | failed_step | text | null。失敗した工程名（`wp_fetch` / `ga4_daily` / `ga4_period` / `derive` / `write` / `publish`） |
 | error_kind | text | null。エラーの種別だけ（`quota` / `auth` / `network` / `validation` / `db` / `unknown`）。メッセージ本文は入れない（NFR-44） |
 | mask_threshold | smallint | not null。実行時の T |
-| counts | jsonb | not null default '{}'。件数と所要時間だけ（ga4_requests、ga4_tokens、wp_requests、posts_upserted、posts_deleted、rows_written、duration_ms）。API の応答や行データは入れない |
+| counts | jsonb | not null default '{}'。件数と所要時間だけ。キーは固定（ga4_requests、ga4_tokens、ga4_tokens_remaining_day、ga4_tokens_remaining_hour、wp_requests、posts_upserted、posts_deleted、rows_written、duration_ms）で値はすべて数値。バッチ側は固定キー・数値のみの zod スキーマで書き、DB にも `check` 制約（immutable 関数 `internal.counts_is_numeric(jsonb)`: すべての値が `jsonb_typeof = 'number'` で、キーが上の一覧に含まれる）を置く（設計レビュー L-6）。API の応答や行データは入れない |
 | github_run_id | text | null。Actions の run ID（ログを辿るため。秘密ではない） |
 
 `excluded_author`（FR-36、D-10、ADR 0005。秘密情報として扱う、NFR-40）
@@ -339,9 +340,9 @@
 
 ## 4. 公開ビュー（anon が select できる）
 
-- すべて `public` スキーマ、名前は `pub_` で始まる。これ以外のオブジェクトを anon に grant しない。
-- ビューは既定（`security_invoker` を付けない）で作る。Postgres のビューは既定で所有者（postgres）の権限で base 表を読むため、anon は内部表に直接触れずにビューの投影だけを読める。security.md「`security definer` の関数やビューは、公開してよい列だけを返すことを確かめてから使う」に該当し、各ビューの列を §5 の対応表で確認する（ADR 0007）。Supabase のアドバイザが出す「security definer view」の警告は意図したものとして受け入れる（06 §13）。
-- 「除外」= `where not exists (select 1 from excluded_author e where e.author_slug = <行の著者 slug>)`。記事行は `wp_post.author_slug` で判定する。
+- すべて `public` スキーマ、名前は `pub_` で始まる。`public` スキーマには公開ビュー以外のオブジェクトを置かない。これ以外のオブジェクトを anon に grant しない。
+- ビューは既定（`security_invoker` を付けない）で作る。Postgres のビューは既定で所有者（postgres）の権限で base 表（`internal` スキーマ）を読むため、anon は内部表に直接触れずにビューの投影だけを読める。所有者権限のビューは base 表の RLS を通らないので、実効的な守りは grant と `internal` スキーマの非公開である（06 §2.3）。security.md「`security definer` の関数やビューは、公開してよい列だけを返すことを確かめてから使う」に該当し、各ビューの列を §5 の対応表で確認する（ADR 0007）。Supabase のアドバイザが出す「security definer view」の警告は意図したものとして受け入れる（06 §13）。
+- 「除外」= `where not exists (select 1 from internal.excluded_author e where e.author_slug = <行の著者 slug>)`。記事行は `wp_post.author_slug` で判定する。
 - 除外の有無を示す列はどのビューにも置かない（NFR-43）。
 - `_mask` 列は出さない（§2.3）。
 
@@ -359,10 +360,10 @@
 | pub_site_daily | site_daily | day、pageviews、sessions | ― | 行 1。FR-11 |
 | pub_site_daily_channel | site_daily_channel | day、channel、sessions | ― | 行 2。FR-11 の内訳 |
 | pub_site_daily_device | site_daily_device | day、device、pageviews、sessions | ― | 行 2。FR-14 |
-| pub_site_period | period + site_daily + site_period | period_id、pageviews（Σ site_daily）、sessions（Σ）、active_users、engagement_seconds、share_count、days（期間の日数） | ― | 行 3・4。FR-10 |
-| pub_site_period_breakdown | site_period_breakdown | period_id、axis、bucket、value | ― | 行 4・6。FR-13（SNS）、FR-15（地元）、FR-16 |
-| pub_site_period_heatmap | site_period_heatmap | period_id、dow、hour、pageviews | ― | 行 4。FR-12 |
-| pub_site_period_freshness | article_period + wp_post + article_summary | period_id、freshness、post_count、pageviews（除外込みの全体） | なし（全体の値） | M-25 全体。FR-10 折りたたみ |
+| pub_site_period | period + site_daily + site_period | period_id、pageviews（Σ site_daily）、sessions（Σ）、active_users、engagement_seconds、days（期間の日数）。share_count は置かない（M-4、初回対象外） | ― | 行 3・4。FR-10 |
+| pub_site_period_breakdown | site_period_breakdown | period_id、axis、bucket、value | ― | 行 4・6、Q-36。FR-13（SNS、channel）、FR-14（device_pv、device_sessions）、FR-15（地元）、FR-16 |
+| pub_site_period_heatmap | site_period_heatmap | period_id、dow、hour、pageviews | ― | 行 4。FR-12。二次伏せ適用済み（L-1） |
+| pub_site_period_freshness | article_period + wp_post + article_summary | period_id、freshness、post_count、pageviews | 除外後（記事の値から合算する集計。H-1） | 行 11（M-25 の全体の鮮度 3 区分、派生値）。FR-10 折りたたみ。主カードの `pub_site_period.pageviews`（除外込み）とは一致しないことを画面で注記する（FR-10） |
 | pub_site_month_referrer | site_month_referrer | period_id、rank、source_domain、sessions | ― | 行 5。FR-13 |
 | pub_site_month_city | site_month_city | period_id、rank、region、city、sessions | ― | 行 5。FR-15 |
 | pub_article_daily | article_daily | post_id、day、pageviews | 除外 | 行 7。FR-23 (2) |
@@ -372,17 +373,17 @@
 | pub_article_referrer_30d | article_referrer_30d | post_id、rank、source_domain、sessions | 除外 | 行 10。FR-23 (6) |
 | pub_article_summary | article_summary | post_id、age_days、freshness、pv_7d、pv_30d、pv_total、band_7d、band_30d、is_recent_hot、is_revival、is_evergreen_365、referrer_30d_computed_on | 除外 | M-20〜M-23。FR-21、FR-23、FR-25、FR-34 |
 | pub_article_milestone | article_milestone | post_id、milestone、reached_on | 除外 | M-23。FR-23 (4)、FR-31 (d) |
-| pub_author_period | wp_post + article_period + article_summary | author_slug、period_id、post_count（期間内に公開）、pageviews（Σ、伏せる前の値から）、long_post_count、long_pageviews（freshness = long の本数と期間内 PV。M-25） | 除外 | 行 11。FR-31 (a)(c) |
+| pub_author_period | wp_post + article_period + article_summary | author_slug、period_id、post_count（期間内に公開）、pageviews（Σ、伏せる前の値から）、long_post_count、long_pageviews（freshness = long の本数と期間内 PV。M-25。「著者 × 鮮度区分」の派生値、行 13。L-3） | 除外 | 行 11・13。FR-31 (a)(c) |
 | pub_author_period_breakdown | author_period_breakdown | author_slug、period_id、axis、bucket、sessions | 除外 | 行 12。FR-33 |
 | pub_author_category_period | wp_post + wp_post_category + article_period | author_slug、category_id、period_id、post_count、pageviews | 除外 | 行 13。FR-33 のカテゴリ構成 |
 | pub_author_summary | author_summary | author_slug、own_median_30d、eligible_count、band_30d | 除外 | M-24。FR-31 (b)(e)、FR-23 (5) |
-| pub_category_period | wp_category + wp_post + wp_post_category + article_period + article_summary | category_id、period_id、pageviews、post_count_total（カテゴリに属する記事数）、post_count_published（期間内に公開）、median_30d_pv（期間内に公開し 30 日経過した記事の pv_30d の中央値、`percentile_cont(0.5)`）、published_post_count_30d（その母数） | 親カテゴリ: 除外込み。子カテゴリ: 除外後（FR-40、ADR 0003 判断 4） | 行 11。FR-40、FR-41、FR-52 |
+| pub_category_period | wp_category + wp_post + wp_post_category + article_period + article_summary | category_id、period_id、pageviews、post_count_total（カテゴリに属する記事数）、post_count_published（期間内に公開）、median_30d_pv（期間内に公開し 30 日経過した記事の pv_30d の中央値、`percentile_cont(0.5)`）、published_post_count_30d（その母数） | 除外後（親カテゴリ行・子カテゴリ行とも。FR-40、FR-41、ADR 0003 判断 4。H-1 で親も除外後に変更） | 行 11。FR-40、FR-41、FR-52 |
 | pub_tag_period | wp_tag + wp_post_tag + article_period | tag_id、period_id、pageviews、post_count | 除外後（FR-42） | 行 11。FR-42 |
-| pub_posting_monthly | wp_post | month（date、月初）、post_count（除外込み） | なし（全体） | M-30。FR-50 |
-| pub_posting_period | wp_post + period | period_id、author_count、post_count（除外込みの全体） | なし（全体） | M-30、M-31。FR-51 の主表示 |
+| pub_posting_monthly | wp_post | month（date、月初）、post_count（除外込み） | なし（全体。WordPress で公開済みの件数） | M-30。FR-50 |
+| pub_posting_period | wp_post + period | period_id、post_count（除外込みの全体）。author_count は置かない（全体の著者数と `pub_author` の件数の差で除外著者の人数が分かるため。設計レビュー M-5） | なし（全体） | M-30、M-31。FR-51 の主表示（本数のみ） |
 | pub_benchmark_curve | benchmark_curve | scope、n、p25、p50、p75、population_size、population_window | ― | M-19、M-27。FR-17、FR-21、FR-23 |
 
-著者別の公開本数（FR-51 の一覧）は `pub_author_period.post_count` を名前順で使う。親カテゴリの軸の集計で「子に属する記事は親にも属する」として数えるため、`pub_category_period` の親カテゴリ行は親または配下の子に属する記事を distinct で数える。
+著者別の公開本数（FR-51 の一覧）は `pub_author_period.post_count` を名前順で使う。親カテゴリの軸の集計で「子に属する記事は親にも属する」として数えるため、`pub_category_period` の親カテゴリ行は親または配下の子に属する記事を distinct で数える（数え方は維持）。ただし親行も子行と同じく除外後の記事集合から数える（H-1。可視記事の所属と期間合計が公開されるため、親を除外込みにすると 親の合計 − 可視記事の和 で除外著者の記事の値が復元できる）。`pub_site_period_freshness` も同じ理由で除外後。除外込みで出すのは GA4 のサイト全体値（`pub_site_daily*`、`pub_site_period*`、`pub_site_month_*`）と公開本数の件数（`pub_posting_*`）だけ。
 
 ## 5. 05 §4.1 の表との対応
 
@@ -391,45 +392,63 @@
 | 全体 × 日: 読まれた回数、訪問回数 | site_daily | pub_site_daily | なし | |
 | 全体 × 日 × 流入チャネル / デバイス | site_daily_channel、site_daily_device | pub_site_daily_channel、pub_site_daily_device | 適用 + 二次 | 別表。掛け合わせなし |
 | 全体 × 期間: 読まれていた時間の合計 | site_period.engagement_seconds | pub_site_period | なし | |
-| 全体 × 期間 × SNS / 曜日 × 時間帯 / 初めて・また来た / 読んだ人の数 | site_period_breakdown（sns、new_returning）、site_period_heatmap、site_period.active_users | pub_site_period_breakdown、pub_site_period_heatmap、pub_site_period | 適用（sns と new_returning は二次） | |
+| 全体 × 期間 × SNS / 曜日 × 時間帯 / 初めて・また来た / 読んだ人の数 | site_period_breakdown（sns、new_returning）、site_period_heatmap、site_period.active_users | pub_site_period_breakdown、pub_site_period_heatmap、pub_site_period | 適用（sns、new_returning、曜日 × 時間帯は二次も。L-1） | |
+| 全体 × 期間 × 流入チャネル（sessions）/ デバイス（screenPageViews、sessions）（Q-36、2026-11-03 確定） | site_period_breakdown（channel、device_pv、device_sessions） | pub_site_period_breakdown | 適用 + 二次 | 行 2 の期間値。日別表の合算ではなく GA4 から期間ごとに取る（03 §5.4 G19・G20）。05 §4.1 への行の追加は requirements-analyst が反映 |
 | 全体 × 確定した暦月 × 参照元ドメイン / 市別 | site_month_referrer、site_month_city | pub_site_month_referrer、pub_site_month_city | T 未満の行を格納しない | is_confirmed の月だけ |
 | 全体 × 期間: 地元の読者の目安 | site_period_breakdown（local） | pub_site_period_breakdown | 適用 + 二次 | |
 | 記事 × 日: 読まれた回数 | article_daily | pub_article_daily、pub_article_cumulative | なし | ADR 0003 判断 1 |
 | 記事 × 期間: 訪問回数、scroll、読まれていた時間 | article_period | pub_article_period | 適用 | pageviews は伏せない |
 | 記事 × 期間 × 内訳軸 1 つ | article_period_breakdown | pub_article_period_breakdown | 適用 + 二次 | |
 | 記事 × 公開後 30 日時点 × 参照元ドメイン上位 3 | article_referrer_30d | pub_article_referrer_30d | T 未満の行を格納しない | 1 回だけ計算 |
-| 著者 / カテゴリ / タグ × 期間 の合計 | （ビューで計算） | pub_author_period、pub_category_period、pub_tag_period | なし | 子カテゴリ・タグは除外後 |
-| 著者 × 期間 × 内訳軸 1 つ | author_period_breakdown | pub_author_period_breakdown | 適用 + 二次 | |
-| 著者 × カテゴリ | （ビューで計算） | pub_author_category_period | なし | |
+| 著者 / カテゴリ / タグ × 期間 の合計、全体の鮮度 3 区分（M-25） | （ビューで計算） | pub_author_period、pub_category_period、pub_tag_period、pub_site_period_freshness | なし | すべて除外後（著者、親・子カテゴリ、タグ、鮮度区分。H-1） |
+| 著者 × 期間 × 内訳軸 1 つ | author_period_breakdown | pub_author_period_breakdown | 適用 + 二次 + 階層差分（M-2） | |
+| 著者 × カテゴリ、著者 × 鮮度区分（派生値、除外後） | （ビューで計算） | pub_author_category_period、pub_author_period（long_post_count、long_pageviews） | なし | 行 13（L-3） |
+| シェア数（全体 × 期間、著者 × 期間。M-41） | 表なし | ビューなし | ― | 初回対象外（M-4）。05 §4.1 に行がない。FR-61 を実装するときは NFR-39 で行を追加してから |
 | 格納しないもの | 表なし | ビューなし | ― | 記事 × 地域、記事 × 曜日 × 時間帯、カテゴリ × 曜日 × 時間帯（D-12）、内訳軸 2 つ以上、記事 × 日 × 内訳軸、著者 × デバイス、カテゴリ / タグ × 内訳軸、移動窓の参照元ドメイン・市別、個別の訪問・ユーザー・イベント |
 
 ## 6. 権限（RLS、grant）
 
-マイグレーション 0001 で次を行い、以後の表も同じ規則で作る。
+マイグレーション 0001 で次を行い、以後の表も同じ規則で作る（設計レビュー M-7、L-4）。
 
 ```sql
--- 以後 public に作る表・シーケンス・関数に anon / authenticated への既定の grant が付かないようにする
+-- 内部表のスキーマ。anon / authenticated / PUBLIC には usage を与えない（PostgREST の Exposed schemas にも含めない）
+create schema internal;
+revoke all on schema internal from public;
+revoke all on schema internal from anon, authenticated;
+
+-- 以後 internal / public に作る表・シーケンス・関数に anon / authenticated / PUBLIC への既定の grant が付かないようにする
+alter default privileges for role postgres in schema internal revoke all on tables from anon, authenticated;
+alter default privileges for role postgres in schema internal revoke all on sequences from anon, authenticated;
+alter default privileges for role postgres in schema internal revoke all on functions from anon, authenticated;
+alter default privileges for role postgres in schema internal revoke execute on functions from public;
 alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on functions from anon, authenticated;
+-- 関数の EXECUTE は Postgres 既定で PUBLIC に付き、PostgREST が rpc として公開するため、PUBLIC からも外す（L-4）
+alter default privileges for role postgres in schema public revoke execute on functions from public;
 ```
 
-各表の作成直後に
+各表（`internal` スキーマ）の作成直後に
 
 ```sql
-alter table <表> enable row level security;
-revoke all on <表> from anon, authenticated;
+alter table internal.<表> enable row level security;
+revoke all on internal.<表> from anon, authenticated;
 ```
 
-ポリシーは作らない（service role は RLS を通過する。anon はポリシーも grant もないので何も読めない）。各公開ビューの作成直後に
+ポリシーは作らない（service role は RLS を通過する。anon は `internal` への usage もポリシーも grant もないので何も読めない）。各公開ビュー（`public` スキーマ）の作成直後に
 
 ```sql
-grant select on pub_<名前> to anon;
+grant select on public.pub_<名前> to anon;
 ```
 
 - `authenticated` ロールは使わない（ログインなし）。grant も与えない。
 - service role キーは GitHub Actions の Secrets だけに置く（06 §2.3）。Vercel には anon キーだけを置き、ビルド時に `pub_*` を読む。
-- マイグレーションの最後に、`information_schema.role_table_grants` を使って「anon に grant があるのは `pub_` で始まるビューだけ」を検査する SQL を置き、CI（qa-engineer のテスト）でも同じ検査を行う（07_test_plan.md、2 回目）。
+- Supabase の API 設定「Exposed schemas」は `public` のみ（`internal` を含めない）。この設定はダッシュボードで行うため、初期設定手順（docs/operations/）に書き、受入（07 §8）で確認する。
+- マイグレーションの最後に次を検査する SQL を置き、CI（07 §4 I-DB-01、I-DB-15、I-DB-16）でも同じ検査を行う。
+  1. `information_schema.role_table_grants` で anon / authenticated / PUBLIC に grant があるのは `public.pub_%` の `SELECT` だけ。関数（`information_schema.routine_privileges`）・シーケンスへの grant がない。
+  2. anon / authenticated / PUBLIC が `public` 以外のスキーマ（`internal` を含む）に usage を持たない（`has_schema_privilege`）。
+  3. `pub_*` の列名に `_mask` を含むものがなく、`excluded_author` に由来する列（`excluded_at` など）を含まない。
+  4. `pub_*` の列集合（ビュー名、列名、型）が §5 の対応表から作ったスナップショット（`tests/snapshots/pub-columns.json`）と一致する。差分があればスナップショットの更新と NFR-39 の手順を要求する。
 
 ## 7. 容量の見積もり
 
@@ -451,12 +470,18 @@ grant select on pub_<名前> to anon;
 ## 8. マイグレーションの運用
 
 - `supabase/migrations/NNNN_<内容>.sql` に置き、Supabase CLI（`supabase db push`）で適用する。適用は運用担当がローカルから行い、手順は docs/operations/（デプロイ工程）に書く。ダッシュボードでの手変更はしない（NFR-73）。
-- マイグレーション 0001: 既定権限の取り消し、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: 公開ビューと grant。番号は実装時に確定。
+- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し（§6）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: 公開ビューと grant、権限の検査 SQL。番号は実装時に確定。
 - ビューの列を変えるときは ADR と security-auditor のレビュー（NFR-39）。05 §4.1 の表を変えずに済む変更（列名の修正など）はレビュー不要だが、§5 の対応表を更新する。
 
 ## 9. 未確定
 
-- D-16（新規、§2.3）: GA4 が行を返さない区分（値 0）を伏せ値の対象に含めるか。設計の既定は「0 は伏せず 0 を格納し、二次伏せの候補には含める」。理由: 0 は個人に結び付かず、0 まで伏せると 3 区分のデバイス（タブレットがほぼ 0）で常に二次伏せが発生して表示が成り立たない。NFR-33 の文言（「5 未満」）とは字義上ずれるため、security-auditor の確認を受ける。設定値 `MASK_ZERO` で切り替えられるようにする。
-- Q-33（新規）: 二次伏せしたセルの表示文言。「5 回未満」は二次伏せのセルには正しくないことがある。
 - `wp_post.title` の HTML エンティティ復号と長さ上限（表示側で省略するので DB には全文を置く）は実装で確認。
-- M-41（シェア数）の表（`site_period.share_count`、`author_period_share`）は FR-61 の優先度が低のため、初回のマイグレーションに含めるかは構築時に決める。
+- 全記事の分布（M-19、M-27 の母集団 `benchmark_curve`）に除外著者の記事を含めるかは要件に規定がない。設計の既定は「含める」（中央値・四分位は合算ではなく、差分で個別の値を復元する経路がない。母集団を減らすと「まだ比較できません」が増える）。ADR 0003 の再レビューで security-auditor に確認する（D-14）。
+- Supabase の「Exposed schemas」の設定値はダッシュボード側にあるためマイグレーションで固定できない。初期設定手順で `public` のみとし、受入で確認する（§6）。
+
+確定した事項（2026-11-03、設計レビューの反映で「未確定」から移動）:
+
+- D-16: 0 は伏せない。二次伏せの候補は T 以上の最小セル（§2.3、設計レビュー M-1）。設定値 `MASK_ZERO` は置かない。
+- Q-33: 二次伏せを公開しない。表示は「—」と「伏せ値」の添え書き（§2.3、ADR 0003 判断 5）。
+- Q-36: 全体 × 期間 × 流入チャネル / デバイス は `site_period_breakdown` の axis `channel` / `device_pv` / `device_sessions` として期間ごとに格納する（§3.3、ADR 0003 判断 6）。
+- M-41（シェア数）: 初回対象外。表・列・問い合わせを作らない（§1、設計レビュー M-4）。

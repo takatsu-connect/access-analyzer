@@ -2,6 +2,7 @@
 
 - 状態: 草案
 - 更新日: 2026-11-03
+- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
 - 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0006、ADR 0007
 
 ## 1. 概要
@@ -105,7 +106,7 @@ packages/
 supabase/
   migrations/       NNNN_*.sql（02 §8）
 .github/
-  workflows/        daily.yml（バッチ + heartbeat）、ci.yml（lint / test / audit）
+  workflows/        daily.yml（バッチ。contents: read）、heartbeat.yml（月 1 回。contents: write のみ、checkout と git だけ。03 §12）、ci.yml（lint / test / audit）
 docs/               要件・設計・運用
 .env.example        環境変数の名前だけ
 pnpm-workspace.yaml、package.json、pnpm-lock.yaml

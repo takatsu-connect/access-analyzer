@@ -2,6 +2,7 @@
 
 - 状態: 草案
 - 更新日: 2026-11-03
+- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
 - 参照: ADR 0001（全体構成）、ADR 0002（WIF）、ADR 0004（言語とフレームワーク）、ADR 0006（配信方式）、ADR 0007（集計の持ち方）
 
 ## 1. 選定の方針
@@ -64,7 +65,8 @@
 
 ## 7. ジョブ実行基盤（GitHub Actions）
 
-- `daily.yml`: `schedule`（08:00 と 09:00 UTC）、`workflow_dispatch`。ジョブ `batch`（`id-token: write`）→ ジョブ `heartbeat`（`contents: write`、条件付き）。`concurrency` で同時実行を 1 に。
+- `daily.yml`: `schedule`（08:00 と 09:00 UTC）、`workflow_dispatch`。ジョブ `batch`（`id-token: write`）のみ。最上位 `permissions: contents: read`。`concurrency` で同時実行を 1 に。
+- `heartbeat.yml`: 別ワークフロー（設計レビュー M-3、03 §12）。月 1 回の `schedule`、ワークフロー全体で `permissions: contents: write` のみ。`actions/checkout`（`sparse-checkout: ops/`）と `git` CLI だけで、`pnpm install`・プロジェクトコード・サードパーティ Action・Secrets を置かない。
 - `ci.yml`: `pull_request` と `push`（main）。lint、型検査、単体テスト、`pnpm audit`、マイグレーションの権限検査（Supabase のローカル環境 `supabase start` を CI で起こして適用し、anon の grant を検査する。結合テストの詳細は 2 回目）。
 - Actions の無料枠（public リポジトリ）で、日次 5 分 × 30 日 ≈ 150 分 / 月。制限なし。
 

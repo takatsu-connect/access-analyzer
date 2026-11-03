@@ -3,6 +3,7 @@
 - 状態: 草案
 - 更新日: 2026-11-03
 - 関係: ADR 0006（ビルド時生成）、02_data_model.md §4（公開ビュー）、05_screens.md、06_security.md §7、NFR-11、NFR-42、NFR-91、FR-01、FR-03、FR-06
+- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
 
 ## 1. 方針（HTTP API はない）
 
@@ -24,13 +25,13 @@
 | 共通（著者 slug・カテゴリ ID・月の許可リスト） | pub_author、pub_category、pub_post | author_slug、display_name / category_id、name、parent_id、path / published_on | ― |
 | S-01 全体 | pub_site_daily | day、pageviews、sessions | 全行 |
 | S-01 | pub_site_period | period_id、pageviews、sessions、active_users、engagement_seconds、days | 全行 |
-| S-01 | pub_site_period_breakdown | period_id、axis、bucket、value | 全行（axis = sns / local / new_returning。channel と device は §9 の Q-36） |
-| S-01 | pub_site_daily_channel、pub_site_daily_device | day、channel / device、sessions、pageviews | 全行（Q-36 の暫定: 期間構成の算出に使う） |
+| S-01 | pub_site_period_breakdown | period_id、axis、bucket、value | 全行（axis = sns / local / new_returning / channel / device_pv / device_sessions。channel と device_* は Q-36 の確定で期間値として格納。02 §3.3） |
+| S-01 | pub_site_daily_channel、pub_site_daily_device | ― | S-01 では読まない（日別推移に内訳を描かない。期間の構成は pub_site_period_breakdown の channel / device_* から。03 §17）。ビューは 05 §4.1 行 2 のとおり存在する |
 | S-01 | pub_site_period_heatmap | period_id、dow、hour、pageviews | 全行 |
 | S-01 | pub_site_period_freshness | period_id、freshness、post_count、pageviews | 全行 |
 | S-01 | pub_site_month_referrer | period_id、rank、source_domain、sessions | 全行（is_confirmed の月のみ存在） |
 | S-01 | pub_site_month_city | period_id、rank、region、city、sessions | 全行 |
-| S-01 | pub_posting_period | period_id、author_count、post_count | 全行 |
+| S-01 | pub_posting_period | period_id、post_count | 全行（author_count は置かない。設計レビュー M-5） |
 | S-01 | pub_post | published_on | 全行（M-26 の日別公開本数を BI が数える） |
 | S-01、S-02b、S-03、S-05 | pub_benchmark_curve | scope、n、p25、p50、p75、population_size、population_window | scope = all |
 | S-02a〜S-02e、S-05、S-07 | pub_post | post_id、title、post_url、author_slug、display_name、published_on、is_ad、age_days、freshness | 全行（除外はビュー側） |
@@ -55,17 +56,17 @@
 | S-05 | pub_author_summary | own_median_30d、eligible_count、band_30d | author_slug = :slug |
 | S-05 | pub_article_milestone | post_id、milestone、reached_on | post_id in 著者の記事 |
 | S-05 | pub_article_period_breakdown | post_id、period_id、bucket、sessions | post_id in 著者の記事、axis = channel（最多区分を BI が決める） |
-| S-05 | pub_posting_period | period_id、author_count、post_count | 全行（FR-31 (a) の参考値「1 人あたりの中央値」は pub_author_period.post_count の全著者の中央値を BI が計算） |
-| S-05 | pub_site_period_breakdown | period_id、axis、bucket、value | axis = sns（FR-33 の全体との比較。channel は Q-36） |
+| S-05 | pub_posting_period | period_id、post_count | 全行（FR-31 (a) の参考値「1 人あたりの中央値」は pub_author_period.post_count の全著者の中央値を BI が計算） |
+| S-05 | pub_site_period_breakdown | period_id、axis、bucket、value | axis = sns / channel（FR-33 の全体との比較。channel は Q-36 の確定で期間値） |
 | S-06 カテゴリ | pub_category | category_id、name、parent_id、path | 全行 |
 | S-06、S-06b | pub_category_period | category_id、period_id、pageviews、post_count_total、post_count_published、median_30d_pv、published_post_count_30d | 全行 |
 | S-07 タグ | pub_tag、pub_tag_period | tag_id、name / tag_id、period_id、pageviews、post_count | 全行 |
 | S-07b タグページ | pub_post_tag、pub_post、pub_article_period、pub_article_summary | 上と同じ | tag_id = :id |
 | S-08 投稿活動 | pub_posting_monthly | month、post_count | 全行 |
-| S-08 | pub_posting_period | period_id、author_count、post_count | 全行 |
+| S-08 | pub_posting_period | period_id、post_count | 全行（author_count は置かない。M-5） |
 | S-08 | pub_author、pub_author_period | display_name、author_slug / period_id、post_count | 全行（名前順は BI。display_name の `localeCompare('ja')`） |
 | S-08 | pub_category、pub_category_period | path / period_id、post_count_published | 全行 |
-| S-09 反応（FR-61 を含めるとき） | pub_site_period（share_count）、pub_author_period_share（02 §9。初回に含めるかは構築時） | period_id、share_count | 全行 |
+| S-09 反応（FR-61） | ― | ― | 初回対象外（設計レビュー M-4）。シェア数の表・列・ビューはない。FR-61 を実装するときは NFR-39 で 05 §4.1 に行を追加してから、ここに行を足す |
 
 - 読み出しは anon キー。環境変数名は `SUPABASE_URL`、`SUPABASE_ANON_KEY`（Vercel のビルド環境変数。`NEXT_PUBLIC_` を付けない。06 §3）。
 - PostgREST の既定上限（1,000 行）を超えるビュー（pub_article_period、pub_article_daily の全体読み、pub_site_period_heatmap）は `range(from, to)` で 1,000 行ずつ読む。
@@ -112,17 +113,17 @@ type DashboardData = PageCommon & {
   publishedPerDay: { firstDay: string; counts: number[] };                     // M-26。pub_post.published_on を日ごとに数えた値
   sitePeriod: Record<PeriodId, { pageviews: number; sessions: number; activeUsers: number | null; engagementSeconds: number; days: number }>;
   breakdown: Record<PeriodId, {
-    channel?: Record<Channel, number | null>;         // Q-36 の結論で確定。暫定は daily からの合算（§9）
+    channel: Record<Channel, number | null>;          // 期間値（pub_site_period_breakdown の axis = channel、値は sessions。Q-36 確定。日別の合算ではない）
     sns: Record<SnsBucket, number | null>;
-    device?: Record<Device, { pageviews: number | null; sessions: number | null }>;  // 同上
+    device: Record<Device, { pageviews: number | null; sessions: number | null }>;  // 期間値（axis = device_pv / device_sessions。Q-36 確定）
     local: Record<'kawasaki' | 'jp_other' | 'unknown', number | null>;
     newReturning: Record<'new' | 'returning' | 'unknown', number | null>;
   }>;
-  heatmap: Record<PeriodId, (number | null)[]>;      // 168 要素。index = dow * 24 + hour（dow 0 = 日曜。GA4 の dayOfWeek と同じ）。伏せは null
-  freshness: Record<PeriodId, Record<Freshness, { postCount: number; pageviews: number }>>;
+  heatmap: Record<PeriodId, (number | null)[]>;      // 168 要素。index = dow * 24 + hour（dow 0 = 日曜。GA4 の dayOfWeek と同じ）。伏せは null（二次伏せを含む。L-1）
+  freshness: Record<PeriodId, Record<Freshness, { postCount: number; pageviews: number }>>;   // 除外後（H-1）。sitePeriod.pageviews（除外込み）とは一致しない。注記は FR-10
   monthReferrer: Record<PeriodId, { domain: string; sessions: number }[]>;      // 確定月のみ。rank 順。T 未満の行は存在しない
   monthCity: Record<PeriodId, { region: string; city: string; sessions: number }[]>;
-  posting: Record<PeriodId, { authorCount: number; postCount: number }>;
+  posting: Record<PeriodId, { postCount: number }>;  // 人数（authorCount）は置かない（M-5、FR-51）
   benchmark30: { p25: number; p50: number; p75: number; populationSize: number; populationWindow: string } | null;  // M-27。母集団 30 未満は null
 };
 ```
@@ -188,7 +189,7 @@ type AuthorPageData = PageCommon & {
   author: { slug: string; name: string; url: string };
   period: Record<PeriodId, { postCount: number; pageviews: number; longPostCount: number; longPageviews: number }>;
   breakdown: Record<PeriodId, { channel: Record<Channel, number | null>; sns: Record<SnsBucket, number | null> }>;
-  siteBreakdown: Record<PeriodId, { channel?: Record<Channel, number | null>; sns: Record<SnsBucket, number | null> }>;  // FR-33 の比較相手
+  siteBreakdown: Record<PeriodId, { channel: Record<Channel, number | null>; sns: Record<SnsBucket, number | null> }>;  // FR-33 の比較相手。channel は期間値（Q-36 確定）
   categoryMix: Record<PeriodId, { categoryId: number; path: string; postCount: number; pageviews: number }[]>;
   summary: { ownMedian30d: number | null; eligibleCount: number; band30: Band | null };
   posts: PostRow[];                                                  // 著者の記事
@@ -224,17 +225,15 @@ type TagPageData = PageCommon & { tag: { id: number; name: string }; posts: Post
 ```ts
 type ActivityData = PageCommon & {
   monthly: { month: string; postCount: number }[];                   // 'YYYY-MM'。直近 24 か月
-  posting: Record<PeriodId, { authorCount: number; postCount: number }>;
-  authorCounts: Record<PeriodId, { name: string; slug: string; postCount: number }[]>;   // 名前順で固定。並べ替え不可（NFR-36）
-  categoryMix: Record<PeriodId, { categoryId: number; path: string; postCountPublished: number }[]>;
+  posting: Record<PeriodId, { postCount: number }>;   // 人数は置かない（M-5）。主表示は「この期間に ◯本の記事が公開されました」
+  authorCounts: Record<PeriodId, { name: string; slug: string; postCount: number }[]>;   // 名前順で固定。並べ替え不可（NFR-36）。除外後
+  categoryMix: Record<PeriodId, { categoryId: number; path: string; postCountPublished: number }[]>;   // 除外後（H-1）
 };
 ```
 
-### 3.8 反応指標（S-09、`/reactions`。FR-61 を含めるとき）
+### 3.8 反応指標（S-09、`/reactions`）
 
-```ts
-type ReactionsData = PageCommon & { siteShare: Record<PeriodId, number | null>; authorShare?: Record<PeriodId, { name: string; slug: string; shareCount: number | null }[]> };
-```
+初回対象外（設計レビュー M-4）。`ReactionsData` 型、ページ、ナビ項目を作らない。FR-61 を実装するときは NFR-39 の手順で 05 §4.1 に「全体 × 期間 シェア数」「著者 × 期間 シェア数」の行を追加し、security-auditor のレビューを受けてから型を定義する。
 
 共通の列挙型:
 
@@ -355,7 +354,7 @@ HTML 全体はこれに初期表示の DOM（既定期間 = 直近 28 日の描�
 
 ## 9. 未確定
 
-- **Q-36（新規、依頼者と security-auditor）**: FR-13 の流入チャネル 5 区分と FR-14 のデバイス構成は「期間」の値だが、`site_period_breakdown` の axis は `sns` / `new_returning` / `local` だけで、期間の流入チャネル・デバイスは `pub_site_daily_channel` / `pub_site_daily_device` の日別値の合算になる。日別値は伏せ値（referral、other、tablet が日によって 5 未満）を含むため、合算は過小になり、構成比が正しく出ない。05 §4.1 の行 2（全体 × 日 × 流入チャネル / デバイス）の日の合計は行 2 から導ける粗い値なので、`site_period_breakdown` に axis `channel`（sessions）、`device_pv`、`device_sessions` を追加して期間ごとに GA4 から取る案を推す。05 §4.1 の表の変更に当たるか（NFR-39 の手順が要るか）の判断を求める。確定までの暫定: 日別値のうち null でない値の和を出し、いずれかの日が伏せ値なら区分の値を「—」（伏せ値）として扱う（referral / other / tablet はほぼ常に伏さる）。
+- Q-36 は確定（2026-11-03）: `site_period_breakdown` の axis `channel` / `device_pv` / `device_sessions` を期間ごとに GA4 から取る（02 §3.3、03 §5.4 G19・G20、ADR 0003 判断 6）。§3.2 の `breakdown.channel` / `device` は必須の期間値になり、暫定の日別合算は使わない。
 - 月の埋め込み上限（36 か月）と、S-02e のサイズが上限を超えたときの案の順（§6）は設計の判断で、依頼者への質問ではない。実測はビルドの出力サイズで確認する（07 §6）。
 - S-02e（検索）に広告カテゴリの記事を含めるか。FR-24 は除外を書いていないため含める。FR-20 / FR-22 / S-02b は除く。依頼者への確認は不要と見るが、05 §13 に記す。
-- `pub_author_period_share`（FR-61）の有無は構築時（02 §9）。
+- シェア数（FR-61、`pub_author_period_share`）は初回対象外で確定（設計レビュー M-4）。未確定ではない。

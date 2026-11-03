@@ -2,6 +2,7 @@
 
 - 状態: 承認済み（依頼者の決定を記録。2026-11-03）
 - 更新日: 2026-11-03
+- 変更履歴: 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の L-10（属性条件に repository_id を加える案）を「結果」に追記
 - 関係: NFR-41、NFR-45、DS-01（03_data_sources.md §2.3）、docs/operations/initial_setup.md §2、.claude/rules/security.md「秘密情報」
 
 ## 文脈
@@ -32,5 +33,6 @@
 ## 結果
 
 - 良い点: 長生きする鍵がどこにも存在しない。トークンは 1 時間で失効し、main ブランチの Actions からしか取れない。fork や他ブランチからは SA になりすませない。鍵のローテーションが不要。
-- 引き受ける点: GCP 側の初期設定（initial_setup.md §2）はデプロイ工程で依頼者が実行する。属性条件を誤ると他リポジトリから使えてしまうので、設定後に security-auditor が条件を確認する。バッチの 1 回の実行は 1 時間以内に収める（通常 2〜4 分、バックフィル 10 分未満）。
+- 引き受ける点: GCP 側の初期設定（initial_setup.md §2）はデプロイ工程で依頼者が実行する。属性条件を誤ると他リポジトリから使えてしまうので、設定後に security-auditor が条件を確認する。
+- 追記（2026-11-03、設計レビュー L-10）: 属性条件に `assertion.repository_id == '<リポジトリの数値 ID>'`（または `assertion.repository_owner_id`）を加え、属性マッピングに `attribute.repository_id = assertion.repository_id` を追加する。リポジトリ名の変更・移管・同名の再作成で `repository` の文字列が他者のものを指す事態に備える。数値 ID は `gh api repos/takatsu-connect/access-analyzer --jq .id` で取れる（秘密ではないが文書には書かない）。GCP 側の作業はデプロイ工程で、initial_setup.md の手順は親が直す。バッチの 1 回の実行は 1 時間以内に収める（通常 2〜4 分、バックフィル 10 分未満）。
 - ローカル開発: `gcloud auth application-default login` の ADC（開発者個人の Google アカウント。GA4 の閲覧者を付けてもらう）で動かし、JSON 鍵は作らない。
