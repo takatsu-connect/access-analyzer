@@ -4,6 +4,7 @@
 - 更新日: 2026-11-03
 - 変更履歴: 2026-11-03: analytics-advisor の助言（docs/requirements/advice/2026-11-03-metrics-review.md §6）の用語の置き換え表を反映。「画面で使う言葉」と「添える注記」の列を追加し、廃止した指標（M-04、M-05、M-07、M-08、M-42）を明記
 - 変更履歴: 2026-11-03: security-auditor の要件レビュー（docs/security/audits/2026-11-03-requirements-review.md）の指摘 H-1・H-2・M-1〜M-6・L-2〜L-6 を反映（公開状態、伏せ値、非表示の申し出の説明を修正）
+- 変更履歴: 2026-11-03: GA4 Admin API と Data API の確認結果（タイムゾーン、導入時期、保持設定、カスタム次元、拡張計測、イベント名、規模）を反映。§2 のタイムゾーンを Asia/Tokyo に確定、拡張計測の scroll 有効、イベント名に AddToAnyShare を追加、カスタム次元とチャネルグループの行を追加
 
 この文書は、運営者・ライターの言葉、画面で使う言葉、GA4 の指標名のずれを残すためのもの。要件（docs/requirements/02_metrics.md）の指標 ID と対応させる。画面に出す言葉は「画面で使う言葉」の列に従い、GA4 の指標名は括弧でのみ添える（NFR-99）。「添える注記」は画面に埋め込む 1 文の案で、確定文ではない（tech-writer が仕上げる）。
 
@@ -51,7 +52,7 @@
 | どのサイトから来たか | リンク元のサイト | sessionSource（Referral に限定）。参照元ドメイン | M-12 | ページ単位の完全な URL（pageReferrer）は取得も表示もしない |
 | 入口の記事 | 最初に開いたページ | landingPage（ランディングページ） | M-17 | この記事から読み始めた訪問の内訳です |
 | スマホ・PC | スマホ / パソコン / タブレット | deviceCategory（mobile / desktop / tablet） | M-13 | ― |
-| 地域、どこの人 | おおよその地域（都道府県・市） | region、city | M-14 | 通信会社の仕組み上、実際と違う市になることがあります。区（高津区）は取れない見込み（Q-11） |
+| 地域、どこの人 | おおよその地域（都道府県・市） | region、city | M-14 | 通信会社の仕組み上、実際と違う市になることがあります。区（高津区）は取れない（2026-11-03 確認。川崎市は市単位で出る。Q-11 回答済み） |
 | 川崎の人の割合 | 地元の読者の目安 | city = 川崎市 のセッション ÷ 国内セッション（「不明」を分母に含む） | M-14 | 高くても低くても良し悪しではありません |
 | いつ読まれるか | いつ読まれているか | dayOfWeek × hour（曜日×時間帯） | M-16 | 読まれた時刻で、投稿した時刻ではありません |
 | 検索から（検索語） | （出さない。将来は「検索で読まれている」の記事別の回数だけ） | Search Console のクエリ | M-50（初回スコープ外、Q-09） | 検索語には人名が混ざりうるため出さない |
@@ -67,10 +68,12 @@
 | 指標（メトリクス） | 集計する値。screenPageViews、sessions など |
 | pagePath | URL のパス部分（例: /4800/）。クエリ文字列を含まない。記事 ID との突き合わせに使う |
 | エンゲージメント | 10 秒以上の滞在、2 ページ以上の閲覧、コンバージョンのいずれかがあること。本 BI ではこの言葉を画面に出さない |
-| 拡張計測機能 | GA4 がスクロール（90% 到達）、外部リンクのクリックなどを自動で計測する設定。scroll イベントが有効かは Q-25 |
-| イベント名（eventName） | GA4 が記録する行動の名前。本 BI で使うのは scroll（M-09）と、届いていれば add-to-any のシェア（M-41、D-09）だけ |
+| 拡張計測機能 | GA4 がスクロール（90% 到達）、外部リンクのクリック、サイト内検索、動画、ファイルダウンロード、ページ変更、フォームの操作を自動で計測する設定。対象サイトではすべて有効で、scroll イベントが届いていることを確認済み（2026-11-03、Q-25 回答済み） |
+| イベント名（eventName） | GA4 が記録する行動の名前。本 BI で使うのは scroll（M-09）と AddToAnyShare（add-to-any のシェア。M-41、D-09）だけ。対象サイトで届いているイベント名は page_view、user_engagement、session_start、first_visit、scroll、click、form_start、form_submit、AddToAnyShare、view_search_results、file_download（2026-11-03 確認）。scroll と AddToAnyShare 以外は取得しない（NFR-32） |
+| カスタム次元 | サイト側が GA4 に追加した独自の次元。対象サイトにはイベントスコープの page_type（投稿 post か、そうでない other か）がある。Analytify プラグインが作った 10 個は本 BI では使わない。著者・カテゴリのカスタム次元はなく、記事との結合は pagePath の記事 ID で行う（D-15） |
+| チャネルグループ（sessionDefaultChannelGroup） | GA4 が流入経路を分類したもの。Organic Search、Direct、Organic Social、Referral、AI Assistant、Unassigned、Email、Organic Video など。本 BI では 検索 / SNS / 直接 / 他のサイトから / その他 の 5 区分に正規化する（M-10）。AI Assistant 以下は「その他」 |
 | データの確定 | GA4 の日次データは処理に通常 12 時間、24〜48 時間かかることがあり、遅れて届くデータは最大 7 日。確定前は値が変わる |
-| タイムゾーン | GA4 のレポートはプロパティに設定したタイムゾーンで日付を切る。Asia/Tokyo かは Q-07 で確認中 |
+| タイムゾーン | GA4 のレポートはプロパティに設定したタイムゾーンで日付を切る。対象プロパティは Asia/Tokyo（2026-11-03 確認、Q-07 回答済み）。日次データが揃う 15:30 も JST |
 | Workload Identity Federation（WIF） | 鍵ファイルを使わずに GitHub Actions から Google の API を呼ぶための認証方式。サービスアカウントの JSON 鍵は作らない |
 
 ## 3. WordPress の用語
@@ -87,7 +90,7 @@
 | 公開状態 | publish（公開）だけが REST API に出る。下書き、非公開は出ないため BI にも入らない。パスワード付きは publish のまま content.protected = true で出るため、取り込み時に除く（NFR-34、FR-72） |
 | コメント | 対象サイトでは使われていない（公開コメント 0 件、comment_status は closed）。M-42、FR-62、DS-07 は廃止 |
 | wp-ulike | 「いいね」ボタンのプラグイン。いいね数は REST API からも GA4 からも現状は取れない（M-40） |
-| add-to-any | SNS シェアボタンのプラグイン。GA4 にイベントが届いているかは未確認（M-41、D-09） |
+| add-to-any | SNS シェアボタンのプラグイン。GA4 に AddToAnyShare というイベント名で届いている（2026-11-03 確認。M-41、D-09） |
 | Analytify | WordPress 管理画面で GA4 の数字を見るプラグイン（wp-analytify/v1）。運営者がこれまで見てきた数字の出所である可能性がある（Q-32）。本 BI は使わない |
 | Xserver | 対象サイトのホスティング先（sv16640.xserver.jp、nginx）。アクセスログの取得可否は Q-21 |
 
