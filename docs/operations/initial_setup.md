@@ -104,8 +104,10 @@ gcloud iam workload-identity-pools create github --project=affable-enigma-513514
 4. GitHub を発行者とするプロバイダを作る。`attribute-condition` が入口の門番で、この repo の main からのトークンだけを通す。
 
 ```
-gcloud iam workload-identity-pools providers create-oidc access-analyzer --project=affable-enigma-513514-q8 --location=global --workload-identity-pool=github --display-name="takatsu-connect/access-analyzer" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref" --attribute-condition="assertion.repository == 'takatsu-connect/access-analyzer' && assertion.ref == 'refs/heads/main'"
+gcloud iam workload-identity-pools providers create-oidc access-analyzer --project=affable-enigma-513514-q8 --location=global --workload-identity-pool=github --display-name="takatsu-connect/access-analyzer" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref" --attribute-condition="assertion.repository == 'takatsu-connect/access-analyzer' && assertion.repository_id == '1443616803' && assertion.ref == 'refs/heads/main'"
 ```
+
+`repository_id`（このリポジトリの数値 ID。2026-11-03 に `gh api` で確認）も条件に含める。リポジトリ名の変更や移管で名前が変わっても、別のリポジトリが同じ名前を取って条件を満たすことを防ぐ（設計レビュー L-10）。
 
 5. この repo からの連携 ID に、SA になりすます権限を与える。
 
