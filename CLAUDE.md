@@ -49,4 +49,6 @@ docs/
 - セキュリティ監査（security-auditor）は、要件・設計の確定前、初回公開前、.github/workflows/ や Supabase の権限や認証に触れる変更のあと、定期点検のときに依頼する。致命的・高の指摘は Issue にして修正してから次の工程へ進む。
 
 ## 現在の状況
-- 2026-11-03: リポジトリを初期化し、エージェント定義と本ファイルを追加。要件定義は未着手。
+- 2026-11-03: リポジトリを初期化し、エージェント定義と本ファイルを追加。
+- 2026-11-03: 全体構成を決定（GitHub Actions の日次バッチ → Supabase → Vercel の BI。ログインなしで公開。リポジトリは public）。security-auditor と .claude/rules/security.md を追加し、初期監査を実施。GitHub の設定を堅牢化（docs/operations/initial_setup.md）。
+- 2026-11-03: 要件定義の草案を docs/requirements/ に作成（状態: 草案）。open_questions.md の Q-01〜Q-25 への依頼者の回答待ち。回答を反映し security-auditor のレビューを受けてから「確定」にし、設計へ進む。
