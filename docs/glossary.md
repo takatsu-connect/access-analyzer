@@ -1,6 +1,6 @@
 # 用語集
 
-- 状態: レビュー中
+- 状態: 確定（2026-11-03）
 - 更新日: 2026-11-03
 - 変更履歴: 2026-11-03: analytics-advisor の助言（docs/requirements/advice/2026-11-03-metrics-review.md §6）の用語の置き換え表を反映。「画面で使う言葉」と「添える注記」の列を追加し、廃止した指標（M-04、M-05、M-07、M-08、M-42）を明記
 - 変更履歴: 2026-11-03: security-auditor の要件レビュー（docs/security/audits/2026-11-03-requirements-review.md）の指摘 H-1・H-2・M-1〜M-6・L-2〜L-6 を反映（公開状態、伏せ値、非表示の申し出の説明を修正）
@@ -133,4 +133,4 @@
 | GitHub Actions | 日次バッチの実行環境。依頼者の決定。public リポジトリで動く |
 | RLS | Row Level Security。Supabase の表ごとに読める行を制限する仕組み |
 | service role キー | Supabase の書き込み権限を持つキー。バッチだけが使い、ブラウザに渡さない |
-| noindex | 検索エンジンに載せない指示。公開の形は Q-04 |
+| noindex | 検索エンジンに載せない指示。本 BI は全ページ noindex（確定、Q-04、NFR-21） |

@@ -1,6 +1,6 @@
 # 00 概要（背景・目的・スコープ）
 
-- 状態: レビュー中（2026-11-03: 助言の全採用と security-auditor の 2 回のレビュー、GA4 の確認結果を反映。残りは open_questions.md の依頼者回答）
+- 状態: 確定（2026-11-03。優先度 高の質問はすべて回答済み。優先度 中・低の未確定事項は open_questions.md の仮置きで設計を進め、回答が得られたら反映する）
 - 更新日: 2026-11-03
 - 変更履歴: 2026-11-03: analytics-advisor の助言（advice/2026-11-03-metrics-review.md）を全採用し反映。同日に確認した事実（記事 225 本、著者 21 人、カテゴリの重複、コメント未使用、Analytify、Xserver ほか）を §1・§4 に追記
 - 変更履歴: 2026-11-03: security-auditor の要件レビュー（audits/2026-11-03-requirements-review.md）の指摘 H-1・H-2・M-1〜M-6・L-2〜L-6 を反映（L-2: 著者を WordPress のユーザー ID でなく表示名だけで書く）
