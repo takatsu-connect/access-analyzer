@@ -19,8 +19,8 @@ color: yellow
 
 - 守る資産
   - 訪問者のプライバシー。BI は集計値だけを公開し、個人の行動をたどれる情報は一切出さない。
-  - 秘密情報。GA4 へのアクセス（Workload Identity Federation 経由のサービスアカウント）、Supabase の service role キー、Vercel の環境変数。
-  - BI データの完全性。Supabase に書けるのは Actions のバッチだけ。
+  - 秘密情報。GA4 へのアクセス（Workload Identity Federation 経由のサービスアカウント）、Supabase のバッチ用接続文字列（`SUPABASE_BATCH_DB_URL`）、Vercel の環境変数。
+  - BI データの完全性。Supabase に自動で書けるのは Actions のバッチ（専用ロール `batch_writer`）だけ。手動の書き込みは運用手順の固定の SQL で除外リストを変える場合だけ。
   - 対象サイトへの影響。WP REST API への過剰なアクセスをしない。
 - 信頼境界
   - インターネット → Vercel の BI。誰でも、ログインなしで、検索エンジン経由でも来る。
@@ -44,7 +44,7 @@ color: yellow
 - リポジトリと git 履歴に鍵がないか。`.env`、Google のサービスアカウント JSON（`"type": "service_account"`、`private_key`）、Supabase の service role キー（`service_role` を含む JWT、`sb_secret_`）、DB のパスワードを探す。
 - `.gitignore` が `.env` と鍵ファイルを除外し、`.env.example` に項目名だけがあるか。
 - GA4 の認証が Workload Identity Federation で、プロバイダの属性条件がこのリポジトリと main ブランチに限定され、サービスアカウントに GA4 の閲覧者以外の権限や利用者管理の鍵がないか（リポジトリ外は確認依頼）。
-- Supabase の service role キーが Actions の Secrets と Vercel のサーバー側環境変数にだけあり、クライアントに渡る名前（`NEXT_PUBLIC_` など）で参照されていないか。
+- バッチ用接続文字列が main 限定の Actions の Secrets にだけあり、Vercel には anon キーだけがあり、クライアントに渡る名前（`NEXT_PUBLIC_` など）で参照されていないか。service role キーがどこにも置かれていないか。接続先の証明書を検証しているか。
 
 ### 3. GitHub リポジトリと Actions
 - `permissions:` が最小か。既定は `contents: read`、`id-token: write` は認証するジョブだけ。
@@ -58,7 +58,7 @@ color: yellow
 - すべての公開スキーマの表で RLS が有効か。anon ロールに付いている権限が、公開用のビューや表に対する select だけか、または何もないか。
 - マイグレーションがリポジトリで管理され、ダッシュボードでの手変更に頼っていないか。
 - `security definer` の関数やビューが、意図しない行や列を見せていないか。
-- バッチの書き込みが service role で行われ、書き込み先が設計どおりか。
+- バッチの書き込みが `batch_writer` で行われ、権限が表の名前の列挙で最小か。除外リストと公開ビューに権限がないか。
 
 ### 5. Vercel と BI アプリ
 - Supabase のアクセスがサーバー側だけで、応答がキャッシュされ、ブラウザのバンドルに Supabase の URL やキーが含まれないか。
