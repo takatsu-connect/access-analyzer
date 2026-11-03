@@ -3,6 +3,7 @@
 - 状態: 草案
 - 更新日: 2026-11-03
 - 変更履歴: 2026-11-03: analytics-advisor の助言（advice/2026-11-03-metrics-review.md）を全採用し反映。同日に確認した事実（記事 225 本、著者 21 人、カテゴリの重複、コメント未使用、Analytify、Xserver ほか）を §1・§4 に追記
+- 変更履歴: 2026-11-03: security-auditor の要件レビュー（audits/2026-11-03-requirements-review.md）の指摘 H-1・H-2・M-1〜M-6・L-2〜L-6 を反映（L-2: 著者を WordPress のユーザー ID でなく表示名だけで書く）
 
 ## 1. 背景
 
@@ -56,7 +57,7 @@
 - 計測は GA4 の gtag.js のみ（測定 ID G-79CFGF83VT）。Jetpack Stats、WP Statistics、Matomo、Site Kit はトップページから検出されない。
 - 主なプラグイン: snow-monkey-blocks、snow-monkey-forms、wp-ulike（いいね）、add-to-any（シェアボタン）、spotlight-social-photo-feeds、official-facebook-pixel。
 - WP REST API（/wp-json/wp/v2/）は公開。posts、categories、tags、users/<id>（個別）が取れる。users 一覧は無効化されている。記事 URL は https://takatsu-connect.com/<記事 ID>/。takatsu/v1、tc/v1、takatsu-bot/v1、mcp、members/v1、wp-ulike/v1、wp-analytify/v1 などの名前空間もあるが、本 BI が使うのは wp/v2 だけ。
-- 公開記事は 225 本（2026-11-03）。公開記事のある著者は 21 人。うち 1 人（著者 ID 23、表示名 SBC）が 120 本（53%）。次いで 19、17、11、8、6 本。3 本以下の著者が 11 人。著者 ID 23 が運営者本人かは未確認（Q-31）。
+- 公開記事は 225 本（2026-11-03）。公開記事のある著者は 21 人。うち 1 人（表示名 SBC）が 120 本（53%）。次いで 19、17、11、8、6 本。3 本以下の著者が 11 人。表示名 SBC の著者が運営者本人かは未確認（Q-31）。文書では著者を WordPress のユーザー ID で書かず、表示名だけで書く（NFR-35 の趣旨。監査 L-2）。
 - カテゴリは二階層（親: イベント、記事、マップ、広告）で、同名の子が別の親の下にある。225 本のうち 198 本（88%）が複数カテゴリに属し、多くは「記事」の木と「イベント」の木の両方に子を持つ。「イベント」の木に属する記事は 127 本。タグはシリーズ企画を束ねている。
 - コメント: 公開コメントは 0 件、確認した記事の comment_status は closed。コメント機能は使われていない。
 - wp-ulike: いいねボタンは記事ページにあるが、REST API（wp-ulike/v1）には templates のルートしかなく、いいね数は取れない。GA4 イベントも送っていない（記事 HTML の gtag は config だけ）。
