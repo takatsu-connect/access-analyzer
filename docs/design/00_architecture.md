@@ -1,12 +1,13 @@
 # 00 全体構成
 
 - 状態: レビュー中（2026-11-03。security-auditor の設計レビュー 3 回と analytics-advisor の画面レビューを反映し、構築に進んでよいと判定された。依頼者の確認待ち）
-- 更新日: 2026-11-03
+- 更新日: 2026-11-04
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
   - 2026-11-03: バッチを Python に変更し `packages/shared` を廃止（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。除外リストの変更を SQL エディタに変更（ADR 0005）
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1、W-3、W-8、W-9 を反映（週 1 の `audit.yml`、`apps/batch/certs/`、`supabase/checks/`、Environment の Secret）
-- 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0005、ADR 0006、ADR 0007、ADR 0009
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`excluded_author` と運用担当の除外の経路を図と表から外した
+- 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0007、ADR 0009
 
 ## 1. 概要
 
@@ -37,7 +38,6 @@ flowchart TB
   subgraph SB[Supabase（Free）]
     INT[(内部表<br/>RLS 有効・anon 権限なし)]
     PUB[公開ビュー pub_*<br/>anon select のみ]
-    EXC[(excluded_author<br/>内部表・batch_writer 権限なし)]
   end
 
   subgraph VC[Vercel（Hobby）]
@@ -46,15 +46,12 @@ flowchart TB
   end
 
   USER[運営者 / ライター / URL を知る人<br/>ブラウザ]
-  OPS[運用担当<br/>Supabase SQL エディタ]
 
   ACT -->|OIDC トークン| WIF --> SA -->|1 時間の AT| GA
   GA -->|集計値| ACT
   WP -->|記事メタデータ| ACT
   ACT -->|psycopg, shared pooler session mode<br/>batch_writer: upsert| INT
   INT --> PUB
-  EXC -.->|除外| PUB
-  OPS -->|除外の追加・解除| EXC
   ACT -->|Deploy Hook| BUILD
   REPO -->|push main| BUILD
   PUB -->|anon: select| BUILD
@@ -68,19 +65,18 @@ flowchart TB
 | --- | --- | --- | --- | --- |
 | 日次バッチ（`apps/batch`） | GitHub Actions（ubuntu、Python） | WP REST API と GA4 Data API から取得、pagePath・参照元の正規化、期間集計、伏せ値・二次伏せ、派生指標（累積、判定）、Supabase への書き込み（psycopg）、実行記録、Deploy Hook の呼び出し。設定値、ロガー、環境変数の検証もここに置く | WIF 経由の短命トークン、`SUPABASE_BATCH_DB_URL`（`batch_writer`）、Deploy Hook URL | backend-engineer |
 | 定数の突き合わせ（`contracts/constants.json`） | リポジトリ | 言語をまたぐ定数（`SITE_ORIGIN`、バケット名など）の正。実行時には読まず、両言語のテストが突き合わせる（ADR 0004、07 S-16） | なし | backend-engineer、frontend-engineer |
-| Supabase（Postgres） | Supabase Free | 内部表（蓄積、全期間保持）、公開ビュー（伏せ済み・除外済みの投影）、除外リスト、実行記録。マイグレーションで管理 | `batch_writer` の接続文字列は Actions に、anon キーは Vercel に。service role キーは配らない | backend-engineer（スキーマ）、devops-engineer（プロジェクト） |
+| Supabase（Postgres） | Supabase Free | 内部表（蓄積、全期間保持）、公開ビュー（伏せ済みの投影）、実行記録。マイグレーションで管理 | `batch_writer` の接続文字列は Actions に、anon キーは Vercel に。service role キーは配らない | backend-engineer（スキーマ）、devops-engineer（プロジェクト） |
 | BI（`apps/web`） | Vercel Hobby | ビルド時に公開ビューを読み、6 画面を静的生成。期間切り替え・フィルタ・並べ替え・CSV はクライアント側。応答ヘッダ、noindex。辞書、公開ビューの型、埋め込み JSON の型もここに置く | Supabase anon キー（ビルド時のみ） | frontend-engineer |
 | ワークフロー（`.github/workflows`） | GitHub | cron とディスパッチ、WIF 認証、バッチの実行、失敗通知、heartbeat、CI（lint / test / audit） | Secrets の参照 | devops-engineer |
-| 除外リストの変更 | Supabase の SQL エディタ（固定の SQL。ADR 0005） | 除外リストの追加・削除 | なし（ダッシュボードのログイン） | 運用担当 |
 
 ## 4. データの流れ
 
 1. 取得（毎日 JST 17:00 ごろ、基準日 = 前日）: WP REST API から追加・更新された記事と ID 一覧、カテゴリ、タグ、必要な著者を差分で取る（約 7 リクエスト）。GA4 Data API から直近 7 日の日別値と、取り直す期間（移動窓 6 + 当月 + 未確定の前月）の期間別値を取る（約 30 リクエスト、約 450 トークン）。詳細は 03 §4、§5。
 2. 正規化: pagePath / landingPage → 記事 ID（`^/(\d+)/$`）。sessionSource → SNS 5 区分。sessionDefaultChannelGroup → 5 区分。city → 川崎市 / 国内その他 / 不明。
 3. 集計と伏せ値: 05 §4.1 の表どおりに、日別は生値（全体、記事）、期間別は生値を合算してから T = 5 と二次伏せを適用。著者 × 内訳軸 は記事の生値を著者で合算してから伏せる。合計・累積は伏せる前の値から。
-4. 派生: 累積（M-18）、分布（M-19）、帯、M-22〜M-24 の判定、節目。
+4. 派生: 累積（M-18）、M-22〜M-24 の判定、節目。分布（M-19）と帯は公開ビューが計算する（02 §4.1）。
 5. 格納: Supabase の内部表へ upsert（psycopg、`batch_writer`、1 トランザクション。ADR 0009）。移動窓は上書き、月は確定後に固定、確定した暦月の参照元・市別と記事の公開後 30 日時点の参照元は 1 回だけ書く。実行記録を `batch_run` に残す。
-6. 公開: Deploy Hook で Vercel を再ビルド。ビルドは anon キーで `pub_*` ビューだけを読み、除外著者の記事・著者が存在しない前提で全ページを静的生成。CDN から配信。
+6. 公開: Deploy Hook で Vercel を再ビルド。ビルドは anon キーで `pub_*` ビューだけを読み、全ページを静的生成。CDN から配信。
 7. 閲覧: ブラウザは静的ファイルだけを受け取る。期間の切り替えはページに埋め込んだ全期間ぶんのデータをクライアントで切り替える。記事・著者へのリンクは takatsu-connect.com へ。
 
 時刻の基準は Asia/Tokyo（保存は `date` = JST 暦日、`timestamptz` = UTC。表示は JST 明示。02 §2.1）。
@@ -91,7 +87,7 @@ flowchart TB
 | --- | --- | --- | --- | --- |
 | B1: GitHub Actions ランナー | バッチのプロセス、Secrets | インターネット | GA4・WP への HTTPS 読み出し、Supabase の pooler への Postgres 接続（TLS）、Deploy Hook | Secrets は main の workflow だけが参照。fork PR は Secrets に触れない。ログに秘密・行データを出さない（NFR-44、NFR-45） |
 | B2: GCP | WIF プール・プロバイダ、SA | GitHub の OIDC 発行者 | OIDC トークン → 連携トークン → SA のアクセストークン | 属性条件（repository と ref が main）。SA は GA4 閲覧者のみ。JSON 鍵なし（ADR 0002） |
-| B3: Supabase | 内部表、除外リスト | Actions（`batch_writer`）、Vercel ビルド（anon）、運用担当（SQL エディタ） | `batch_writer` の内部表の読み書き（除外リストを除く）、anon の `pub_*` select、除外リストの変更 | RLS + grant。`batch_writer` は許可した表だけ。anon は公開ビュー以外に触れない。公開ビューの列を対応表で統制（02 §4〜§6） |
+| B3: Supabase | 内部表 | Actions（`batch_writer`）、Vercel ビルド（anon）、運用担当（SQL エディタ） | `batch_writer` の内部表の読み書き、anon の `pub_*` select、`batch_writer` のパスワードの設定 | RLS + grant。`batch_writer` は許可した表だけ。anon は公開ビュー以外に触れない。公開ビューの列を対応表で統制（02 §4〜§6） |
 | B4: Vercel ビルド | ビルドのプロセス、環境変数（anon） | Supabase、CDN | `pub_*` の select、静的ファイルの出力 | anon キーのみ。`NEXT_PUBLIC_` を使わない。fork PR のプレビューを止める |
 | B5: CDN と閲覧者 | 静的ファイル | 誰でも | HTTPS の GET | 公開ビューに載るものだけが載る。noindex、CSP、frame-ancestors。実行時のサーバー処理なし（入力はクライアント側で許可リスト検証） |
 | B6: 対象サイト | takatsu-connect.com | バッチ、閲覧者のブラウザ | wp/v2 の読み出し（バッチ）、記事ページへのリンク（閲覧者） | 日次・差分・間隔 1 秒（NFR-72）。リンク先は固定ドメイン（FR-04） |

@@ -1,12 +1,13 @@
 # 04 データ契約（公開ビューと埋め込み JSON）
 
 - 状態: レビュー中（2026-11-03）
-- 更新日: 2026-11-03
+- 更新日: 2026-11-04
 - 関係: ADR 0006（ビルド時生成）、02_data_model.md §4（公開ビュー）、05_screens.md、06_security.md §7、NFR-11、NFR-42、NFR-91、FR-01、FR-03、FR-06
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
   - 2026-11-03: `packages/shared` の廃止に伴いパスを `apps/web/src/lib/` に変更（ADR 0004）。契約の内容は変わらない
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（ArticleDetailData の period から prev* を外す、AuthorPageData の siteMedianPostCount を削除、PostRow の band7 を埋め込まない、一覧の benchmark を n = 30 だけに、ActivityData.authorCounts は 1 本以上の著者だけ。N-1: pub_benchmark_curve と帯の列はビューが可視記事から計算するが列集合は変わらない）
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。契約のコメントから除外後と除外込みの区別を外した（型は変えない）
 
 ## 1. 方針（HTTP API はない）
 
@@ -37,7 +38,7 @@
 | S-01 | pub_posting_period | period_id、post_count | 全行（author_count は置かない。設計レビュー M-5） |
 | S-01 | pub_post | published_on | 全行（M-26 の日別公開本数を BI が数える） |
 | S-01、S-02b、S-03、S-05 | pub_benchmark_curve | scope、n、p25、p50、p75、population_size、population_window | scope = all |
-| S-02a〜S-02e、S-05、S-07 | pub_post | post_id、title、post_url、author_slug、display_name、published_on、is_ad、age_days、freshness | 全行（除外はビュー側） |
+| S-02a〜S-02e、S-05、S-07 | pub_post | post_id、title、post_url、author_slug、display_name、published_on、is_ad、age_days、freshness | 全行 |
 | S-02a〜S-02e、S-05、S-07 | pub_article_period | post_id、period_id、pageviews | 全行（4,500 行程度。`range()` で 1,000 行ずつ） |
 | S-02b、S-02d、S-02e、S-05 | pub_article_summary | post_id、age_days、freshness、pv_7d、pv_30d、band_7d、band_30d、is_recent_hot、is_revival | 全行 |
 | S-02e | pub_post_category、pub_post_tag | post_id、category_id / tag_id | 全行 |
@@ -123,7 +124,7 @@ type DashboardData = PageCommon & {
     newReturning: Record<'new' | 'returning' | 'unknown', number | null>;
   }>;
   heatmap: Record<PeriodId, (number | null)[]>;      // 168 要素。index = dow * 24 + hour（dow 0 = 日曜。GA4 の dayOfWeek と同じ）。伏せは null（二次伏せを含む。L-1）
-  freshness: Record<PeriodId, Record<Freshness, { postCount: number; pageviews: number }>>;   // 除外後（H-1）。sitePeriod.pageviews（除外込み）とは一致しない。注記は FR-10
+  freshness: Record<PeriodId, Record<Freshness, { postCount: number; pageviews: number }>>;   // 公開記事の合算。sitePeriod.pageviews（GA4 のサイト全体値。記事以外のページを含む）とは一致しない。注記は FR-10
   monthReferrer: Record<PeriodId, { domain: string; sessions: number }[]>;      // 確定月のみ。rank 順。T 未満の行は存在しない
   monthCity: Record<PeriodId, { region: string; city: string; sessions: number }[]>;
   posting: Record<PeriodId, { postCount: number }>;  // 人数（authorCount）は置かない（M-5、FR-51）
@@ -145,7 +146,7 @@ type PostRow = {
   publishedOn: string;       // 'YYYY-MM-DD'
   isAd: boolean; ageDays: number; freshness: Freshness;
   pv7: number | null; pv30: number | null;       // 未経過は null（画面は「◯日目」と現時点の累積）
-  band30: Band | null;                            // 'upper' | 'middle' | 'lower'。公開から N 日目（N = min(ageDays, 30)）の累積を同じ N 日目の分布と比べた値（pub_article_summary.band_30d。02 §4.1 でビューが可視記事の母集団から計算）。null = まだ比較できません（ageDays < 3、母集団不足）。pub_article_summary.band_7d は画面で使わないので埋め込まない
+  band30: Band | null;                            // 'upper' | 'middle' | 'lower'。公開から N 日目（N = min(ageDays, 30)）の累積を同じ N 日目の分布と比べた値（pub_article_summary.band_30d。02 §4.1 でビューが公開記事の母集団から計算）。null = まだ比較できません（ageDays < 3、母集団不足）。pub_article_summary.band_7d は画面で使わないので埋め込まない
   pvTotal: number;                                // 現時点の累積（未経過のときの表示と、S-03 の「公開からの合計」に使う）
   isRecentHot: boolean; isRevival: boolean;
   categoryIds: number[]; tagIds: number[];        // S-02e（検索）だけ。他は空配列
@@ -237,8 +238,8 @@ type TagPageData = PageCommon & { tag: { id: number; name: string }; posts: Post
 type ActivityData = PageCommon & {
   monthly: { month: string; postCount: number }[];                   // 'YYYY-MM'。直近 24 か月
   posting: Record<PeriodId, { postCount: number }>;   // 人数は置かない（M-5）。主表示は「この期間に ◯本の記事が公開されました」
-  authorCounts: Record<PeriodId, { name: string; slug: string; postCount: number }[]>;   // 名前順で固定。並べ替え不可（NFR-36）。除外後。**期間内に 1 本以上公開した著者だけ**（postCount ≥ 1。0 本の著者はビルド時に落とす。FR-51、advice §6 高）
-  categoryMix: Record<PeriodId, { categoryId: number; path: string; postCountPublished: number }[]>;   // 除外後（H-1）
+  authorCounts: Record<PeriodId, { name: string; slug: string; postCount: number }[]>;   // 名前順で固定。並べ替え不可（NFR-36）。**期間内に 1 本以上公開した著者だけ**（postCount ≥ 1。0 本の著者はビルド時に落とす。FR-51、advice §6 高）
+  categoryMix: Record<PeriodId, { categoryId: number; path: string; postCountPublished: number }[]>;
 };
 ```
 
@@ -289,7 +290,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `getAuthorPeriodAll()` / `getAuthorPeriodBreakdownAll()` / `getAuthorCategoryPeriodAll()` / `getAuthorSummaryAll()` | ― | 全行 | 対応するビュー |
 | `getCategoryPeriodAll()` / `getTagPeriodAll()` | ― | 全行 | pub_category_period / pub_tag_period |
 | `getPostingMonthly()` / `getPostingPeriod()` | ― | 全行 | pub_posting_monthly / pub_posting_period |
-| `getBenchmarkCurve()` | ― | scope = all の行（n = 1〜90。母集団 30 未満の n は行がない）。ビューが可視記事から計算した値（02 §4.1、N-1） | pub_benchmark_curve |
+| `getBenchmarkCurve()` | ― | scope = all の行（n = 1〜90。母集団 30 未満の n は行がない）。ビューが公開記事から計算した値（02 §4.1） | pub_benchmark_curve |
 
 組み立て層（`apps/web/src/data/pages/*.ts`）。`PubCache` から各ページの JSON を作り、`zod` で検証して返す。
 
@@ -302,7 +303,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `listArticleIds(cache)` | ― | `number[]` | `generateStaticParams` 用。pub_post の post_id のみ |
 | `buildAuthorIndex(cache)` / `buildAuthorPage(cache, slug)` / `listAuthorSlugs(cache)` | ― / slug | `AuthorIndexData` / `AuthorPageData` または `null` / `string[]` | §3.5。slug は `^[a-z0-9-]+$` を満たすものだけ（06 §7） |
 | `buildCategories(cache)` / `buildSeasonal(cache)` | ― | `CategoryData` / `SeasonalData` | §3.6 |
-| `buildTagIndex(cache)` / `buildTagPage(cache, tagId)` / `listTagIds(cache)` | ― / tag_id | §3.6 | タグの記事が 0 本（除外後）なら null = ページを作らない |
+| `buildTagIndex(cache)` / `buildTagPage(cache, tagId)` / `listTagIds(cache)` | ― / tag_id | §3.6 | タグの記事が 0 本なら null = ページを作らない |
 | `buildActivity(cache)` | ― | `ActivityData` | §3.7 |
 | `buildReactions(cache)` | ― | `ReactionsData` | FR-61 を含めるときだけ |
 
@@ -333,7 +334,6 @@ HTML 全体はこれに初期表示の DOM（既定期間 = 直近 28 日の描�
 ## 7. 埋め込まない列・値
 
 - `_mask` 列: ビューにないので埋め込めない（02 §2.3）。一次伏せ・二次伏せの区別は JSON に現れない。
-- 除外著者の有無を示す列: ビューにない（NFR-43）。
 - `author_slug`: `PostRow.authorSlug`、`authors[].slug` として JSON には入るが、**画面に文字列として描かない**。使うのは `href`（`/authors/<slug>` と `pub_author.author_url`）だけ（NFR-35、FR-30）。
 - 著者の WordPress ユーザー ID、メール、アバター: ビューにない。
 - 伏せる前の値、生の行データ（訪問・ユーザー・イベント）: ビューにない。

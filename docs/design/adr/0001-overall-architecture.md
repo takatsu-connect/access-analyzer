@@ -1,7 +1,7 @@
 # ADR 0001: 全体構成（GitHub Actions 日次バッチ → Supabase → Vercel）
 
 - 状態: 承認済み（依頼者の決定を記録。2026-11-03）
-- 更新日: 2026-11-03
+- 更新日: 2026-11-04
 - 関係: 00_overview.md §5、NFR-01、NFR-11、NFR-42、NFR-60、NFR-70、FR-70、00_architecture.md
 
 ## 文脈
@@ -10,6 +10,8 @@
 - データは GA4 Data API と WP REST API から日次で取り、GA4 側の保持期間に依存せず自前で蓄積する（NFR-50、NFR-51）。
 - 制約: 無料枠で動かす（NFR-60）、無人運用（NFR-70）、public リポジトリ、ログインなし、公開データの規則（NFR-30〜NFR-45）。
 - 依頼者は 2026-11-03 に「GitHub Actions で日次実行して Supabase に格納し、Vercel の BI が Supabase をサーバー側から読む」構成を決定した。本 ADR はその決定を記録し、設計時に比較した代替案を残す。
+- 変更履歴:
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外にしたため、案 E の評価から「除外」を外した
 
 ## 選択肢
 
@@ -19,7 +21,7 @@
 | B | Vercel Cron + Vercel Functions | Supabase Free | Vercel（同じプロジェクト） | 0 円 | Hobby の Function は 300 秒上限でバックフィルに足りない。cron は 1 日 1 回に制限。秘密が Vercel に集まる |
 | C | Supabase Edge Functions + pg_cron | Supabase Free | Vercel | 0 円 | Edge Functions の実行時間と GA4 クライアントの互換（Deno）の確認が要る。デバッグが Actions より難しい |
 | D | 自前の VPS や常駐サーバー | 任意 | 任意 | 数百〜千円 | OS・パッチ・監視の運用が発生。要件の規模に対して過大 |
-| E | GA4 を BI から直接読む（蓄積なし。Looker Studio など） | なし | Looker Studio / 直接 API | 0 円 | 蓄積・伏せ値・除外の統制ができず NFR-33、NFR-43、NFR-51 を満たせない。ログインなしで公開もしにくい |
+| E | GA4 を BI から直接読む（蓄積なし。Looker Studio など） | なし | Looker Studio / 直接 API | 0 円 | 蓄積・伏せ値の統制ができず NFR-33、NFR-43、NFR-51 を満たせない。ログインなしで公開もしにくい |
 
 ## 決定
 

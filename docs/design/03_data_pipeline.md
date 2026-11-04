@@ -1,13 +1,14 @@
 # 03 データパイプライン
 
 - 状態: レビュー中（2026-11-03）
-- 更新日: 2026-11-03
+- 更新日: 2026-11-04
 - 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0004、ADR 0006、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 分布 `benchmark_curve` と帯をバッチで計算せず、公開ビューが可視記事から計算する。§1、§6.2、§7）
   - 2026-11-03: バッチを Python に変更（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。例外とログの規律を Python と psycopg に合わせて作り直し（§14、§15）。`packages/shared` のパスを `apps/batch` と `apps/web` に変更
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-7、L-5〜L-7 を反映（§14 の起動時の処理と分類の規則、§10 の作り直し、§16 の接続文字列の形式と置き場所）
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`publish_only` は設定変更後の再ビルドとビルド失敗後の再試行のために残し、理由を直した（§2、§8）。§6 の除外の記述を外した
 
 ## 1. 全体の流れ
 
@@ -20,7 +21,7 @@
 | 2 | period | 基準日 | `period` の移動窓 6 行の日付更新、月行の追加、`is_confirmed` の更新。今回取り直す期間の集合（§3） | ― |
 | 3 | ga4_daily | GA4 Data API | `site_daily`、`site_daily_channel`、`site_daily_device`、`article_daily`（直近 7 日ぶん、またはバックフィル範囲） | quota / auth / network |
 | 4 | ga4_period | GA4 Data API | 取り直す期間の `site_period`、`site_period_breakdown`、`site_period_heatmap`、`article_period`（landing_sessions、scroll_count、engagement_seconds）、`article_period_breakdown`。確定した月の `site_month_referrer`、`site_month_city`。30 日が経過した記事の `article_referrer_30d` | 同上 |
-| 5 | derive | 内部表（メモリ上の生値を含む） | `article_period.pageviews`、`author_period_breakdown`、`article_summary`（帯の列を除く）、`article_milestone`、`author_summary`（帯の列を除く）、`sns_source_unmapped`。分布 `benchmark_curve` と帯はバッチで計算せず、公開ビューが可視記事から計算する（02 §4.1、N-1） | validation |
+| 5 | derive | 内部表（メモリ上の生値を含む） | `article_period.pageviews`、`author_period_breakdown`、`article_summary`（帯の列を除く）、`article_milestone`、`author_summary`（帯の列を除く）、`sns_source_unmapped`。分布 `benchmark_curve` と帯はバッチで計算せず、公開ビューが公開記事から計算する（02 §4.1、N-1） | validation |
 | 6 | write | 上記 | Supabase への upsert（psycopg、1,000 行単位、全体で 1 トランザクション）。移動窓の古い行の削除 | db |
 | 7 | publish | ― | Vercel の Deploy Hook を呼び、BI を再ビルドする（ADR 0006）。`batch_run` を `success` に更新 | network |
 
@@ -43,7 +44,7 @@ flowchart LR
 
 - `schedule`: `cron: '0 8 * * *'`（UTC 08:00 = JST 17:00、FR-70 の仮置き。Q-13 で T を確定したら合わせる）。GA4 の日次データが揃う JST 15:30 より後、NFR-02 の T = 18:00（仮）より前。
 - GitHub の cron は遅延・欠落することがあるため、`cron: '0 9 * * *'`（JST 18:00）にも登録し、preflight で「同じ基準日の success があれば終了」とする。2 回目は保険であり、通常は 1 回目で終わる。
-- `workflow_dispatch`: 手動の再実行（FR-70）。入力は `mode`（`daily` / `backfill` / `publish_only`）、`from`、`to`（バックフィル時）。`publish_only` は工程 7（Deploy Hook の呼び出し）だけを行い、除外リストの変更後（ADR 0005）のほか、設定値や辞書（`ui-text.ts`）の変更後の再ビルド、ビルド失敗後の再試行にも使う。public の Actions 実行一覧に見える `publish_only` を除外変更の一意の信号にしないためで、`batch_run` に行を書かない（設計レビュー L-7）。
+- `workflow_dispatch`: 手動の再実行（FR-70）。入力は `mode`（`daily` / `backfill` / `publish_only`）、`from`、`to`（バックフィル時）。`publish_only` は工程 7（Deploy Hook の呼び出し）だけを行い、設定値や辞書（`ui-text.ts`）の変更後の再ビルド、ビルド失敗後の再試行に使う。データを更新しないので `batch_run` に行を書かない（`pub_meta` の最終更新を変えない。設計レビュー L-7）。
 - 定期実行は main ブランチのワークフローだけが動く（NFR-45 (4)。schedule は既定ブランチでしか動かないが、ジョブ側でも `if: github.ref == 'refs/heads/main'` を付ける）。
 - 所要時間の見込み: 通常 2〜4 分（GA4 約 30 リクエスト、WP 約 7 リクエスト、書き込み数万行）。`timeout-minutes: 30`。
 
@@ -166,15 +167,15 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 4. 曜日 × 時間帯（168 セル）も 1 つの排他的区分として手順 1〜3 を適用する（設計レビュー L-1。復元される値はサイト全体の時間帯 PV で識別性は低いが、アルゴリズムを共通にするコストは小さい）。排他的でない集計（参照元ドメインの上位 N、市別の上位 N、記事 × 期間の単独値）は手順 2 だけ。上位 N は「T 未満の行を落としてから上位 N を取る」。
 5. 階層差分（著者 × 内訳軸、設計レビュー M-2）: `author_period_breakdown` の各セル（period_id、axis、bucket）について、同じ period_id・axis・bucket で、その著者の記事セル（`article_period_breakdown`、手順 1〜3 の適用後）のうち伏せたもの（`threshold` または `secondary`）がちょうど 1 本のときは、著者セルを `secondary` で伏せる（値が T 以上でも）。0 本または 2 本以上のときは手順 1〜3 の結果のまま。著者セルへの手順 3 の二次伏せは、手順 5 の後にもう一度判定する（手順 5 で伏せた結果、区分内で伏せたセルが 1 つだけになったら手順 3 を適用する）。入れ子の区分（SNS ⊂ 流入チャネル social、初めて / また来た ⊂ 読んだ人の数、地元 3 区分 ⊂ 訪問回数）は区分内の二次伏せで足りる。
 
-適用先は 05 §4.1 のとおり。合計・累積（記事の期間合計、M-18 の累積、著者・カテゴリ（親・子）・タグ・鮮度区分の合計、公開本数、全体の読まれていた時間の合計、著者 × カテゴリ、著者 × 鮮度区分）は手順 1 の前の生値から計算する。記事の値から合算する集計はすべて除外後（FR-36 の除外は公開ビューが行い、バッチは除外リストを読まない。ADR 0005）。
+適用先は 05 §4.1 のとおり。合計・累積（記事の期間合計、M-18 の累積、著者・カテゴリ（親・子）・タグ・鮮度区分の合計、公開本数、全体の読まれていた時間の合計、著者 × カテゴリ、著者 × 鮮度区分）は手順 1 の前の生値から計算する。
 
 ### 6.2 派生指標の計算
 
-派生指標のうち累積（M-18）、判定（M-22、M-23）、自分の過去との比較の基準値（M-24）はバッチ（Python）が `article_daily` と `wp_post` から計算する。全記事の分布（M-19、M-27）と帯（band）は `internal.benchmark_curve` ビューと公開ビューが可視記事から計算し、バッチは計算しない（02 §4.1、ADR 0003 判断 4。最終確認 低-1 で文言を修正）。計算式は 02_metrics.md §4.3。
+派生指標のうち累積（M-18）、判定（M-22、M-23）、自分の過去との比較の基準値（M-24）はバッチ（Python）が `article_daily` と `wp_post` から計算する。全記事の分布（M-19、M-27）と帯（band）は `internal.benchmark_curve` ビューと公開ビューが公開記事から計算し、バッチは計算しない（02 §4.1、ADR 0003 判断 4。最終確認 低-1 で文言を修正）。計算式は 02_metrics.md §4.3。
 
 - `article_period.pageviews` = 期間内の `article_daily.pageviews` の合計。
 - 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
-- 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが可視記事（`excluded_author` に当たらない著者の記事。広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、除外著者でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は可視記事の件数。バッチが除外リストを読まない方針（ADR 0005）を保つため、DB 側で計算する（代替案と推奨は ADR 0003 判断 4 追記）。`apps/batch/tests/support/reference.py` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
+- 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが公開記事（広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は母集団の件数。著者の除外は初回対象外だが（2026-11-04、ADR 0005 保留）、計算の場所はビューのままにする。追加するときに母集団の条件を DB 側の 1 か所に足すだけで済み、バッチに除外リストを読ませずに済むため（経緯と代替案は ADR 0003 判断 4 追記）。`apps/batch/tests/support/reference.py` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
 - 帯（band）: **バッチは計算しない**。公開ビュー `pub_article_summary` が `band_7d`（`pv_7d` を曲線 (all, 7) の p25 / p75 と比べる。age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積を曲線 (all, N) と比べる。「◯日目」として同じ日数の帯と比べる。M-20）を、`pub_author_summary` が `band_30d`（`own_median_30d` を曲線 (all, 30) と比べる）を計算する。p75 と等しいときも p25 と等しいときも `middle`。age_days < 3、曲線の行がない、値が null のときは null。`apps/batch/tests/support/reference.py` の `band()` は参照実装（07 U-08、I-DB-17）。
 - M-22: `is_recent_hot` = age_days ≥ 15 かつ 直近 7 日の PV ≥ 20 かつ 直近 7 日 PV ≥ 2 × (その前 28 日の PV ÷ 4)。`is_revival` = `is_recent_hot` かつ age_days ≥ 91。表示件数の上限（各著者 5、全体 10）は BI 側で `is_recent_hot` の記事を直近 7 日 PV の多い順に切る。
 - M-23: 節目（500、1,000、5,000、10,000）を初めて超えた日 = 累積がその値以上になった最初の `day`。`is_evergreen_365` = age_days ≥ 365 かつ 直近 28 日の PV ≥ 20。
@@ -200,7 +201,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 
 - 工程 7 で Vercel の Deploy Hook（Environment の Secret `VERCEL_DEPLOY_HOOK_URL`。§16）を `httpx.post` で呼ぶ。応答本文を読まず、URL と応答をログに出さない（設計レビュー L-8）。`httpx` の例外は URL を含みうるので §14 の扱いで種別だけにする（失敗は `error_kind = network`）。Vercel がリポジトリの main をビルドし、ビルド時に `pub_*` ビューを anon キーで読んで全ページを静的生成する（ADR 0006）。
 - ビルドが失敗したときは前回のデプロイが残り、`pub_meta.base_date` は進んでいるが画面は古いままになる。Vercel のビルド失敗通知（メール）を運用担当が受ける。BI の FR-02 表示はビルド時の `pub_meta` を埋め込むので、画面の「◯月◯日までのデータ」はその画面が生成された時点の値になる。
-- 除外リストの変更後は `workflow_dispatch` の `publish_only` で Deploy Hook だけを呼ぶ（NFR-11）。`publish_only` は設定変更後の再ビルドなど他の用途にも使い、`batch_run` に行を書かない（§2、設計レビュー L-7）。除外変更後は Vercel の旧デプロイを削除する（06 §2.4）。
+- 設定変更後の再ビルドやビルド失敗後の再試行は、`workflow_dispatch` の `publish_only` で Deploy Hook だけを呼ぶ（NFR-11）。`publish_only` は `batch_run` に行を書かない（§2、設計レビュー L-7）。
 
 ## 9. 直近 7 日の再取得と再実行
 
@@ -302,7 +303,7 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 - 工程の開始・終了、所要時間。
 - 件数: GA4 リクエスト数と消費トークン、WP リクエスト数、取り込んだ記事数、削除した記事数、書き込んだ行数。
 - エラーの種別（§14）。
-- 出さないもの: API の応答本文、行データ（記事タイトル、著者名、pagePath、参照元ドメイン、市名を含む）、トークン、プロパティ ID、接続文字列とその部品（pooler の host、ユーザー名、PROJECT-REF、パスワード）、SQL 文、SQLSTATE 以外の DB のエラー情報、除外リストの内容。環境変数の一覧を出す `env` や `printenv` を使わない。`ACTIONS_STEP_DEBUG` は使わない。
+- 出さないもの: API の応答本文、行データ（記事タイトル、著者名、pagePath、参照元ドメイン、市名を含む）、トークン、プロパティ ID、接続文字列とその部品（pooler の host、ユーザー名、PROJECT-REF、パスワード）、SQL 文、SQLSTATE 以外の DB のエラー情報。環境変数の一覧を出す `env` や `printenv` を使わない。`ACTIONS_STEP_DEBUG` は使わない。
 - ロガーは `apps/batch/src/takatsu_batch/log.py` に 1 つだけ置き、引数を件数・固定の種別・所要時間に限った関数（`log_count(step: Step, name: CountName, n: int)` など。`Step` と `CountName` は `Literal`）だけを公開する。任意のオブジェクトを出す関数を作らない。出力は `sys.stdout.write`。`print` は ruff の T201 で禁止する。
 - pydantic のモデルは `model_config = ConfigDict(hide_input_in_errors=True)` を付けた共通の基底クラスから作る（検証エラーが入力値を含まないようにする。S-18 で検査）。環境変数の検証エラーでは `e.errors(include_input=False)` の `loc` だけを見て、変数名を種別と一緒に出してよい。値は出さない。
 - pytest は CI で `--tb=short` を使い、`--showlocals` を使わない。結合テストの接続先はローカルだけなので本番の秘密は出ないが、習慣として揃える。

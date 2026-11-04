@@ -1,23 +1,24 @@
 # 02 データモデル（Supabase）
 
 - 状態: レビュー中（2026-11-03）
-- 更新日: 2026-11-03
-- 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36、FR-73、FR-76、ADR 0003、ADR 0005、ADR 0007、ADR 0009
+- 更新日: 2026-11-04
+- 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36（初回対象外）、FR-73、FR-76、ADR 0003、ADR 0005（保留）、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（N-1: 全記事の分布の母集団を除外後にし、`benchmark_curve` と帯の列をビューで計算する（§3.5、§4.1、§5、§9）。N-3: service_role への `internal` スキーマの grant（§6））
   - 2026-11-03: 書き込みを専用ロール `batch_writer` に変更（ADR 0009）。§6 の service_role への grant を取り消し、表ごとの grant とポリシーに置き換え（§1、§6、§8、§9）。バッチの言語を Python に変更（ADR 0004）
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-4、W-8、L-1〜L-3、L-7 を反映（§6 のロールの作成を `nologin` に、接続の上限と既定のタイムアウト、`batch_run` の delete を外す、権限の検査の拡張。§8 のテスト用パスワードを seed から除く。§9）
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`excluded_author`、ビューの `not exists` と §4 の除外の列、除外後と除外込みの区別を外した。分布と帯のビューでの計算は保ち、理由を直した。伏せ値、二次伏せ、階層差分、`internal`、`batch_writer` は変えない
 
 ## 1. 方針
 
 - 05 §4.1 の表を「そのまま実装」する。表にない組み合わせの表・列・ビューは作らない（NFR-33）。
 - 表は 2 種類に分け、スキーマも分ける（設計レビュー M-7）。
-  - 内部表（§3）: スキーマ `internal`。日次バッチ（GitHub Actions、専用ロール `batch_writer`。psycopg で pooler に接続。ADR 0009）だけが読み書きする。`excluded_author` は `batch_writer` からも読み書きできない。anon / authenticated / PUBLIC には `internal` スキーマへの usage を与えず、Supabase の API 設定「Exposed schemas」にも含めない（PostgREST から見えない）。加えて全表で RLS 有効、grant なし。
-  - 公開ビュー（§4、名前は `pub_` で始まる）: スキーマ `public`。anon ロールが select できる唯一の対象。BI（Vercel のビルド）はこのビューだけを読む。ビューは所有者（postgres）権限で `internal` の表を読む。伏せ値を適用済みの値だけを置き、生の内訳セルは置かない。除外著者（FR-36）の記事行・著者行は公開ビューで除く（ADR 0005）。
+  - 内部表（§3）: スキーマ `internal`。日次バッチ（GitHub Actions、専用ロール `batch_writer`。psycopg で pooler に接続。ADR 0009）だけが読み書きする。anon / authenticated / PUBLIC には `internal` スキーマへの usage を与えず、Supabase の API 設定「Exposed schemas」にも含めない（PostgREST から見えない）。加えて全表で RLS 有効、grant なし。
+  - 公開ビュー（§4、名前は `pub_` で始まる）: スキーマ `public`。anon ロールが select できる唯一の対象。BI（Vercel のビルド）はこのビューだけを読む。ビューは所有者（postgres）権限で `internal` の表を読む。伏せ値を適用済みの値だけを置き、生の内訳セルは置かない。
 - 合計・累積は伏せる前の値から計算する。内部表のうち「記事 × 日」「全体 × 日」「読まれていた時間の合計」など 05 §4.1 で「伏せ値なし」とされたものは生値で持ち、それ以外の内訳セルは伏せ処理後の値だけを持つ（内部表にも生の内訳セルは残さない。バッチのメモリ上でだけ生値を扱う）。
-- 集計の実行場所は ADR 0007 のとおり。GA4 から期間ごとに取得する集計値と、伏せ値・二次伏せ・分布（M-19）・判定（M-22、M-23、M-24）はバッチ（Python）が計算して表に書く。記事の期間合計から導ける著者・カテゴリ（親・子）・タグ・鮮度区分の合計と公開本数は、公開ビュー（SQL）が計算する。
-- 除外（FR-36）の規則（05 §4.1 用語「除外後」、設計レビュー H-1）: 記事の値から合算する集計（著者、カテゴリの親・子、タグ、鮮度区分の合計・記事数・1 本あたりの中央値）はすべて除外後。除外込みは GA4 のサイト全体値（`site_daily`、`site_daily_*`、`site_period`、`site_period_breakdown`、`site_period_heatmap`、`site_month_*`）と公開本数の件数（`pub_posting_monthly`、`pub_posting_period` の `post_count`）だけ。
+- 集計の実行場所は ADR 0007 のとおり。GA4 から期間ごとに取得する集計値と、伏せ値・二次伏せ・判定（M-22、M-23、M-24）はバッチ（Python）が計算して表に書く。記事の期間合計から導ける著者・カテゴリ（親・子）・タグ・鮮度区分の合計と公開本数、分布（M-19）と帯は、公開ビュー（SQL）が計算する。
+- 著者の除外（FR-36）は初回対象外（2026-11-04、依頼者の決定）。除外の表と公開ビューの除外条件を作らない。追加する場合は NFR-39 の手順に従い、ADR 0005（保留）を検討の出発点にする。
 - シェア数（M-41、FR-61）は初回対象外。表・列・問い合わせを作らない（設計レビュー M-4）。実装するときは NFR-39 の手順で 05 §4.1 に行を追加してから着手する。
 - スキーマ変更はマイグレーションファイル（`supabase/migrations/NNNN_*.sql`）で行う（NFR-73、§8）。
 
@@ -222,8 +223,8 @@
 | period_id | text | PK の一部 |
 | axis | text | PK の一部。`channel` / `sns`（デバイスは格納しない。05 §4.1） |
 | bucket | text | PK の一部 |
-| sessions | integer | null = 伏せ。著者の記事の生値（伏せる前）を合算してから T と二次伏せを適用。除外後（FR-36 の除外著者は行自体を公開ビューで除く） |
-| sessions_mask | text | null / `threshold` / `secondary`。階層差分の対策（設計レビュー M-2、03 §6.1 手順 5）: 同じ period_id・axis・bucket で、その著者の記事セル（`article_period_breakdown`）のうち伏せたものがちょうど 1 本のときは、著者セルの値が T 以上でも `secondary` で伏せる（著者の値 − 可視記事の表示値の和 = 伏せた記事の値 になるため）。0 本または 2 本以上なら伏せない |
+| sessions | integer | null = 伏せ。著者の記事の生値（伏せる前）を合算してから T と二次伏せを適用 |
+| sessions_mask | text | null / `threshold` / `secondary`。階層差分の対策（設計レビュー M-2、03 §6.1 手順 5）: 同じ period_id・axis・bucket で、その著者の記事セル（`article_period_breakdown`）のうち伏せたものがちょうど 1 本のときは、著者セルの値が T 以上でも `secondary` で伏せる（著者の値 − 伏せていない記事の表示値の和 = 伏せた記事の値 になるため）。0 本または 2 本以上なら伏せない |
 
 著者 × 期間 シェア数（`author_period_share`、M-41）の表は作らない（初回対象外。設計レビュー M-4）。
 
@@ -261,7 +262,7 @@
 
 ### 3.5 派生表（バッチが計算）
 
-`benchmark_curve`（M-19、M-27）は**内部表ではなく `internal` スキーマのビュー**にする（2026-11-03、再確認 N-1。§4.1 に定義）。バッチは分布を計算しない。理由: 母集団を除外後（可視記事だけ）にする必要があり、バッチは `excluded_author` を読まない（ADR 0005）ため、除外の判定ができる DB 側で計算する。帯（`band_7d`、`band_30d`、著者の `band_30d`）も同じ曲線から公開ビューが計算する（バッチが除外込みの曲線で帯を計算すると、公開される曲線と帯が食い違い、その食い違いから除外記事の存在が分かる。ADR 0003 判断 4 追記）。
+`benchmark_curve`（M-19、M-27）は**内部表ではなく `internal` スキーマのビュー**にする（2026-11-03、再確認 N-1。§4.1 に定義）。バッチは分布を計算しない。理由: 著者の除外は初回対象外だが（2026-11-04、ADR 0005 保留）、追加するときに母集団の条件を DB 側の 1 か所に足すだけで済み、バッチに除外リストを読ませずに済む（ADR 0003 判断 4 追記）。帯（`band_7d`、`band_30d`、著者の `band_30d`）も同じ曲線から公開ビューが計算し、曲線と帯の計算場所を揃える。
 
 `article_summary`（M-20〜M-24 の記事ごとの判定。基準日ごとに全置換。帯の列は持たない）
 
@@ -292,7 +293,7 @@
 | eligible_count | integer | not null |
 | （band_30d） | ― | 内部表には置かない。公開ビュー `pub_author_summary` が own_median_30d と `internal.benchmark_curve`(all, 30) を比べて計算する（§4.1。FR-31 (b)） |
 
-### 3.6 運用表（実行記録、除外リスト、未対応参照元）
+### 3.6 運用表（実行記録、未対応参照元）
 
 `batch_run`（FR-76）
 
@@ -310,15 +311,6 @@
 | counts | jsonb | not null default '{}'。件数と所要時間だけ。キーは固定（ga4_requests、ga4_tokens、ga4_tokens_remaining_day、ga4_tokens_remaining_hour、wp_requests、posts_upserted、posts_deleted、rows_written、duration_ms）で値はすべて数値。バッチ側は固定キー・数値のみの pydantic モデル（`extra="forbid"`、`strict=True`）で書き、DB にも `check` 制約（immutable 関数 `internal.counts_is_numeric(jsonb)`: すべての値が `jsonb_typeof = 'number'` で、キーが上の一覧に含まれる）を置く（設計レビュー L-6）。API の応答や行データは入れない |
 | github_run_id | text | null。Actions の run ID（ログを辿るため。秘密ではない） |
 
-`excluded_author`（FR-36、D-10、ADR 0005。秘密情報として扱う、NFR-40）
-
-| 列 | 型 | 制約・意味 |
-| --- | --- | --- |
-| author_slug | text | PK。FK は付けない（著者行が消えても除外を維持する） |
-| excluded_at | timestamptz | not null default now() |
-
-申し出の経緯（誰が、いつ、誰の申し出で）はこの表に入れない。台帳はリポジトリ外（NFR-73、ADR 0005）。
-
 `sns_source_unmapped`（D-02 の運用補助。公開しない）
 
 | 列 | 型 | 制約・意味 |
@@ -332,60 +324,57 @@
 
 - すべて `public` スキーマ、名前は `pub_` で始まる。`public` スキーマには公開ビュー以外のオブジェクトを置かない。これ以外のオブジェクトを anon に grant しない。
 - ビューは既定（`security_invoker` を付けない）で作る。Postgres のビューは既定で所有者（postgres）の権限で base 表（`internal` スキーマ）を読むため、anon は内部表に直接触れずにビューの投影だけを読める。所有者権限のビューは base 表の RLS を通らないので、実効的な守りは grant と `internal` スキーマの非公開である（06 §2.3）。security.md「`security definer` の関数やビューは、公開してよい列だけを返すことを確かめてから使う」に該当し、各ビューの列を §5 の対応表で確認する（ADR 0007）。Supabase のアドバイザが出す「security definer view」の警告は意図したものとして受け入れる（06 §13）。
-- 「除外」= `where not exists (select 1 from internal.excluded_author e where e.author_slug = <行の著者 slug>)`。記事行は `wp_post.author_slug` で判定する。
-- 除外の有無を示す列はどのビューにも置かない（NFR-43）。
 - `_mask` 列は出さない（§2.3）。
 
-| ビュー | 元の表 | 列 | 除外 | 対応する 05 §4.1 の行 / 用途 |
-| --- | --- | --- | --- | --- |
-| pub_meta | batch_run | base_date、finished_at（最後の success）、mask_threshold、is_stale（基準日が前日より古い）、last_status | ― | FR-02、NFR-90 |
-| pub_batch_run | batch_run | run_id、started_at、finished_at、base_date、mode、status、failed_step、error_kind（直近 30 件） | ― | FR-02、FR-76 |
-| pub_period | period | period_id、kind、start_date、end_date、is_confirmed | ― | FR-01 |
-| pub_author | wp_author | author_slug、display_name、author_url | 除外 | FR-30、NFR-35 |
-| pub_post | wp_post + wp_author + article_summary | post_id、title、post_url、author_slug、display_name、published_on、is_ad、age_days、freshness | 除外 | FR-20〜FR-25、FR-32 |
-| pub_category | wp_category | category_id、name、parent_id、path | ― | FR-40 |
-| pub_tag | wp_tag | tag_id、name | ― | FR-42 |
-| pub_post_category | wp_post_category | post_id、category_id | 除外 | 記事の属性 |
-| pub_post_tag | wp_post_tag | post_id、tag_id | 除外 | 記事の属性 |
-| pub_site_daily | site_daily | day、pageviews、sessions | ― | 行 1。FR-11 |
-| pub_site_daily_channel | site_daily_channel | day、channel、sessions | ― | 行 2。FR-11 の内訳 |
-| pub_site_daily_device | site_daily_device | day、device、pageviews、sessions | ― | 行 2。FR-14 |
-| pub_site_period | period + site_daily + site_period | period_id、pageviews（Σ site_daily）、sessions（Σ）、active_users、engagement_seconds、days（期間の日数）。share_count は置かない（M-4、初回対象外） | ― | 行 3・4。FR-10 |
-| pub_site_period_breakdown | site_period_breakdown | period_id、axis、bucket、value | ― | 行 4・6、Q-36。FR-13（SNS、channel）、FR-14（device_pv、device_sessions）、FR-15（地元）、FR-16 |
-| pub_site_period_heatmap | site_period_heatmap | period_id、dow、hour、pageviews | ― | 行 4。FR-12。二次伏せ適用済み（L-1） |
-| pub_site_period_freshness | article_period + wp_post + article_summary | period_id、freshness、post_count、pageviews | 除外後（記事の値から合算する集計。H-1） | 行 11（M-25 の全体の鮮度 3 区分、派生値）。FR-10 折りたたみ。主カードの `pub_site_period.pageviews`（除外込み）とは一致しないことを画面で注記する（FR-10） |
-| pub_site_month_referrer | site_month_referrer | period_id、rank、source_domain、sessions | ― | 行 5。FR-13 |
-| pub_site_month_city | site_month_city | period_id、rank、region、city、sessions | ― | 行 5。FR-15 |
-| pub_article_daily | article_daily | post_id、day、pageviews | 除外 | 行 7。FR-23 (2) |
-| pub_article_cumulative | article_daily + wp_post | post_id、n（1〜90）、cumulative_pv（窓関数で累積） | 除外 | M-18。FR-23 (3) |
-| pub_article_period | article_period | post_id、period_id、pageviews、landing_sessions、scroll_count、engagement_seconds | 除外 | 行 8。FR-20〜FR-24、FR-32 |
-| pub_article_period_breakdown | article_period_breakdown | post_id、period_id、axis、bucket、sessions | 除外 | 行 9。FR-23 (6)(7)、FR-32 の主な経路 |
-| pub_article_referrer_30d | article_referrer_30d | post_id、rank、source_domain、sessions | 除外 | 行 10。FR-23 (6) |
-| pub_article_summary | article_summary + article_daily（N 日目の累積）+ benchmark_curve（ビュー、§4.1） | post_id、age_days、freshness、pv_7d、pv_30d、pv_total、band_7d、band_30d（**ビューで計算**。可視記事の曲線との比較。N-1）、is_recent_hot、is_revival、is_evergreen_365、referrer_30d_computed_on | 除外 | M-20〜M-23。FR-21、FR-23、FR-25、FR-34。列集合は変わらない |
-| pub_article_milestone | article_milestone | post_id、milestone、reached_on | 除外 | M-23。FR-23 (4)、FR-31 (d) |
-| pub_author_period | wp_post + article_period + article_summary | author_slug、period_id、post_count（期間内に公開）、pageviews（Σ、伏せる前の値から）、long_post_count、long_pageviews（freshness = long の本数と期間内 PV。M-25。「著者 × 鮮度区分」の派生値、行 13。L-3） | 除外 | 行 11・13。FR-31 (a)(c) |
-| pub_author_period_breakdown | author_period_breakdown | author_slug、period_id、axis、bucket、sessions | 除外 | 行 12。FR-33 |
-| pub_author_category_period | wp_post + wp_post_category + article_period | author_slug、category_id、period_id、post_count、pageviews | 除外 | 行 13。FR-33 のカテゴリ構成 |
-| pub_author_summary | author_summary + benchmark_curve（ビュー、§4.1） | author_slug、own_median_30d、eligible_count、band_30d（**ビューで計算**。own_median_30d と曲線 (all, 30) の比較。N-1） | 除外 | M-24。FR-31 (b)（(e) を統合）、FR-23 (5)。列集合は変わらない |
-| pub_category_period | wp_category + wp_post + wp_post_category + article_period + article_summary | category_id、period_id、pageviews、post_count_total（カテゴリに属する記事数）、post_count_published（期間内に公開）、median_30d_pv（期間内に公開し 30 日経過した記事の pv_30d の中央値、`percentile_cont(0.5)`）、published_post_count_30d（その母数） | 除外後（親カテゴリ行・子カテゴリ行とも。FR-40、FR-41、ADR 0003 判断 4。H-1 で親も除外後に変更） | 行 11。FR-40、FR-41、FR-52 |
-| pub_tag_period | wp_tag + wp_post_tag + article_period | tag_id、period_id、pageviews、post_count | 除外後（FR-42） | 行 11。FR-42 |
-| pub_posting_monthly | wp_post | month（date、月初）、post_count（除外込み） | なし（全体。WordPress で公開済みの件数） | M-30。FR-50 |
-| pub_posting_period | wp_post + period | period_id、post_count（除外込みの全体）。author_count は置かない（全体の著者数と `pub_author` の件数の差で除外著者の人数が分かるため。設計レビュー M-5） | なし（全体） | M-30、M-31。FR-51 の主表示（本数のみ） |
-| pub_benchmark_curve | benchmark_curve（`internal` のビュー。article_daily + wp_post + wp_post_category + wp_category + article_summary + excluded_author から計算。§4.1） | scope、n、p25、p50、p75、population_size、population_window | 除外後（母集団は可視記事。N-1） | M-19、M-27。FR-17、FR-21、FR-23。列集合は変わらない |
+| ビュー | 元の表 | 列 | 対応する 05 §4.1 の行 / 用途 |
+| --- | --- | --- | --- |
+| pub_meta | batch_run | base_date、finished_at（最後の success）、mask_threshold、is_stale（基準日が前日より古い）、last_status | FR-02、NFR-90 |
+| pub_batch_run | batch_run | run_id、started_at、finished_at、base_date、mode、status、failed_step、error_kind（直近 30 件） | FR-02、FR-76 |
+| pub_period | period | period_id、kind、start_date、end_date、is_confirmed | FR-01 |
+| pub_author | wp_author | author_slug、display_name、author_url | FR-30、NFR-35 |
+| pub_post | wp_post + wp_author + article_summary | post_id、title、post_url、author_slug、display_name、published_on、is_ad、age_days、freshness | FR-20〜FR-25、FR-32 |
+| pub_category | wp_category | category_id、name、parent_id、path | FR-40 |
+| pub_tag | wp_tag | tag_id、name | FR-42 |
+| pub_post_category | wp_post_category | post_id、category_id | 記事の属性 |
+| pub_post_tag | wp_post_tag | post_id、tag_id | 記事の属性 |
+| pub_site_daily | site_daily | day、pageviews、sessions | 行 1。FR-11 |
+| pub_site_daily_channel | site_daily_channel | day、channel、sessions | 行 2。FR-11 の内訳 |
+| pub_site_daily_device | site_daily_device | day、device、pageviews、sessions | 行 2。FR-14 |
+| pub_site_period | period + site_daily + site_period | period_id、pageviews（Σ site_daily）、sessions（Σ）、active_users、engagement_seconds、days（期間の日数）。share_count は置かない（M-4、初回対象外） | 行 3・4。FR-10 |
+| pub_site_period_breakdown | site_period_breakdown | period_id、axis、bucket、value | 行 4・6、Q-36。FR-13（SNS、channel）、FR-14（device_pv、device_sessions）、FR-15（地元）、FR-16 |
+| pub_site_period_heatmap | site_period_heatmap | period_id、dow、hour、pageviews | 行 4。FR-12。二次伏せ適用済み（L-1） |
+| pub_site_period_freshness | article_period + wp_post + article_summary | period_id、freshness、post_count、pageviews | 行 11（M-25 の全体の鮮度 3 区分、派生値）。FR-10 折りたたみ。主カードの `pub_site_period.pageviews`（GA4 のサイト全体値。記事以外のページを含む）とは一致しないことを画面で注記する（FR-10） |
+| pub_site_month_referrer | site_month_referrer | period_id、rank、source_domain、sessions | 行 5。FR-13 |
+| pub_site_month_city | site_month_city | period_id、rank、region、city、sessions | 行 5。FR-15 |
+| pub_article_daily | article_daily | post_id、day、pageviews | 行 7。FR-23 (2) |
+| pub_article_cumulative | article_daily + wp_post | post_id、n（1〜90）、cumulative_pv（窓関数で累積） | M-18。FR-23 (3) |
+| pub_article_period | article_period | post_id、period_id、pageviews、landing_sessions、scroll_count、engagement_seconds | 行 8。FR-20〜FR-24、FR-32 |
+| pub_article_period_breakdown | article_period_breakdown | post_id、period_id、axis、bucket、sessions | 行 9。FR-23 (6)(7)、FR-32 の主な経路 |
+| pub_article_referrer_30d | article_referrer_30d | post_id、rank、source_domain、sessions | 行 10。FR-23 (6) |
+| pub_article_summary | article_summary + article_daily（N 日目の累積）+ benchmark_curve（ビュー、§4.1） | post_id、age_days、freshness、pv_7d、pv_30d、pv_total、band_7d、band_30d（**ビューで計算**。公開記事の曲線との比較。N-1）、is_recent_hot、is_revival、is_evergreen_365、referrer_30d_computed_on | M-20〜M-23。FR-21、FR-23、FR-25、FR-34。列集合は変わらない |
+| pub_article_milestone | article_milestone | post_id、milestone、reached_on | M-23。FR-23 (4)、FR-31 (d) |
+| pub_author_period | wp_post + article_period + article_summary | author_slug、period_id、post_count（期間内に公開）、pageviews（Σ、伏せる前の値から）、long_post_count、long_pageviews（freshness = long の本数と期間内 PV。M-25。「著者 × 鮮度区分」の派生値、行 13。L-3） | 行 11・13。FR-31 (a)(c) |
+| pub_author_period_breakdown | author_period_breakdown | author_slug、period_id、axis、bucket、sessions | 行 12。FR-33 |
+| pub_author_category_period | wp_post + wp_post_category + article_period | author_slug、category_id、period_id、post_count、pageviews | 行 13。FR-33 のカテゴリ構成 |
+| pub_author_summary | author_summary + benchmark_curve（ビュー、§4.1） | author_slug、own_median_30d、eligible_count、band_30d（**ビューで計算**。own_median_30d と曲線 (all, 30) の比較。N-1） | M-24。FR-31 (b)（(e) を統合）、FR-23 (5)。列集合は変わらない |
+| pub_category_period | wp_category + wp_post + wp_post_category + article_period + article_summary | category_id、period_id、pageviews、post_count_total（カテゴリに属する記事数）、post_count_published（期間内に公開）、median_30d_pv（期間内に公開し 30 日経過した記事の pv_30d の中央値、`percentile_cont(0.5)`）、published_post_count_30d（その母数） | 行 11。FR-40、FR-41、FR-52 |
+| pub_tag_period | wp_tag + wp_post_tag + article_period | tag_id、period_id、pageviews、post_count | 行 11。FR-42 |
+| pub_posting_monthly | wp_post | month（date、月初）、post_count | M-30。FR-50 |
+| pub_posting_period | wp_post + period | period_id、post_count。author_count は置かない（FR-51 の主表示は本数のみ。除外を追加したときに、全体の著者数と `pub_author` の件数の差で除外著者の人数が分かる経路を先に作らないため。設計レビュー M-5） | M-30、M-31。FR-51 の主表示（本数のみ） |
+| pub_benchmark_curve | benchmark_curve（`internal` のビュー。article_daily + wp_post + wp_post_category + wp_category + article_summary から計算。§4.1） | scope、n、p25、p50、p75、population_size、population_window | M-19、M-27。FR-17、FR-21、FR-23。列集合は変わらない |
 
-著者別の公開本数（FR-51 の一覧）は `pub_author_period.post_count` を名前順で使う（BI は `post_count ≥ 1` の著者だけを載せる。05 §8）。親カテゴリの軸の集計で「子に属する記事は親にも属する」として数えるため、`pub_category_period` の親カテゴリ行は親または配下の子に属する記事を distinct で数える（数え方は維持）。ただし親行も子行と同じく除外後の記事集合から数える（H-1。可視記事の所属と期間合計が公開されるため、親を除外込みにすると 親の合計 − 可視記事の和 で除外著者の記事の値が復元できる）。`pub_site_period_freshness` も同じ理由で除外後。除外込みで出すのは GA4 のサイト全体値（`pub_site_daily*`、`pub_site_period*`、`pub_site_month_*`）と公開本数の件数（`pub_posting_*`）だけ。全記事の分布（`pub_benchmark_curve`）とそこから導く帯も除外後（§4.1、N-1）。
+著者別の公開本数（FR-51 の一覧）は `pub_author_period.post_count` を名前順で使う（BI は `post_count ≥ 1` の著者だけを載せる。05 §8）。親カテゴリの軸の集計で「子に属する記事は親にも属する」として数えるため、`pub_category_period` の親カテゴリ行は親または配下の子に属する記事を distinct で数える。
 
 ### 4.1 分布と帯の計算（`internal.benchmark_curve` ビュー。N-1）
 
-2026-11-03、再確認 N-1 の対策。全記事の分布（M-19、M-27）の母集団を可視記事（除外後、広告を除く）にし、バッチではなく DB 側で計算する（理由と代替案は ADR 0003 判断 4 追記）。定義は 03 §6.2 と同じで、計算の場所だけが変わる。公開ビューの列集合（§4 の表、I-DB-16 のスナップショット）は変わらない。
+全記事の分布（M-19、M-27）の母集団は公開記事（広告を除く）で、バッチではなく DB 側で計算する。著者の除外は初回対象外だが（2026-11-04、ADR 0005 保留）、計算の場所はビューのままにする。追加するときに母集団の条件を DB 側の 1 か所に足すだけで済み、バッチに除外リストを読ませずに済むため（経緯と代替案は ADR 0003 判断 4 追記）。定義は 03 §6.2 と同じ。公開ビューの列集合（§4 の表、I-DB-16 のスナップショット）は変わらない。
 
-- `internal.benchmark_curve`（`internal` スキーマのビュー。anon からは見えない）: 可視記事の n 日目累積（`pub_article_cumulative` と同じ窓関数の定義を共通の内部ビュー `internal.article_cumulative` に置き、両方から参照する）に対して、`scope` と `n` ごとに `percentile_cont(array[0.25, 0.5, 0.75]) within group (order by cumulative_pv)` を取る。母集団の条件: `wp_post.is_ad = false`、`not exists (select 1 from internal.excluded_author e where e.author_slug = wp_post.author_slug)`、`article_summary.age_days ≥ n`、`published_on ≥ base_date − 365`（`population_window = '12m'`）。12 か月の母集団が 30 本未満の (scope, n) は全期間（`population_window = 'all'`）で計算し、それでも 30 本未満なら行を出さない。`scope = 'all'` と、`wp_post_category` × `wp_category`（`parent_id is not null`）から作る `scope = 'cat:' || category_id`（母集団 30 本以上の子カテゴリだけ）。`population_size` は母集団の件数（= 可視記事の件数。07 I-DB-05）。`base_date` は `article_summary.base_date`（`pub_meta` と同じ基準日）。
+- `internal.benchmark_curve`（`internal` スキーマのビュー。anon からは見えない）: 公開記事の n 日目累積（`pub_article_cumulative` と同じ窓関数の定義を共通の内部ビュー `internal.article_cumulative` に置き、両方から参照する）に対して、`scope` と `n` ごとに `percentile_cont(array[0.25, 0.5, 0.75]) within group (order by cumulative_pv)` を取る。母集団の条件: `wp_post.is_ad = false`、`article_summary.age_days ≥ n`、`published_on ≥ base_date − 365`（`population_window = '12m'`）。12 か月の母集団が 30 本未満の (scope, n) は全期間（`population_window = 'all'`）で計算し、それでも 30 本未満なら行を出さない。`scope = 'all'` と、`wp_post_category` × `wp_category`（`parent_id is not null`）から作る `scope = 'cat:' || category_id`（母集団 30 本以上の子カテゴリだけ）。`population_size` は母集団の件数（07 I-DB-05）。`base_date` は `article_summary.base_date`（`pub_meta` と同じ基準日）。
 - `pub_benchmark_curve` = `select scope, n, p25, p50, p75, population_size, population_window from internal.benchmark_curve`。
 - `pub_article_summary` の `band_7d` / `band_30d`: `article_summary` に `internal.article_cumulative`（n = 7 と n = least(age_days, 30) の累積）と `internal.benchmark_curve`（scope = all、同じ n）を left join し、`case when 値 > p75 then 'upper' when 値 < p25 then 'lower' else 'middle' end`。`age_days < 3`、曲線の行がない、累積が null のときは null。`band_7d` は `age_days ≥ 7` のときだけ（pv_7d と曲線 (all, 7) の比較）。
 - `pub_author_summary` の `band_30d`: `author_summary.own_median_30d` と `internal.benchmark_curve`（all, 30）の同じ `case`。own_median_30d が null、曲線の行がないときは null。
 - 関数は作らない（`case` 式をビュー内に書く。06 §2.3、L-4 の方針）。
 - 性能: 記事 225 本 × n 90 ≒ 2 万行の累積に対する分位計算 + 子カテゴリ分で、ビルド時に各ビューを 1 回読むだけ。実装時に `explain analyze` で確認する（07 I-DB-17。ローカルの 1,000 本のフィクスチャで 2 秒以内を目安）。重ければ ADR 0003 判断 4 追記の (c)（`internal` のマテリアライズドビューをバッチが refresh）に切り替えるが、母集団の定義は変えない。
-- 帰結: 除外リストの変更は次のビルドで曲線と帯に反映される（バッチの再実行は不要。ADR 0005 の運用と同じ）。バッチは `excluded_author` を読まないまま。
 
 ## 5. 05 §4.1 の表との対応
 
@@ -402,10 +391,10 @@
 | 記事 × 期間: 訪問回数、scroll、読まれていた時間 | article_period | pub_article_period | 適用 | pageviews は伏せない |
 | 記事 × 期間 × 内訳軸 1 つ | article_period_breakdown | pub_article_period_breakdown | 適用 + 二次 | |
 | 記事 × 公開後 30 日時点 × 参照元ドメイン上位 3 | article_referrer_30d | pub_article_referrer_30d | T 未満の行を格納しない | 1 回だけ計算 |
-| 著者 / カテゴリ / タグ × 期間 の合計、全体の鮮度 3 区分（M-25） | （ビューで計算） | pub_author_period、pub_category_period、pub_tag_period、pub_site_period_freshness | なし | すべて除外後（著者、親・子カテゴリ、タグ、鮮度区分。H-1） |
+| 著者 / カテゴリ / タグ × 期間 の合計、全体の鮮度 3 区分（M-25） | （ビューで計算） | pub_author_period、pub_category_period、pub_tag_period、pub_site_period_freshness | なし | |
 | 著者 × 期間 × 内訳軸 1 つ | author_period_breakdown | pub_author_period_breakdown | 適用 + 二次 + 階層差分（M-2） | |
-| 著者 × カテゴリ、著者 × 鮮度区分（派生値、除外後） | （ビューで計算） | pub_author_category_period、pub_author_period（long_post_count、long_pageviews） | なし | 行 13（L-3） |
-| 全記事の分布（M-19、M-27）と帯（M-20、FR-31 (b)） | （ビューで計算。§4.1） | pub_benchmark_curve、pub_article_summary（band_7d、band_30d）、pub_author_summary（band_30d） | なし | 母集団は可視記事（除外後、広告を除く。N-1）。中央値・四分位は公開値だけから再現できる値 |
+| 著者 × カテゴリ、著者 × 鮮度区分（派生値） | （ビューで計算） | pub_author_category_period、pub_author_period（long_post_count、long_pageviews） | なし | 行 13（L-3） |
+| 全記事の分布（M-19、M-27）と帯（M-20、FR-31 (b)） | （ビューで計算。§4.1） | pub_benchmark_curve、pub_article_summary（band_7d、band_30d）、pub_author_summary（band_30d） | なし | 母集団は公開記事（広告を除く）。中央値・四分位は公開値だけから再現できる値 |
 | シェア数（全体 × 期間、著者 × 期間。M-41） | 表なし | ビューなし | ― | 初回対象外（M-4）。05 §4.1 に行がない。FR-61 を実装するときは NFR-39 で行を追加してから |
 | 格納しないもの | 表なし | ビューなし | ― | 記事 × 地域、記事 × 曜日 × 時間帯、カテゴリ × 曜日 × 時間帯（D-12）、内訳軸 2 つ以上、記事 × 日 × 内訳軸、著者 × デバイス、カテゴリ / タグ × 内訳軸、移動窓の参照元ドメイン・市別、個別の訪問・ユーザー・イベント |
 
@@ -468,7 +457,7 @@ alter default privileges for role postgres in schema internal revoke all on sequ
 alter default privileges for role postgres in schema internal revoke all on functions from service_role;
 ```
 
-`batch_writer` の権限は表の名前を列挙して与える。`grant ... on all tables in schema internal` と `alter default privileges ... to batch_writer` は使わない（`excluded_author` と、それを参照する `internal.article_cumulative`、`internal.benchmark_curve` まで届いてしまう）。§3.1〜§3.5 と `sns_source_unmapped` の各表の作成直後に、上の `enable row level security` と `revoke` に続けて次を置く。
+`batch_writer` の権限は表の名前を列挙して与える。`grant ... on all tables in schema internal` と `alter default privileges ... to batch_writer` は使わない（バッチに要らない `internal.article_cumulative`、`internal.benchmark_curve` のビューや、後から足す表まで届いてしまう）。§3.1〜§3.5 と `sns_source_unmapped` の各表の作成直後に、上の `enable row level security` と `revoke` に続けて次を置く。
 
 ```sql
 grant select, insert, update, delete on internal.<表> to batch_writer;
@@ -483,14 +472,6 @@ create policy batch_writer_all on internal.batch_run for all to batch_writer usi
 ```
 
 シーケンスの grant は最初は置かない。`generated always as identity` のシーケンスは grant なしで動く可能性がある（経路監査 L-2。要確認 ADR 0009 V-4）ので、I-DB-18 (4) の insert が失敗したときだけ `grant usage on sequence internal.<シーケンス> to batch_writer;` を足す。`batch_run.counts` の check 制約が使う関数は、実行時に書き込むロールの EXECUTE 権限が要るので `grant execute on function internal.counts_is_numeric(jsonb) to batch_writer;` を足す（§3.6。上の `revoke execute ... from public` で閉じているため。07 I-DB-18 の insert で確かめる）。これ以外の関数は `internal` に置かない（§4.1 のビューも `case` 式で書く）。
-
-`internal.excluded_author` には次のとおり何も与えない。
-
-```sql
-alter table internal.excluded_author enable row level security;
-revoke all on internal.excluded_author from anon, authenticated, service_role, batch_writer;
--- grant も policy も作らない。バッチが除外リストを読まない方針（ADR 0005）をロールでも強制する
-```
 
 RLS の扱い（ADR 0009 判断 4）:
 
@@ -513,13 +494,13 @@ grant select on public.pub_<名前> to anon;
 - マイグレーションの最後に次を検査する SQL を置き、CI（07 §4 I-DB-01、I-DB-15、I-DB-16、I-DB-18）でも同じ検査を行う。
   1. `information_schema.role_table_grants` で anon / authenticated / PUBLIC に grant があるのは `public.pub_%` の `SELECT` だけ。関数（`information_schema.routine_privileges`）・シーケンスへの grant がない。
   2. anon / authenticated / PUBLIC が `public` 以外のスキーマ（`internal` を含む）に usage を持たない（`has_schema_privilege`）。
-  3. `pub_*` の列名に `_mask` を含むものがなく、`excluded_author` に由来する列（`excluded_at` など）を含まない。
+  3. `pub_*` の列名に `_mask` を含むものがない。
   4. `pub_*` の列集合（ビュー名、列名、型）が §5 の対応表から作ったスナップショット（`tests/snapshots/pub-columns.json`）と一致する。差分があればスナップショットの更新と NFR-39 の手順を要求する。
   5. `batch_writer` の権限が許可の範囲に収まる（W-8。下の検査）。
 
 `batch_writer` の権限の検査（W-8）は、違反を 1 行ずつ返す select として `supabase/checks/batch_writer_privileges.sql` に置く。0 行なら合格。同じ select をマイグレーション末尾に `do` ブロックで包んで写し（1 行でもあれば `raise exception`）、07 I-DB-18 でファイルを実行して 2 か所の本文の一致も確かめる。A-11 では本番の SQL エディタで同じファイルの内容を実行する。これで、本番の手変更や既定権限で広がった権限に気づける。検査する内容:
 
-- 表の grant: `information_schema.role_table_grants` が許可リスト（§3.1〜§3.6 から `excluded_author` を除いた表。`batch_run` は delete なし）に一致する（I-DB-18 (1)）。
+- 表の grant: `information_schema.role_table_grants` が許可リスト（§3.1〜§3.6 の表。`batch_run` は delete なし）に一致する（I-DB-18 (1)）。
 - スキーマ: すべてのスキーマについて `has_schema_privilege('batch_writer', <スキーマ>, 'USAGE')` と `'CREATE'` を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを `nspacl` で確かめた `public` だけ。`pg_catalog` と `information_schema` は PostgreSQL の既定で PUBLIC が USAGE を持つので USAGE の判定から除く。ほかに PUBLIC 経由の USAGE が見つかったら、ローカルの結果を確かめて可否を決める（Supabase の既定権限は未確認）。`public` の CREATE が PUBLIC に残っていれば `revoke create on schema public from public` をマイグレーションに足す。広げる方向で直さない。
 - 関数とシーケンス: `information_schema.routine_privileges` と `role_usage_grants` で、`batch_writer` を grantee にするものが `internal.counts_is_numeric` と必要なシーケンスだけ。
 - ロールの所属: `pg_auth_members` で `batch_writer` が member の行が 0 件。
@@ -545,14 +526,14 @@ grant select on public.pub_<名前> to anon;
 ## 8. マイグレーションの運用
 
 - `supabase/migrations/NNNN_<内容>.sql` に置き、Supabase CLI（`supabase db push`）で適用する。適用は運用担当がローカルから行い、手順は docs/operations/（デプロイ工程）に書く。ダッシュボードでの手変更はしない（NFR-73）。
-- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し、`batch_writer` ロールの作成と usage の grant（§6、ADR 0009）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表（`article_summary`、`author_summary`、`article_milestone`。帯の列なし）。0004: 運用表（`batch_run`、`excluded_author`、`sns_source_unmapped`）。0005: `internal.article_cumulative`・`internal.benchmark_curve` ビュー（§4.1。`excluded_author` を参照するため 0004 の後。`batch_writer` に grant しない）、公開ビューと grant、権限の検査 SQL。番号は実装時に確定。ロールのパスワードはどのマイグレーションにも seed にも書かない（W-4）。`supabase db reset` の後に `alter role batch_writer login password ...` を実行する: CI では実行時にランダムな値を生成して使い捨てる。ローカルは `.env` の `LOCAL_BATCH_WRITER_PASSWORD` の値を使う。本番の適用で `supabase/seed/test/` を入れない（`--include-seed` や `sql_paths` を本番に向けない。手順は docs/operations/）。
+- マイグレーション 0001: `internal` スキーマの作成と usage の取り消し、既定権限の取り消し、`batch_writer` ロールの作成と usage の grant（§6、ADR 0009）、拡張（不要）、`period`、WordPress 次元表。0002: GA4 日別・期間別表。0003: 確定月・30 日時点・派生表（`article_summary`、`author_summary`、`article_milestone`。帯の列なし）。0004: 運用表（`batch_run`、`sns_source_unmapped`）。0005: `internal.article_cumulative`・`internal.benchmark_curve` ビュー（§4.1。`batch_writer` に grant しない）、公開ビューと grant、権限の検査 SQL。番号は実装時に確定。ロールのパスワードはどのマイグレーションにも seed にも書かない（W-4）。`supabase db reset` の後に `alter role batch_writer login password ...` を実行する: CI では実行時にランダムな値を生成して使い捨てる。ローカルは `.env` の `LOCAL_BATCH_WRITER_PASSWORD` の値を使う。本番の適用で `supabase/seed/test/` を入れない（`--include-seed` や `sql_paths` を本番に向けない。手順は docs/operations/）。
 - ビューの列を変えるときは ADR と security-auditor のレビュー（NFR-39）。05 §4.1 の表を変えずに済む変更（列名の修正など）はレビュー不要だが、§5 の対応表を更新する。
 
 ## 9. 未確定
 
 - `wp_post.title` の HTML エンティティ復号と長さ上限（表示側で省略するので DB には全文を置く）は実装で確認。
 - Supabase の「Exposed schemas」の設定値はダッシュボード側にあるためマイグレーションで固定できない。初期設定手順で `public` のみとし、受入で確認する（§6）。
-- `internal.benchmark_curve` ビュー（§4.1）の計算時間は実装時に `explain analyze` で確認する（07 I-DB-17。目安 2 秒以内）。超えるときは ADR 0003 判断 4 追記の (c) に切り替える。母集団の定義（除外後）は変えない。
+- `internal.benchmark_curve` ビュー（§4.1）の計算時間は実装時に `explain analyze` で確認する（07 I-DB-17。目安 2 秒以内）。超えるときは ADR 0003 判断 4 追記の (c) に切り替える。母集団の定義は変えない。
 - Supabase の既定権限の正確な内容は未確認（外部の事実）。§6 の grant と revoke をマイグレーションに置き、ローカル環境で確認する（07 I-DB-01、I-DB-18）。
 - `batch_writer` のパスワードの設定手順（docs/operations/）。`nologin` で作るので、未設定の間の拒否を pooler の挙動に頼らない（経路監査 L-1）。
 - `generated always as identity` のシーケンスの grant の要否、`connection limit` の pooler との相性（ADR 0009 V-4、A-11）。
@@ -563,4 +544,4 @@ grant select on public.pub_<名前> to anon;
 - Q-33: 二次伏せを公開しない。表示は「—」と「伏せ値」の添え書き（§2.3、ADR 0003 判断 5）。
 - Q-36: 全体 × 期間 × 流入チャネル / デバイス は `site_period_breakdown` の axis `channel` / `device_pv` / `device_sessions` として期間ごとに格納する（§3.3、ADR 0003 判断 6）。
 - M-41（シェア数）: 初回対象外。表・列・問い合わせを作らない（§1、設計レビュー M-4）。
-- D-14（全記事の分布の母集団）: 除外著者の記事を含めない（除外後）。中央値・四分位でも、可視記事の値がすべて公開されるため順位のずれから除外記事の帯や値が分かる（再確認 N-1）。計算は公開ビュー側（§4.1、ADR 0003 判断 4 追記）。「まだ比較できません」の増加は著者 1〜2 人分で小さい。
+- D-14（全記事の分布の母集団）: 広告を除く公開記事。著者の除外は初回対象外（2026-11-04、ADR 0005 保留）で、除外を追加するときは除外著者の記事を母集団から外す（順位のずれから除外記事の帯や値が分かるため。ADR 0003 判断 4 追記）。計算は公開ビュー側（§4.1）。

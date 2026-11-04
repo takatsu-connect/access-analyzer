@@ -1,11 +1,12 @@
 # 01 技術選定
 
 - 状態: レビュー中（2026-11-03）
-- 更新日: 2026-11-03
+- 更新日: 2026-11-04
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の M-3（heartbeat.yml の分離）を反映
   - 2026-11-03: バッチを Python に、BI を TypeScript のままに。`packages/shared` を廃止（ADR 0004）。書き込みを psycopg と専用ロールに（ADR 0009）
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の L-7 と W-1 の表記を反映（`colorama` を `requirements-dev.in` へ、TLS の未確定の書き方）
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。除外リストの記述と選ばなかった案の行を外した
 - 参照: ADR 0001（全体構成）、ADR 0002（WIF）、ADR 0004（言語とフレームワーク）、ADR 0006（配信方式）、ADR 0007（集計の持ち方）、ADR 0009（書き込み経路）
 
 ## 1. 選定の方針
@@ -46,7 +47,7 @@
 
 ## 4. 日次バッチ
 
-- 1 つの CLI（`python -m takatsu_batch`）に `daily`、`backfill`、`publish-only` のサブコマンド。除外リストの変更はバッチに持たない（SQL エディタ。ADR 0005）。
+- 1 つの CLI（`python -m takatsu_batch`）に `daily`、`backfill`、`publish-only` のサブコマンド。
 - GA4: `google-analytics-data` の `BetaAnalyticsDataClient.run_report`。認証は Application Default Credentials（google-github-actions/auth が `GOOGLE_APPLICATION_CREDENTIALS` を設定する）。ローカル開発では `gcloud auth application-default login` の ADC を使い、JSON 鍵は作らない。
 - WP REST API: `httpx`。1 秒間隔、再試行 3 回。
 - Supabase: `psycopg`（v3）で shared pooler の session mode に接続し、専用ロール `batch_writer` で書く。`executemany` の `insert ... on conflict do update` を 1,000 行単位、工程 6 全体で 1 トランザクション。SQL 関数（rpc）は使わない（集計はバッチの Python と公開ビューの SQL に分ける。ADR 0007、ADR 0009）。
@@ -68,7 +69,7 @@
 - Free プラン（DB 500 MB、egress 5 GB / 月）。見積もり: DB は数年で 100 MB 未満（02 §7）、egress はビルド 1 回あたり数 MB × 日 1 回 → 月 1 GB 未満。
 - 全表 RLS、anon は `pub_*` の select のみ、既定権限の取り消し（02 §6）。
 - 日次の書き込みがあるので 1 週間無アクセスでの一時停止は起きない。
-- バックアップ: Free プランの自動バックアップに依存せず、GA4 から再取得できる（NFR-51 の趣旨とは別に、Supabase が失われても 03 §10 のバックフィルで復元できる）。WordPress 由来のメタデータも再取得できる。失われて困るのは `excluded_author` と `batch_run` の履歴だけで、`excluded_author` は台帳（リポジトリ外）から復元する。
+- バックアップ: Free プランの自動バックアップに依存せず、GA4 から再取得できる（NFR-51 の趣旨とは別に、Supabase が失われても 03 §10 のバックフィルで復元できる）。WordPress 由来のメタデータも再取得できる。失われて困るのは `batch_run` の履歴だけ。
 
 ## 7. ジョブ実行基盤（GitHub Actions）
 
@@ -81,7 +82,7 @@
 
 - pytest: `apps/batch` の正規化、伏せ値、期間計算、派生指標を重点的に単体テスト。バッチは GA4 クライアントを固定応答の偽物に差し替え、WP と Deploy Hook を respx でモックして結合テスト。
 - Vitest: `apps/web/src/lib`（比較、構成比、URL クエリ、辞書）と画面の部品。
-- Playwright: プレビュー環境に対する E2E（画面の存在、noindex、ヘッダ、除外著者の 404、順位の数字がないこと）。対象サイトと本番 BI には走らせない（NFR-72）。
+- Playwright: プレビュー環境に対する E2E（画面の存在、noindex、ヘッダ、存在しないページの 404、順位の数字がないこと）。対象サイトと本番 BI には走らせない（NFR-72）。
 - ESLint の規則で `console.log` を禁止し、ロガー経由に限る（NFR-44）。`NEXT_PUBLIC_SUPABASE` を含む識別子を禁止する lint も置く。バッチは ruff で `print`（T201）と naive な日時（DTZ）を禁止し、`banned-api` で `logging`、`traceback`、`pprint` を `log.py` と `errors.py` の外で禁止する。
 - Dependabot: 週 1、`pip`（`/apps/batch`）、`npm`（`/apps/web`）、`github-actions`（`/`）。pip-compile のハッシュ付きロックを更新できることは実装時に確認する（§10）。
 
@@ -92,12 +93,11 @@
 | TypeScript でバッチ（`@google-analytics/data`。前回の決定） | 依頼者の指示「各所で得意な言語を選ぶ」。共有が要るものは少なかった | 0004 |
 | uv（astral-sh/setup-uv） | Action の許可の確認が要る。`actions/setup-python` だけで成り立つ pip + pip-tools を優先した | 0004 |
 | Astro（静的サイト） | 静的生成は得意だが、Vercel の `headers()` 相当や ISR への将来の移行を考えると Next.js のほうが選択肢が残る。差は小さく、再検討の余地はある | 0004 |
-| Next.js の ISR（時間ベースの再検証）| 実行時に Supabase を読む経路が残り、除外リスト変更後の無効化に別の仕組み（再検証 API + 秘密）が要る | 0006 |
+| Next.js の ISR（時間ベースの再検証）| 実行時に Supabase を読む経路が残り、データ更新後の無効化に別の仕組み（再検証 API + 秘密）が要る | 0006 |
 | Supabase Edge Functions / Vercel Cron でバッチ | 依頼者の決定（Actions）に反する。Vercel Hobby の Function は 300 秒上限でバックフィルに足りない | 0001 |
-| PostgREST（supabase クライアント + service role キー）でバッチが書く | `internal` が Exposed schemas にないので届かない。公開すれば M-7 の多層防御が崩れる。除外リストの不読をロールで強制できない | 0009 |
+| PostgREST（supabase クライアント + service role キー）でバッチが書く | `internal` が Exposed schemas にないので届かない。公開すれば M-7 の多層防御が崩れる。バッチが触れる表をロールで絞れない | 0009 |
 | direct 接続（5432） | Free では IPv6 のみ | 0009 |
 | SQL 関数（rpc）で集計 | 伏せ値の規則を SQL に書くとテストしにくい。バッチの Python に寄せた | 0007 |
-| 環境変数に除外リスト | Secrets は読み返せず、現在の一覧を確認できない。公開ビューでの除外のほうが 1 か所で効く | 0005 |
 | 直接 WIF（SA なし） | GA4 の権限は Google アカウントか SA にしか付けられない | 0002 |
 
 ## 10. 未確定

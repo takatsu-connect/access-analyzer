@@ -1,18 +1,19 @@
 # 07 テスト計画
 
 - 状態: レビュー中（2026-11-03）
-- 更新日: 2026-11-03
-- 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0005、ADR 0006、ADR 0008、ADR 0009
+- 更新日: 2026-11-04
+- 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0006、ADR 0008、ADR 0009
 - 読者: qa-engineer（テストの実装と受入の実施）、backend-engineer / frontend-engineer（単体テストの実装）、devops-engineer（CI の検査）
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（U-27〜U-29、I-DB-15・I-DB-16、I-B-11 を追加。I-DB-01・05・07、I-B-09、E-04、S-10・S-14、U-22 を修正）
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（I-DB-17、E-22 を追加。U-07・U-08・U-19・U-24、I-DB-01・I-DB-05、E-08・E-12・E-19、§9・§10 を修正）
   - 2026-11-03: バッチを Python に（ADR 0004）、書き込みを `batch_writer` に（ADR 0009）、除外リストの変更を SQL エディタに（ADR 0005）変更。§2〜§5・§7 の道具とパスを更新。I-DB-18、S-16〜S-18、A-11 を追加。I-DB-01、I-B-05、I-B-10、I-B-11、U-07、U-08、U-20、U-28、U-29、S-06〜S-10、S-12、S-13、S-15 を修正
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1、W-3〜W-5、W-7〜W-9、L-1、L-2、L-5〜L-7 を反映（U-30 を追加。§2、§10、U-29、I-B-10、I-B-11、I-DB-18、S-08、S-10、S-18、A-11、§9、§11 を修正）
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。I-DB-04 と I-B-10 を欠番に、I-DB-05、I-DB-06、I-DB-16〜18、E-03、E-14、S-17、A-08、A-09、フィクスチャ、§9 の対応表を修正
 
 ## 1. 方針
 
-- 公開範囲に関わる検査（anon の grant、除外、`_mask`、応答ヘッダ、`NEXT_PUBLIC_`、順位の数字、伏せ値の表示）は **CI で自動化し、落ちたらマージできない**。人の目視だけに頼らない。
+- 公開範囲に関わる検査（anon の grant、`_mask`、応答ヘッダ、`NEXT_PUBLIC_`、順位の数字、伏せ値の表示）は **CI で自動化し、落ちたらマージできない**。人の目視だけに頼らない。
 - 対象サイト（takatsu-connect.com）と本番の BI・本番の Supabase には、テストから一切触れない（NFR-72、06 §1）。WP REST API と GA4 Data API はモック（固定 JSON）で代える。
 - テストの正解値は手計算できる小さなフィクスチャ（記事 12 本、著者 4 人、日 60 日）から作り、受入の「照合」（本番 GA4 との比較）は受入時に人が行う（§8）。
 - 伏せ値・二次伏せ・派生指標の規則は `apps/batch/src/takatsu_batch` に集めてあるので、そこを単体テストで厳密に固め、画面側のテストは「表示の規則」に絞る。
@@ -71,16 +72,16 @@
 
 ## 4. 結合テスト（Supabase ローカル: マイグレーションと公開ビューの検査）
 
-前提: `supabase start` → `supabase db reset`（全マイグレーション適用 + `seed/test`）。フィクスチャ: 著者 4 人（うち 1 人 `excluded_author` に登録）、記事 12 本（除外著者の記事 3 本。うち 1 本は除外著者だけが属する子カテゴリとタグに属する）、日別 60 日、期間別は last7 / prev7 / last28 / prev28 / m2026-09（確定）/ m2026-10、伏せ値になる小さな値と二次伏せになる組み合わせを含む。
+前提: `supabase start` → `supabase db reset`（全マイグレーション適用 + `seed/test`）。フィクスチャ: 著者 4 人、記事 12 本、記事が 1 本もない子カテゴリとタグ、日別 60 日、期間別は last7 / prev7 / last28 / prev28 / m2026-09（確定）/ m2026-10、伏せ値になる小さな値と二次伏せになる組み合わせを含む。
 
 | ID | 検査 | 合格条件 | 受入基準 |
 | --- | --- | --- | --- |
-| I-DB-01 | anon / authenticated / PUBLIC / service_role の権限 | `information_schema.role_table_grants where grantee in ('anon','authenticated','PUBLIC')` が `public.pub_%` の `SELECT`（anon のみ）だけ。`information_schema.routine_privileges` で同じ grantee に EXECUTE がない（L-4）。シーケンスへの grant がない。`anon` で内部表（`internal.wp_post`、`internal.article_daily`、`internal.excluded_author` など全部）を select すると `permission denied`（スキーマの usage がない）。`service_role` は `has_schema_privilege('service_role','internal','USAGE')` が false（ADR 0009。前回の N-3 の grant を取り消した）。`batch_writer` の権限は I-DB-18 | NFR-43、NFR-40 |
+| I-DB-01 | anon / authenticated / PUBLIC / service_role の権限 | `information_schema.role_table_grants where grantee in ('anon','authenticated','PUBLIC')` が `public.pub_%` の `SELECT`（anon のみ）だけ。`information_schema.routine_privileges` で同じ grantee に EXECUTE がない（L-4）。シーケンスへの grant がない。`anon` で内部表（`internal.wp_post`、`internal.article_daily` など全部）を select すると `permission denied`（スキーマの usage がない）。`service_role` は `has_schema_privilege('service_role','internal','USAGE')` が false（ADR 0009。前回の N-3 の grant を取り消した）。`batch_writer` の権限は I-DB-18 | NFR-43、NFR-40 |
 | I-DB-02 | RLS | `pg_tables` の全表で `rowsecurity = true`。anon で insert / update / delete が拒否される | NFR-43 |
 | I-DB-03 | `_mask` 列が出ない | `information_schema.columns` で `table_name like 'pub_%'` の列名に `_mask` を含むものがない | FR-73、NFR-33、02 §2.3 |
-| I-DB-04 | 除外著者がどの pub_ にも現れない | `pub_%` ビューを動的に列挙し、`author_slug` 列を持つものは除外 slug の行が 0、`post_id` 列を持つものは除外著者の記事 ID の行が 0。`pub_author` に除外 slug がない。除外の有無を示す列（`is_excluded` など）がどのビューにもない | FR-36、NFR-43 |
-| I-DB-05 | 親・子カテゴリ・鮮度区分の合計、分布の母集団 | `pub_category_period` の親行・子行がともに除外後（手計算値。親行の distinct の数え方は維持）。`pub_site_period_freshness` の 3 区分の pageviews・post_count が除外後で、Σ = 可視記事の `pub_article_period.pageviews` の和。`pub_author_period`、`pub_author_category_period` も除外後。除外著者だけの子カテゴリは行がない。`pub_site_period.pageviews`（GA4 のサイト全体値）と `pub_posting_period.post_count` は除外の有無で変わらない（除外を外して再集計した値と等しい）。`pub_posting_period` に `author_count` 列がない（M-5）。**`pub_benchmark_curve` の母集団に除外著者の記事が入らない**（N-1）: 各 (scope, n) 行の `population_size` = 可視記事（`pub_post` にあり `is_ad = false`、`age_days ≥ n`、`population_window` の条件を満たす）の件数。p25 / p50 / p75 が可視記事の値だけから U-07 の参照実装で計算した値と一致し、除外記事を含めて計算した値（フィクスチャで除外記事の値を分位の補間位置に置く）とは異なる | FR-40、FR-10、FR-51、FR-36、FR-17、FR-21、ADR 0003 判断 4（H-1、N-1） |
-| I-DB-06 | タグの合計 | `pub_tag_period` が除外後。`pub_tag_period.pageviews` − Σ（`pub_article_period` のそのタグの記事）= 0。除外著者だけのタグは行がない | FR-42 |
+| I-DB-04 | 欠番 | 著者の除外は初回対象外（2026-11-04、依頼者の決定）。追加するときに ADR 0005 の検査を戻す。ID は振り直さない | ― |
+| I-DB-05 | 親・子カテゴリ・鮮度区分の合計、分布の母集団 | `pub_category_period` の親行・子行が手計算値と一致（親行の distinct の数え方は維持）。`pub_site_period_freshness` の 3 区分の pageviews・post_count の Σ = `pub_article_period.pageviews` の和。`pub_author_period`、`pub_author_category_period` も手計算値と一致。記事 0 本の子カテゴリは行がない。`pub_posting_period` に `author_count` 列がない（M-5）。`pub_benchmark_curve` の母集団: 各 (scope, n) 行の `population_size` = `pub_post` にあり `is_ad = false`、`age_days ≥ n`、`population_window` の条件を満たす記事の件数。p25 / p50 / p75 が同じ記事の値だけから U-07 の参照実装で計算した値と一致 | FR-40、FR-10、FR-51、FR-17、FR-21、ADR 0003 判断 4 追記 |
+| I-DB-06 | タグの合計 | `pub_tag_period.pageviews` − Σ（`pub_article_period` のそのタグの記事）= 0。記事 0 本のタグは行がない | FR-42 |
 | I-DB-07 | 二次伏せ | フィクスチャの「1 セルだけ 5 未満（他に T 以上のセルがある）」の行で、`pub_site_period_breakdown`（axis = sns / local / new_returning / channel / device_pv / device_sessions。Q-36）/ `pub_article_period_breakdown` / `pub_author_period_breakdown` / `pub_site_daily_channel` / `pub_site_daily_device` / `pub_site_period_heatmap`（L-1）に null が 1 つだけの（期間・軸）組がない。「1 セルだけ 5 未満で他は 0」の行は null が 1 つだけでよい（候補なし。M-1）。著者 × 内訳軸 で記事 1 本だけが伏さる組は著者セルも null（M-2） | NFR-33 |
 | I-DB-08 | 伏せ値の生値が取れない | 「適用」の組み合わせの列に 1〜4 の値がない（0 は 0 のまま。D-16 確定）。`pub_article_daily.pageviews`、合計・累積列は生値 | FR-73、NFR-33 |
 | I-DB-09 | 格納しない組み合わせがない | テーブル・ビュー名と列名に、記事 × 地域、記事 × 曜日 × 時間帯、著者 × デバイス、カテゴリ / タグ × 内訳軸、移動窓の参照元・市別に当たるものがない（名前の許可リストと突き合わせ: 02 §3・§4 の表の名前だけが存在する） | NFR-33、NFR-31、NFR-32 |
@@ -90,9 +91,9 @@
 | I-DB-13 | 削除の反映 | 記事を `wp_post` から削除すると、関連する `article_*` の行が cascade で消え、`pub_*` から消える | FR-72、NFR-52 |
 | I-DB-14 | マイグレーションの再適用 | 空の DB に全マイグレーションを順に適用して成功。`supabase db diff` が空（スキーマがすべてファイルにある） | NFR-73 |
 | I-DB-15 | スキーマの usage | `has_schema_privilege(r, s, 'USAGE')` が、r ∈ {anon, authenticated, public(PUBLIC)} × s ∈ `public` 以外の全スキーマ（`internal` を含む。`pg_catalog`、`information_schema` は除く）で false。`internal` スキーマに `pub_` で始まるオブジェクトがなく、`public` スキーマに `pub_` 以外の表・ビュー・関数がない。`internal.batch_run.counts` に check 制約があり、文字列値を含む jsonb の insert が失敗する（L-6） | NFR-43（設計レビュー M-7、L-4、L-6） |
-| I-DB-16 | 公開ビューの列のスナップショット | `information_schema.columns where table_schema='public' and table_name like 'pub_%'` の（ビュー名、列名、型）の集合が `tests/snapshots/pub-columns.json`（02 §5 の対応表から作る）と完全に一致。列名に `_mask` を含むものがなく、`excluded_at`・`author_count`・`share_count` がない。差分があれば失敗し、スナップショットの更新には NFR-39 の手順（ADR と security-auditor のレビュー）を PR で示す | NFR-43、NFR-39（設計レビュー M-7、M-4、M-5） |
-| I-DB-17 | 分布と帯の計算（ビュー） | `pub_benchmark_curve` の各行が、同じフィクスチャから U-07（`quantiles`）で計算した p25 / p50 / p75・`population_size`・`population_window` と一致（12 か月 → 全期間の拡張、30 本未満で行なし、`scope = cat:<id>` は母集団 30 本以上の子カテゴリだけ、広告・除外記事を含めない）。`pub_article_summary.band_7d`（age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積と曲線 (all, N) の比較）、`pub_author_summary.band_30d`（own_median_30d と曲線 (all, 30)）が U-08（`band`）の結果と一致。age_days < 3・曲線の行なし・値 null で null。p25 / p75 と等しい値が `middle`。除外著者を 1 人追加すると、曲線・帯・`population_size` が次の select で変わる（バッチの再実行なし）。`explain analyze` で `pub_benchmark_curve` の全行 select がローカルの 1,000 本のフィクスチャで 2 秒以内（超えるなら ADR 0003 判断 4 追記の (c) へ） | M-19、M-20、M-27、FR-21、FR-23 (3)、FR-31 (b)、ADR 0003 判断 4 追記（N-1） |
-| I-DB-18 | `batch_writer` の権限 | (1) `information_schema.role_table_grants where grantee = 'batch_writer'` が許可リスト（02 §3.1〜§3.6 の表から `excluded_author` を除いたもの × select / insert / update / delete。`batch_run` は delete なし。経路監査 L-2）と完全に一致し、truncate、references、trigger がない。(2) `excluded_author`、`internal.article_cumulative`、`internal.benchmark_curve`、すべての `public.pub_*` について `has_table_privilege('batch_writer', ..., 'SELECT')` が false。`batch_writer` で接続して `select * from internal.excluded_author` と `select * from public.pub_post` がともに `permission denied`。(3) `pg_policies` で `batch_writer_all` が許可リストの全表にあり、`excluded_author` にはなく、他のロール向けのポリシーがない。`pg_roles` で `rolbypassrls`、`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolinherit` がすべて false、`rolconnlimit` が 2。マイグレーションの適用直後（パスワード設定の前）は `rolcanlogin` が false（経路監査 L-1）。ロールの既定の `statement_timeout` が 120 秒。(4) `batch_writer` で許可した表に upsert と delete が成功し、`batch_run` への insert が `counts_is_numeric` の check を通る。`batch_run` への delete は `permission denied`。シーケンスの grant は、この insert が失敗したときだけ足す（経路監査 L-2）。(5) `supabase/migrations` と `supabase/seed` の SQL に `password` の文字列がない（大文字小文字を区別しない。W-4）。(6) `batch_writer` で実行した `create table`、`alter table`、`truncate` が拒否される。(7) すべてのスキーマで `has_schema_privilege` の USAGE と CREATE を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを確認した `public` だけ（`pg_catalog` と `information_schema` は USAGE の判定から除く。02 §6）。(8) `information_schema.routine_privileges` と `role_usage_grants` で `batch_writer` が grantee のものが `internal.counts_is_numeric` と必要なシーケンスだけ。(9) `pg_auth_members` で `batch_writer` が member の行が 0 件。(10) `supabase/checks/batch_writer_privileges.sql` が 0 行を返し、その本文がマイグレーション末尾の検査と一致する（W-8。同じ SQL を A-11 で本番にも流す） | NFR-43、NFR-22、NFR-40、ADR 0005、ADR 0009 |
+| I-DB-16 | 公開ビューの列のスナップショット | `information_schema.columns where table_schema='public' and table_name like 'pub_%'` の（ビュー名、列名、型）の集合が `tests/snapshots/pub-columns.json`（02 §5 の対応表から作る）と完全に一致。列名に `_mask` を含むものがなく、`author_count`・`share_count` がない。差分があれば失敗し、スナップショットの更新には NFR-39 の手順（ADR と security-auditor のレビュー）を PR で示す | NFR-43、NFR-39（設計レビュー M-7、M-4、M-5） |
+| I-DB-17 | 分布と帯の計算（ビュー） | `pub_benchmark_curve` の各行が、同じフィクスチャから U-07（`quantiles`）で計算した p25 / p50 / p75・`population_size`・`population_window` と一致（12 か月 → 全期間の拡張、30 本未満で行なし、`scope = cat:<id>` は母集団 30 本以上の子カテゴリだけ、広告を含めない）。`pub_article_summary.band_7d`（age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積と曲線 (all, N) の比較）、`pub_author_summary.band_30d`（own_median_30d と曲線 (all, 30)）が U-08（`band`）の結果と一致。age_days < 3・曲線の行なし・値 null で null。p25 / p75 と等しい値が `middle`。`article_daily` の行を変えると、曲線と帯が次の select で変わる（バッチの再実行なし）。`explain analyze` で `pub_benchmark_curve` の全行 select がローカルの 1,000 本のフィクスチャで 2 秒以内（超えるなら ADR 0003 判断 4 追記の (c) へ） | M-19、M-20、M-27、FR-21、FR-23 (3)、FR-31 (b)、ADR 0003 判断 4 追記（N-1） |
+| I-DB-18 | `batch_writer` の権限 | (1) `information_schema.role_table_grants where grantee = 'batch_writer'` が許可リスト（02 §3.1〜§3.6 の表 × select / insert / update / delete。`batch_run` は delete なし。経路監査 L-2）と完全に一致し、truncate、references、trigger がない。(2) `internal.article_cumulative`、`internal.benchmark_curve`、すべての `public.pub_*` について `has_table_privilege('batch_writer', ..., 'SELECT')` が false。`batch_writer` で接続して `select * from public.pub_post` が `permission denied`。(3) `pg_policies` で `batch_writer_all` が許可リストの全表にあり、他のロール向けのポリシーがない。`pg_roles` で `rolbypassrls`、`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolinherit` がすべて false、`rolconnlimit` が 2。マイグレーションの適用直後（パスワード設定の前）は `rolcanlogin` が false（経路監査 L-1）。ロールの既定の `statement_timeout` が 120 秒。(4) `batch_writer` で許可した表に upsert と delete が成功し、`batch_run` への insert が `counts_is_numeric` の check を通る。`batch_run` への delete は `permission denied`。シーケンスの grant は、この insert が失敗したときだけ足す（経路監査 L-2）。(5) `supabase/migrations` と `supabase/seed` の SQL に `password` の文字列がない（大文字小文字を区別しない。W-4）。(6) `batch_writer` で実行した `create table`、`alter table`、`truncate` が拒否される。(7) すべてのスキーマで `has_schema_privilege` の USAGE と CREATE を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを確認した `public` だけ（`pg_catalog` と `information_schema` は USAGE の判定から除く。02 §6）。(8) `information_schema.routine_privileges` と `role_usage_grants` で `batch_writer` が grantee のものが `internal.counts_is_numeric` と必要なシーケンスだけ。(9) `pg_auth_members` で `batch_writer` が member の行が 0 件。(10) `supabase/checks/batch_writer_privileges.sql` が 0 行を返し、その本文がマイグレーション末尾の検査と一致する（W-8。同じ SQL を A-11 で本番にも流す） | NFR-43、NFR-22、NFR-40、ADR 0009 |
 
 実装: `apps/batch/tests/db/` に pytest を置き、`DATABASE_URL`（ローカルの管理接続）で psycopg で接続する。`batch_writer` の検査はそのロールで接続し直す。anon の検査は、anon の JWT を使う PostgREST 経由（httpx、ローカルの anon キー）と、`set local role anon` の SQL の両方で行う（PostgREST 層の見落としを防ぐ）。
 
@@ -108,8 +109,8 @@
 | I-B-06 | WP への問い合わせ | wp/v2 だけ、差分（`modified_after`）、リクエスト間隔 ≥ 設定値（モックが受信時刻を記録）。1 回の daily で posts の全件取得をしない（2 回目） | NFR-72、FR-72 |
 | I-B-07 | 割当の記録 | `returnPropertyQuota` の値を実行記録に残し、1 回の daily のリクエスト数が D-01 の見込み（約 30）の 1.5 倍以内 | NFR-61 |
 | I-B-08 | バックフィル | 開始日 2025-10-08〜基準日を分割して実行し、`site_daily` の行数が日数と一致。開始日は環境変数 | FR-75、NFR-50 |
-| I-B-09 | publish | 成功時に Deploy Hook（モック URL）が 1 回だけ POST される。失敗時は呼ばれない。`publish_only` は取得をせず Hook だけ呼び、`batch_run` に行を書かない（L-7）。実行ログに Hook の URL と応答本文が含まれない（L-8） | NFR-11、ADR 0005、ADR 0006 |
-| I-B-10 | 除外リストの変更 | ADR 0005 の固定の SQL をブロックごとに（追加、確認 1、確認 2、解除の順に別々に）ローカルの管理接続で実行すると、`internal.excluded_author` に入り、`pub_*` から消える（I-DB-04 を再実行）。ADR 0005 の各コードブロックに文が 1 つだけあることを検査する（W-5）。打ち間違いの slug では 0 行を返し、登録されない。バッチの `daily` を続けて実行しても `excluded_author` の行が変わらず、`pub_*` に現れない。解除の SQL で戻る | FR-36、D-10 |
+| I-B-09 | publish | 成功時に Deploy Hook（モック URL）が 1 回だけ POST される。失敗時は呼ばれない。`publish_only` は取得をせず Hook だけ呼び、`batch_run` に行を書かない（L-7）。実行ログに Hook の URL と応答本文が含まれない（L-8） | NFR-11、ADR 0006 |
+| I-B-10 | 欠番 | 除外リストの変更は初回対象外（2026-11-04、依頼者の決定）。ID は振り直さない | ― |
 | I-B-11 | 未処理例外 | テスト用のフックで (a) 工程の途中で例外を送出、(b) `threading.Thread` の中の未処理例外、(c) psycopg の接続失敗（誤ったパスワード、存在しない host。接続文字列の形式の誤りも）、(d) psycopg の制約違反（`Failing row contains` を含むエラーを実際に起こす）、(e) GA4 の偽物が `properties/123456789` を含む例外を送出、(f) `httpx` が Deploy Hook の URL を含む例外を送出、(g) pydantic の検証エラー（入力値に秘密らしい文字列を入れる）、(h) 閉じたポートへの実際の gRPC 呼び出し（`GRPC_VERBOSITY` を環境変数で渡さずに実行する。偽の GA4 では gRPC の C 実装の出力を通らないため）、(i) `sys.exit("msg")`、(j) import 時の例外（フック登録より後の遅延 import で起こす）、(k) 独自のレベルとハンドラ（stderr と stdout への `StreamHandler`）を持つロガーへの出力のあとの例外、の 11 通りを起こす。サブプロセスで `python -m takatsu_batch` を実行し、いずれも終了コード 1。(c) と (j) を除いて `batch_run` が `failed` で `error_kind` が分類値（`unknown` を含む）。(c) と (j) は `batch_run` を `failed` にできない（03 §14 の 6。経路監査 L-6）ので、行の状態を求めない。(h) の `error_kind` は `network`。stderr は 0 バイト。stdout / stderr の全文に `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、`eyJ`、6 桁以上の数字列（`\d{6,}`）、`Traceback`、`File "` が含まれない | NFR-44（設計レビュー M-8）、03 §14 |
 
 モックの応答は `apps/batch/tests/fixtures/ga4/*.json`、`apps/batch/tests/fixtures/wp/*.json` に置く。GA4 の偽クライアントは `BetaAnalyticsDataClient.run_report` と同じ呼び出しの形を持ち、固定 JSON を `RunReportResponse` に変換して返す（gRPC のモックサーバーを立てない）。本番から写した値は使わず、手で作る（著者名・タイトルは架空）。
@@ -122,7 +123,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | --- | --- | --- | --- |
 | E-01 | 応答ヘッダ | 全画面（S-01〜S-08、404）で `Content-Security-Policy`（`style-src 'self'` を含み `unsafe-inline` を含まない。script-src は実装時の決定どおり）、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、`X-Frame-Options: DENY` / `frame-ancestors 'none'`、`X-Robots-Tag: noindex, nofollow` | NFR-91、NFR-21、06 §6 |
 | E-02 | noindex | 全画面の `<meta name="robots">` が noindex, nofollow。`/robots.txt` が `Disallow: /` | NFR-21 |
-| E-03 | 404 | 存在しない記事 ID、除外著者の記事 ID、除外著者の slug、不正な形式（`/articles/abc`、`/authors/A%20B`）がすべて同じ状態コード 404 と同じ本文（CommonNotes を含む）。スタックトレース・内部 URL・SQL がない | FR-06、FR-23、FR-30、FR-36、NFR-91 |
+| E-03 | 404 | 存在しない記事 ID、存在しない slug、不正な形式（`/articles/abc`、`/authors/A%20B`）がすべて同じ状態コード 404 と同じ本文（CommonNotes を含む）。スタックトレース・内部 URL・SQL がない | FR-06、FR-23、FR-30、NFR-91 |
 | E-04 | 配信される JS と HTML | ビルド出力（`.next/static`、HTML）に `SUPABASE_URL` の値、anon キーの先頭 20 文字、`supabase.co` の文字列が含まれない（CI のビルドではテスト用のダミー値を環境変数に入れ、その値で検索する。L-5）。`NEXT_PUBLIC_` で始まる環境変数がビルド出力に 1 つもない | NFR-42 |
 | E-05 | 主要画面の存在 | S-01〜S-08 が 200 で開き、h1 が §1 の問いの文言 | NFR-94 |
 | E-06 | 期間切り替えと URL | `?p=last7` などで表示が変わり、URL が同期する。別のコンテキストで同じ URL を開くと同じ表示。`?p=prev28`、`?p=m1999-01`、`?p=<script>` は既定（直近 28 日）になりエラーが出ない | FR-01、FR-06、FR-03、NFR-91 |
@@ -133,7 +134,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | E-11 | 色 | 記事・著者の数値要素の computed color が設計トークン（基調色の濃淡とグレー）のいずれかで、赤・緑系の色（hue 0〜20、100〜160）がない。帯の 3 区分が同じ色 | NFR-97 |
 | E-12 | 禁止語 | 全画面の本文に「偏り」「下位」「読まれなかった」「順位」「ランキング」「あなた」「鮮度」「（軸）」がない。「出ません」で終わる文がない | NFR-97、NFR-99 |
 | E-13 | スマホ幅 | viewport 360 × 740 で、各表が 4 列以下 + 「詳しく」、ヒートマップの列が 6、横スクロールが S-06b 以外で発生しない | NFR-81、NFR-99 |
-| E-14 | 共通説明文 | 全画面（404 を含む）に CommonNotes があり、「一部の記事は本人の希望により個別には表示していません」を含む。除外リストが空のフィクスチャでも同じ | NFR-99、FR-36 |
+| E-14 | 共通説明文 | 全画面（404 を含む）に CommonNotes がある | NFR-99 |
 | E-15 | 著者一覧 | S-04 に数字（`\d`）を含むセルがない。リンクの href に slug があり、テキストノードに slug がない。S-05 の本文にも slug が現れない | FR-30、NFR-35 |
 | E-16 | 外部リンク | 全画面の `a[href^="http"]` が `https://takatsu-connect.com/` 配下だけ | FR-04、NFR-91 |
 | E-17 | 初期表示 | Lighthouse（モバイル、Slow 4G）の LCP ≤ 3.0 秒、HTML サイズ（埋め込み JSON 込み）が 04 §6 の目安以内（S-01 ≤ 120 KB、S-02e ≤ 150 KB、S-03 ≤ 60 KB、未圧縮）。超えたら 04 §6 の案を適用 | NFR-10、NFR-12 |
@@ -166,7 +167,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | S-15 | `.env.example` の形 | 各行が `NAME=` だけ（値がない）。本番の名前の一覧（03 §16、06 §3）と一致 | NFR-40 |
 
 | S-16 | 言語をまたぐ定数の一致 | `contracts/constants.json`（`SITE_ORIGIN`、チャネル 5 区分、SNS 5 区分、axis、鮮度区分、移動窓の期間 ID）と、Python の定数、TypeScript の定数が一致することを pytest と Vitest の両方で検査 | ADR 0004、FR-04 |
-| S-17 | バッチが除外リストと公開ビューに触れない | `apps/batch/src` の `grep`（`excluded_author`、`pub_`、`benchmark_curve`、`article_cumulative`、`SERVICE_ROLE`）で 1 件でも失敗 | ADR 0005、ADR 0009 |
+| S-17 | バッチが公開ビューと分布のビューに触れない | `apps/batch/src` の `grep`（`pub_`、`benchmark_curve`、`article_cumulative`、`SERVICE_ROLE`）で 1 件でも失敗 | ADR 0009 |
 | S-18 | 例外の情報を使わない | `apps/batch/src` に対する ruff の `banned-api` と `grep`（`.diag`、`.pgconn`、`.pgresult`、`str(e)`、`repr(e)`、`format_exc`、`format_exception`、`print_exc`、`logging.exception`、`basicConfig`）。`grep` は `str(exc)`、`f"{e}"`、`__context__`、`__traceback__` を見逃すので、`ast` のテストで `apps/batch/src` の全 `except ... as` を調べ、束縛名が `classify_error` への受け渡しにだけ使われていることを検査する（経路監査 L-5。`errors.py` の中は型の判定と `sqlstate` の参照だけを許す）。`__main__.py` と `__init__.py` の最上位の import が標準ライブラリだけで、`__init__.py` に処理がないことも `ast` で検査する（W-7）。pydantic のモデルが共通の基底クラス（`hide_input_in_errors=True`）を継承していることをテストで検査 | NFR-44、03 §14・§15 |
 
 - ローカルでも `pnpm check`（`apps/web`）と `ruff check`、`mypy`、`pytest`（`apps/batch`）で S-01〜S-07、S-12 を同じ設定で実行できるようにする。
@@ -184,8 +185,8 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | A-05 | 性能: Preview を通常の回線（モバイル回線を含む）で開き、主要な数値とグラフが 3 秒以内。同時 10 人程度の通常操作 | NFR-10、NFR-12 |
 | A-06 | ブラウザ: Chrome、Safari、Edge、Firefox の最新版と 1 つ前で全画面 | NFR-80 |
 | A-07 | 鮮度: 連続 5 営業日、T 時までに前日分が表示されている | NFR-02 |
-| A-08 | 運用: 失敗通知の受信（通知先 Q-12）、再実行で復旧、60 日停止対策の確認手順、除外リストの変更と再生成（Preview 相当の環境で） | FR-74、NFR-70、NFR-71、NFR-11、NFR-73 |
-| A-09 | 秘密: Google Cloud の鍵一覧に JSON 鍵がない、Vercel / Actions の環境変数以外に受け渡し経路がない、リポジトリ履歴に除外リスト・著者名がない | NFR-40、NFR-41、NFR-44 |
+| A-08 | 運用: 失敗通知の受信（通知先 Q-12）、再実行で復旧、60 日停止対策の確認手順、`publish_only` での再生成（Preview 相当の環境で） | FR-74、NFR-70、NFR-71、NFR-11、NFR-73 |
+| A-09 | 秘密: Google Cloud の鍵一覧に JSON 鍵がない、Vercel / Actions の環境変数以外に受け渡し経路がない、リポジトリ履歴に鍵・トークンがない | NFR-40、NFR-41、NFR-44 |
 | A-10 | 無料枠: 初回公開後 1 か月の請求 | NFR-60 |
 | A-11 | 本番の DB 接続（CI のローカル環境に pooler と TLS がないため）。前提: ADR 0009 の実装着手前の確認項目 1 で TLS の基準の段階（第 1 か第 2）が決まっていること。第 3 の `require` では実施しない。`alter role batch_writer login password ...` の後、Actions のランナー（`workflow_dispatch` の初回 `backfill`）から pooler に接続して書き込めること。採用した基準で TLS が通ること。`require_auth=scram-sha-256` と `connection limit 2` が pooler 経由で問題ないこと。実行ログに接続文字列の部品が出ていないこと。`supabase/checks/batch_writer_privileges.sql` を本番の SQL エディタで実行して 0 行であること（W-8）。Environment `production` の配備ブランチが main だけで、リポジトリの Secret に同名の値が残っておらず、main 以外のブランチのワークフローからその Secret を使えないこと（W-3。結果の値を記録しない） | NFR-43、NFR-44、NFR-45、ADR 0009 |
 
@@ -204,7 +205,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | M-11、M-12 | U-02、U-05、I-DB-07、I-DB-10、A-01 | 自動 + 手動 |
 | M-13、M-14、M-16、M-17 | U-05、U-17、U-22、I-DB-09、I-DB-10、A-01、E-13 | 自動 + 手動 |
 | M-18、M-20 | U-06、I-DB-08、A-03 | 自動 + 手動 |
-| M-19 | U-07、U-08、I-DB-05（母集団が除外後）、I-DB-17、A-03 | 自動 + 手動 |
+| M-19 | U-07、U-08、I-DB-05（母集団）、I-DB-17、A-03 | 自動 + 手動 |
 | M-21、M-22 | U-09、U-10、E-08、A-03 | 自動 + 手動 |
 | M-23 | U-11、A-03 | 自動 + 手動 |
 | M-24 | U-12、A-03 | 自動 + 手動 |
@@ -232,7 +233,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | FR-33 | I-DB-07、I-DB-09、A-03 | 自動 + 手動 |
 | FR-34 | U-10、E-08 | 自動 |
 | FR-35（廃止） | E-08、S-05（順位・ランキングの語）、`grep` で `RANKING` の設定名がない（S-06 に追加） | 自動 |
-| FR-36 | I-DB-04〜I-DB-06、I-DB-15、I-DB-16、I-B-10、E-03、E-14、S-09、A-09 | 自動 + 手動 |
+| FR-36 | 初回対象外（2026-11-04、依頼者の決定）。テストなし | ― |
 | FR-40 | I-DB-05、A-02、A-04 | 自動 + 手動 |
 | FR-41 | E-20、A-03 | 自動 + 手動 |
 | FR-42 | I-DB-06、E-08 | 自動 |
@@ -264,11 +265,11 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | NFR-39 | （手順。A-09 の際に ADR と要件の整合を確認） | 手動 |
 | NFR-40、NFR-41 | S-09、S-15、A-09 | 自動 + 手動 |
 | NFR-42 | S-01、E-04 | 自動 |
-| NFR-43 | I-DB-01（service_role に権限がないことを含む）、I-DB-02、I-DB-04、I-DB-15、I-DB-16、I-DB-18（`batch_writer` の権限）、A-11 | 自動、手動（A-11） |
+| NFR-43 | I-DB-01（service_role に権限がないことを含む）、I-DB-02、I-DB-15、I-DB-16、I-DB-18（`batch_writer` の権限）、A-11 | 自動、手動（A-11） |
 | NFR-44 | I-B-04、I-B-05、I-B-11、U-28、U-29、S-07、S-18 | 自動 |
 | NFR-45 | S-08、S-10、A-11（Environment のブランチ制限） | 自動、手動（A-11） |
 | NFR-50、NFR-51 | I-B-08、S-06（削除処理・保持依存がない: `grep` で `delete from site_daily` 等がない） | 自動 |
-| NFR-52 | I-B-03、I-DB-13、I-DB-04 | 自動 |
+| NFR-52 | I-B-03、I-DB-13 | 自動 |
 | NFR-60、NFR-61 | A-10、I-B-07 | 手動 + 自動 |
 | NFR-70、NFR-71 | A-08 | 手動 |
 | NFR-72 | I-B-06、A-09（スキャン・負荷試験の記録がない） | 自動 + 手動 |
@@ -288,7 +289,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 
 ## 10. テストデータ
 
-- `supabase/seed/test/`: 架空の著者 4 人（`author-a`〜`author-d`。`author-d` を除外）、記事 12 本（広告 1 本、`author-d` 3 本、公開日は 2026-08-01〜2026-10-30 に分散、1 本は 365 日以上前）、`site_daily` 60 日、`article_daily` 12 本 × 公開後の日数、期間別表は last7 / prev7 / last28 / prev28 / last90 / prev90 / m2026-08〜m2026-10、`site_month_referrer` / `site_month_city` は m2026-08・m2026-09（確定）だけ。分布（`benchmark_curve`）はビューが計算するため直接は入れず、フィクスチャを 2 版にする: 基本版（記事 12 本。母集団 30 本に満たず「まだ比較できません」の経路）と、拡張版（スクリプトで生成した記事 40 本。うち除外著者 `author-d` の 5 本は、各 n で分位の補間位置（可視 35 本の順位 9・18・27 の前後）に来る値にして、除外の有無で p25 / p50 / p75 が変わることを I-DB-05・I-DB-17 で確かめられるようにする。公開日は 12 か月の窓の内外に分け、`population_window` の切り替えも通す）。性能計測（I-DB-17）には 1,000 本の生成版を使う。
+- `supabase/seed/test/`: 架空の著者 4 人（`author-a`〜`author-d`）、記事 12 本（広告 1 本、公開日は 2026-08-01〜2026-10-30 に分散、1 本は 365 日以上前）、`site_daily` 60 日、`article_daily` 12 本 × 公開後の日数、期間別表は last7 / prev7 / last28 / prev28 / last90 / prev90 / m2026-08〜m2026-10、`site_month_referrer` / `site_month_city` は m2026-08・m2026-09（確定）だけ。分布（`benchmark_curve`）はビューが計算するため直接は入れず、フィクスチャを 2 版にする: 基本版（記事 12 本。母集団 30 本に満たず「まだ比較できません」の経路）と、拡張版（スクリプトで生成した記事 40 本。公開日は 12 か月の窓の内外に分け、`population_window` の切り替えも通す）。性能計測（I-DB-17）には 1,000 本の生成版を使う。
 - S-08・S-05 の「0 本」の経路: `author-c` は last28 に公開なし（以前の記事だけ読まれている）。
 - 伏せ値のケースを明示的に含める: 区分 1 つだけが 4 で他に T 以上がある（二次伏せが起きる）、区分 1 つだけが 4 で他がすべて 0（候補なし、二次伏せが起きない。M-1）、2 つが 4（二次伏せが起きない）、0 の区分（D-16。0 のまま出る）、曜日 × 時間帯 で 1 セルだけ 1〜4（L-1）、著者の記事 3 本のうち 1 本だけ instagram が伏さる（階層差分。M-2）、`site_period_breakdown` の channel / device_pv / device_sessions（Q-36）。
 - `pub_posting_period` に `author_count` がなく、シェア数の表・列がないことはスナップショット（I-DB-16）で固定する。

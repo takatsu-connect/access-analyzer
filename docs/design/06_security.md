@@ -1,16 +1,17 @@
 # 06 セキュリティ
 
 - 状態: レビュー中（2026-11-03）
-- 更新日: 2026-11-03
-- 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36、ADR 0002、ADR 0003、ADR 0004、ADR 0005、ADR 0006、ADR 0009、docs/operations/initial_setup.md
+- 更新日: 2026-11-04
+- 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36（初回対象外）、ADR 0002、ADR 0003、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0009、docs/operations/initial_setup.md
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: バッチを Python に（ADR 0004）、書き込みを専用ロール `batch_writer` と接続文字列 `SUPABASE_BATCH_DB_URL` に（ADR 0009）、除外リストの変更を SQL エディタに（ADR 0005）。service role キーを配らない形に変更
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-5、W-6、W-9、L-1〜L-4、L-7 を反映（§2.3 の漏えい時の影響、§3 の対処の順序と TLS、§5 の手順、§9 の Environment、§10 の依存の更新、§13）
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。§5 を置き換え、§1、§2、§3、§4、§12、§13 の除外リストの記述を外した
 
 ## 1. 守る資産と前提
 
-- 守る資産は 3 つ: 訪問者のプライバシー（公開するのは集計値だけ）、秘密情報（GA4 への認証、Supabase の接続文字列 `SUPABASE_BATCH_DB_URL`、Vercel の環境変数、Deploy Hook、除外リスト）、BI データの完全性（第三者が Supabase に書けない、BI が改ざんされない）。
+- 守る資産は 3 つ: 訪問者のプライバシー（公開するのは集計値だけ）、秘密情報（GA4 への認証、Supabase の接続文字列 `SUPABASE_BATCH_DB_URL`、Vercel の環境変数、Deploy Hook）、BI データの完全性（第三者が Supabase に書けない、BI が改ざんされない）。
 - 前提: ログインなし（NFR-20）、URL を知る人だけが見る形で noindex（NFR-21）、public リポジトリ、無料枠。「運営が見る」と「全員が見る」が同じ。
 - BI は静的サイト（ADR 0006）。実行時にサーバー側のコードが利用者の入力を受け取る経路はない。利用者の入力はブラウザ内の状態（期間、フィルタ）と URL のパスだけ。
 
@@ -20,7 +21,7 @@
 
 - 認証はない。すべてのページを誰でも読める。したがって公開ビュー（02 §4）に載るものがそのまま公開範囲になる（§4）。
 - noindex（NFR-21）を 3 重に付ける: (1) 全ページの `<meta name="robots" content="noindex, nofollow">`、(2) 応答ヘッダ `X-Robots-Tag: noindex, nofollow`（§6）、(3) `/robots.txt` に `User-agent: *` / `Disallow: /`。ライター別ビューと記事詳細も同じ（特別扱いせず全ページに付ける）。
-- Vercel の Deployment Protection は「Standard Protection」（本番ドメイン以外のすべてのデプロイ URL を Vercel Authentication で保護。Hobby で利用可）を有効にする（設計レビュー M-6）。本番ドメインはログインなし（決定どおり）。理由: 毎日のビルドは固有 URL を持つデプロイとして Vercel に残り、その URL が誰でも開けると、Supabase 側で持たない移動窓の全履歴（ADR 0003 判断 3、02 §2.2）と除外前の個別ページ（NFR-11）が外部から読める。プレビューも同じ保護の中に入る。Hobby プランでこの設定が可能かの最終確認は依頼者（§13）。
+- Vercel の Deployment Protection は「Standard Protection」（本番ドメイン以外のすべてのデプロイ URL を Vercel Authentication で保護。Hobby で利用可）を有効にする（設計レビュー M-6）。本番ドメインはログインなし（決定どおり）。理由: 毎日のビルドは固有 URL を持つデプロイとして Vercel に残り、その URL が誰でも開けると、Supabase 側で持たない移動窓の全履歴（ADR 0003 判断 3、02 §2.2）が外部から読める。プレビューも同じ保護の中に入る。Hobby プランでこの設定が可能かの最終確認は依頼者（§13）。
 - サイトマップは作らない。外部へのリンクは takatsu-connect.com 配下だけ（FR-04、§7）。
 
 ### 2.2 GA4 への認証（WIF）
@@ -35,27 +36,27 @@
 
 | ロール | 使う場所 | 権限 |
 | --- | --- | --- |
-| `batch_writer` | GitHub Actions のバッチだけ。Environment `production` の Secret `SUPABASE_BATCH_DB_URL`（shared pooler の session mode、TLS。ADR 0009） | 許可した内部表の select / insert / update / delete（`batch_run` は delete なし。経路監査 L-2）、必要な場合だけシーケンスの usage、`internal.counts_is_numeric` の execute。接続の上限 2。`excluded_author`、`internal.article_cumulative`、`internal.benchmark_curve`、`pub_*` への権限なし。`bypassrls` なし（表ごとのポリシー。02 §6） |
+| `batch_writer` | GitHub Actions のバッチだけ。Environment `production` の Secret `SUPABASE_BATCH_DB_URL`（shared pooler の session mode、TLS。ADR 0009） | 許可した内部表の select / insert / update / delete（`batch_run` は delete なし。経路監査 L-2）、必要な場合だけシーケンスの usage、`internal.counts_is_numeric` の execute。接続の上限 2。`internal.article_cumulative`、`internal.benchmark_curve`、`pub_*` への権限なし。`bypassrls` なし（表ごとのポリシー。02 §6） |
 | service role | 使わない。キーをどこにも置かない | `internal` の権限なし（02 §6） |
 | anon | Vercel のビルド（サーバー側）。環境変数 `SUPABASE_ANON_KEY`（`NEXT_PUBLIC_` を付けない） | `public.pub_*` ビューの select のみ。`internal` スキーマへの usage なし |
 | authenticated、PUBLIC | 使わない | grant なし。`internal` への usage なし。関数の EXECUTE も PUBLIC から取り消す（L-4） |
-| 運用担当（人） | Supabase ダッシュボード / CLI | スキーマはマイグレーションだけで変える。`excluded_author` への行の追加・削除は SQL エディタの固定の SQL で行う（ADR 0005）。`batch_writer` のパスワードの設定とローテーションも SQL エディタで行う（ADR 0009） |
+| 運用担当（人） | Supabase ダッシュボード / CLI | スキーマはマイグレーションだけで変える。`batch_writer` のパスワードの設定とローテーションは SQL エディタで行う（ADR 0009） |
 
 - 内部表は `internal` スキーマに置き、Supabase の API 設定「Exposed schemas」に含めない（設計レビュー M-7。多層防御: 誤って `grant select on all tables in schema public to anon` を流しても、`internal` の表は PostgREST から見えない）。公開ビュー `pub_*` だけを `public` に置く。`public` には他のオブジェクトを置かない。
-- 全表で RLS 有効。ポリシーは `batch_writer` 用だけで、`excluded_author` にはない。anon / authenticated / PUBLIC / service_role への grant なし。既定権限も取り消す（02 §6）。
+- 全表で RLS 有効。ポリシーは `batch_writer` 用だけ。anon / authenticated / PUBLIC / service_role への grant なし。既定権限も取り消す（02 §6）。
 - 公開ビューは所有者（postgres）の権限で `internal` の表を読む（既定のビュー。`security_invoker` を付けない）。anon は内部表に触れず、ビューの投影だけを読む。**所有者権限のビューは base 表の RLS を通らないので、RLS は守りに数えない。実効的な守りは grant（anon は `pub_*` の select だけ）と `internal` スキーマの非公開（usage なし、Exposed schemas に含めない）である。** 各ビューの列は 02 §4・§5 の対応表で「公開してよい列だけ」を確認し、CI で列集合のスナップショットと照合する（07 I-DB-16）。列を足すときは NFR-39 の手順。
 - anon キーはブラウザに渡さない（NFR-42）。BI は静的サイトなので、ブラウザから Supabase に接続するコードを持たない。`NEXT_PUBLIC_SUPABASE_*` という名前の環境変数を作らない（CI で名前を検査する。07 S-01）。名前の検査だけでは `apps/web/src/data/` がクライアントコンポーネントから import されたときの混入を防げないため、ビルド後の `.next/static` に `SUPABASE_URL` の値と anon キーの先頭 20 文字が含まれないことも CI で検査する（設計レビュー L-5。07 S-14、E-04）。
 - anon キーが漏れた場合の影響は「公開ビューを誰でも直接読める」で、BI に出ているものと同じ。影響が小さいからこそ Vercel には anon キーだけを置く。
-- `SUPABASE_BATCH_DB_URL` が漏れた場合の影響は「内部表の読み書き」で、BI の完全性を失う。伏せ値の適用前の生値（05 §4.1 で伏せ値なしとされた値）も読める。除外リストの表は直接読めない。ただし書き込みで除外を崩せ、差分で推定もできる（W-2）: `wp_author` や `wp_post` の slug を書き換えると `not exists` を通り抜け、次回のビルドで除外著者の数値が公開される。`internal.wp_author` と `pub_author` の差で除外著者が分かる。再取得の範囲（直近 7 日）より古い改ざんは日次バッチでは直らない。Free の容量を埋める攻撃も防げない（経路監査 L-3）。対処は §3 の順序で行う（ADR 0009「漏えい時の影響」）。
+- `SUPABASE_BATCH_DB_URL` が漏れた場合の影響は「内部表の読み書き」で、BI の完全性を失う。伏せ値の適用前の生値（05 §4.1 で伏せ値なしとされた値）も読める。書き込みで内部表を改ざんでき、次回のビルドで BI に出る（W-2）。再取得の範囲（直近 7 日）より古い改ざんは日次バッチでは直らない。Free の容量を埋める攻撃も防げない（経路監査 L-3）。対処は §3 の順序で行う（ADR 0009「漏えい時の影響」）。
 - Supabase の API 設定で「Exposed schemas」は `public` のみ（`internal` を含めない。M-7）。`graphql_public` は使わないので無効にする。Realtime、Storage、Auth は使わない。
-- 自動の書き込み経路は Actions だけ。手動の書き込みは運用担当の SQL エディタ（除外リストだけ）。BI から Supabase に書く機能はない（NFR-22）。
+- 自動の書き込み経路は Actions だけ。運用担当が SQL エディタで行う手動の操作は `batch_writer` のパスワードの設定とローテーションだけで、表の行は変えない。BI から Supabase に書く機能はない（NFR-22）。
 
 ### 2.4 Vercel
 
 - 環境変数: `SUPABASE_URL`、`SUPABASE_ANON_KEY` の 2 つだけ。Production と Preview に同じ値（データは公開ビューだけ）。
 - Git 連携: main への push で本番をビルド。fork からの PR はプレビューをビルドしない設定にする（Vercel の Git 設定で確認。確認できなければ Preview の環境変数を空にして、プレビューはビルドだけ通す）。
 - Deploy Hook の URL は main だけを許可した GitHub Environment の Secret `VERCEL_DEPLOY_HOOK_URL` にだけ置く（§9）。呼び出しはバッチの `httpx.post` で、応答本文と URL をログに出さない（L-8、03 §8）。漏れた場合の影響は「第三者が再ビルドを起こせる」（Hobby のデプロイ 1 日 100 回の消費で日次ビルドが失敗）。漏れたら Vercel 側で Hook を作り直す。
-- 過去デプロイ（設計レビュー M-6）: Deployment Protection の Standard Protection（§2.1）で本番ドメイン以外のデプロイ URL を閉じる。保持するデプロイ数は最小にし、除外リストの変更後の再ビルド（NFR-11）の後は、除外前のページを含む旧デプロイを Vercel のダッシュボードまたは CLI で削除する。この手順は docs/operations/（デプロイ工程、devops-engineer）に書く。
+- 過去デプロイ（設計レビュー M-6）: Deployment Protection の Standard Protection（§2.1）で本番ドメイン以外のデプロイ URL を閉じる。保持するデプロイ数は最小にし、§3 の漏えい時の対処の後は、改ざんされた値を含みうる旧デプロイを Vercel のダッシュボードまたは CLI で削除する。この手順は docs/operations/（デプロイ工程、devops-engineer）に書く。
 - Vercel のアカウント所有者は docs/operations/ に記録する（NFR-60）。
 
 ## 3. 秘密情報の管理
@@ -70,7 +71,6 @@
 | SUPABASE_ANON_KEY | Vercel 環境変数（サーバー / ビルド）、Actions には不要 | `NEXT_PUBLIC_*`、クライアントのバンドル | 影響は公開ビューの直接読み出しのみ。ローテーションは任意 |
 | VERCEL_DEPLOY_HOOK_URL | main だけを許可した GitHub Environment（`production`）の Secret（W-3） | リポジトリの Secret | Hook を再作成 |
 | 通知先（Q-12） | Actions Secrets | ― | 再発行 |
-| 除外リスト（`excluded_author` の内容） | Supabase の内部表 | リポジトリ、ログ、通知、Issue、コミットメッセージ、文書 | 置き場所は 1 つ。漏れたら Q-30 の文面に沿って本人に説明する |
 | ローカルの鍵（開発者の `.env`、`credentials/`） | `.gitignore` 済みのパス | 別の場所 | ローテーション |
 
 - `.env.example` には名前だけを書く（03 §16 の表の名前）。
@@ -85,8 +85,7 @@
 2. `pg_terminate_backend` で `batch_writer` の既存のセッションを切断する（パスワード変更では既存のセッションが切れない前提で扱う。要確認 ADR 0009 V-4）。
 3. Environment の Secret を更新する。
 4. `backfill` で内部表を作り直す（03 §10。消えない行の扱いは 03 §17 で未確定）。直近 7 日より古い改ざんは日次バッチでは直らないので、省略しない。
-5. `pub_*` に除外著者がないことを確認する（ADR 0005 の確認 2 と、`pub_post` の同様の確認）。
-6. 再ビルドして、旧デプロイを削除する（§2.4）。
+5. 再ビルドして、旧デプロイを削除する（§2.4）。
 
 容量を埋められた場合（経路監査 L-3）は、4 の前に不要な行を消し、Free の容量の状況を確かめる。手順の詳細は docs/operations/ に書く。
 
@@ -95,23 +94,16 @@
 - 公開するのは 02 §4 の `pub_*` ビューの列だけ。すべて集計値（NFR-30）。次元は NFR-31 の一覧（記事、著者の表示名、カテゴリ、タグ、日付・曜日・時間帯、デバイス、流入チャネル、参照元ドメイン、都道府県と市）に収まる。
 - 取得も格納もしないもの（NFR-32）: ユーザー ID、クライアント ID、完全な参照 URL（pageReferrer、pageLocation）、サイト内検索語、フォーム送信（件数を含む）、IP、市より細かい地域、リアルタイム、`customEvent:*`（D-15 の診断もバッチには入れない。L-2）。GA4 への問い合わせは 03 §5.4 の一覧（G1〜G17、G19、G20 の 19 種。G18 は初回対象外）に限る。
 - 伏せ値（NFR-33、ADR 0003）: バッチが格納時に適用。公開ビューには伏せ済みの値だけ。二次伏せの区別を公開しない。0 は伏せず、二次伏せの候補は T 以上の最小セル（M-1）。著者 × 内訳軸 は階層差分の対策あり（M-2）。曜日 × 時間帯 にも二次伏せを適用する（L-1）。
-- 除外（FR-36）と集計: 記事の値から合算する集計（著者、カテゴリの親・子、タグ、鮮度区分）はすべて除外後。除外込みは GA4 のサイト全体値と公開本数の件数だけ（H-1、ADR 0003 判断 4）。`pub_posting_period` に著者数を置かない（M-5）。シェア数は初回対象外で表・列・問い合わせがない（M-4）。
+- `pub_posting_period` に著者数を置かない（M-5）。シェア数は初回対象外で表・列・問い合わせがない（M-4）。
 - 著者は表示名と著者ページ URL（slug）だけ（NFR-35）。アバターは使わない。slug は画面に文字列として出さない（リンクの href だけ）。
 - 順位表・著者の数値並べ替えは作らない（NFR-36）。公開ビューに著者を並べ替えるための列（合計など）は `pub_author_period` に存在するが、これは FR-31 の本人向け表示に要るもので、BI がこれを使って著者一覧を数値で並べないことを 05_screens.md と 07_test_plan.md（2 回目）で縛る。
 - 比較の相手は前期間・全体の分布・自分の過去の 3 つ（NFR-95）。公開ビューに他の著者との比較値は置かない。
 
-## 5. 除外リストの扱い
+## 5. 著者の非表示（初回対象外）
 
-ADR 0005 の決定を実装する。
-
-- 置き場所: Supabase の内部表 `excluded_author(author_slug, excluded_at)`。RLS 有効、anon と `batch_writer` の grant もポリシーもなし、どの公開ビューにもこの表の列を出さない。NFR-40 の経路に含める。
-- 効き方: 記事行・著者行を出す公開ビュー（`pub_post`、`pub_author`、`pub_article_*`、`pub_author_*`、`pub_post_category`、`pub_post_tag`）は `not exists (select 1 from internal.excluded_author ...)` で除外する。記事の値から合算する集計もすべて除外後（`pub_category_period` の親行・子行、`pub_tag_period`、`pub_site_period_freshness`、`pub_author_*`）。除外込みは GA4 のサイト全体値（`pub_site_daily*`、`pub_site_period*`、`pub_site_month_*`）と公開本数の件数（`pub_posting_*`）だけ（FR-36、ADR 0003 判断 4。設計レビュー H-1 で親カテゴリと鮮度区分を除外後に変更）。
-- 「存在しない」と同じ応答: BI は静的生成時に `pub_post` と `pub_author` にある ID / slug だけをページにする（`dynamicParams = false`）。除外著者の記事 ID や slug を URL に指定すると、Next.js の 404（存在しない記事・著者と同じページ）になる。クライアント側のフィルタや一覧も `pub_*` だけを元にするので、除外著者は現れない（FR-06、FR-23、FR-30）。
-- 画面: 「非表示」の表示や列は置かない。「一部の記事は本人の希望により個別には表示していません」を全画面共通の説明文に常に入れる（NFR-99）。
-- 変更の手順: 運用担当が Supabase の SQL エディタで ADR 0005 の固定の SQL を 1 ブロックずつ実行し（1 ブロック 1 操作。slug だけを差し替え、スニペットとして保存しない。W-5）、`excluded_author` の行と `pub_author` の 0 件を確認してから、`workflow_dispatch` の `publish_only` で再ビルドし、Vercel の旧デプロイを削除する（NFR-11、§2.4）。著者名は入れない（slug のみ）。`publish_only` は設定変更後の再ビルドにも使い、除外変更の一意の信号にしない。`batch_run` に行を書かない（L-7）。
-- 記録: 誰を、いつ、誰の申し出で除外したかの台帳はリポジトリ外（依頼者が指定する非公開の場所。Q-30 と運用手順）。リポジトリ内の運用手順には台帳の置き場所と更新手順だけを書く（NFR-73）。Issue・コミットメッセージに著者名・slug を書かない（NFR-44）。
-- 読み出し: 運用担当は Supabase ダッシュボードの Table Editor で `excluded_author` を見てよい（スキーマは変えない）。
-- SQL エディタに残るもの（W-6）: 初回の操作の前に確認項目 3（ADR 0009）を確かめ、slug が残るなら手順に削除を入れる。消せないなら、残存の事実と保持期間を台帳の運用（NFR-73）に書き、Q-30 の説明文面でも扱う。
+- ライターの非表示の申し出への対応は申し出があったときに考え、除外の仕組みを初回で作らない（2026-11-04、依頼者の決定。FR-36、D-10）。除外の表、公開ビューの除外条件、変更の手順、台帳、画面の説明文はない。
+- 公開ビューに載る記事と著者は、WP REST API が公開している範囲のすべて（NFR-34）。
+- 追加する場合は NFR-39 の手順に従う。検討の出発点は ADR 0005（保留）と ADR 0003 判断 4。
 
 ## 6. 応答ヘッダ
 
@@ -192,11 +184,11 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 | NFR-40 秘密の経路 | §3 |
 | NFR-41 WIF | §2.2、ADR 0002 |
 | NFR-42 Supabase はサーバー側から | §2.3 |
-| NFR-43 RLS、anon は公開ビューの select のみ、除外の実装 | §2.3（`internal` スキーマ、grant、スナップショット検査）、§5、02 §6 |
+| NFR-43 RLS、anon は公開ビューの select のみ | §2.3（`internal` スキーマ、grant、スナップショット検査）、02 §6 |
 | NFR-44 ログ・通知の規律 | §8、03 §15 |
 | NFR-45 Actions の規律 | §9 |
 | NFR-91 入力検証、エラー応答、ヘッダ、リンク先 | §6、§7 |
-| FR-36 除外 | §5、ADR 0005 |
+| FR-36 除外 | 初回対象外（§5、ADR 0005 保留） |
 
 ## 13. 未確定
 
@@ -206,7 +198,7 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 - GCP（依頼者の確認事項）: WIF の属性条件に `assertion.repository_id` を加える（L-10）。SA が GA4 閲覧者のみで GCP ロールを持たないこと、「サービス アカウント トークン作成者」の削除。
 - Supabase（依頼者の確認事項）: Exposed schemas が `public` のみで `internal` を含まないこと、`graphql_public` の無効化。`batch_writer` の有効化とパスワードの設定。
 - 実装着手前の確認項目 1〜4 と、仕様の確認 V-1〜V-6（ADR 0009「実装着手前の確認項目」）。TLS の基準の段階は確認項目 1 で決まり、第 1 か第 2 で成立するまで本番に接続しない。Environment の可否は確認項目 4（親）。
-- SQL エディタの履歴などに除外の slug や `alter role` の文が残るか（確認項目 3。ADR 0005 W-6、ADR 0009 経路監査 L-4）。
+- SQL エディタの履歴などに `alter role` の文が残るか（確認項目 3。ADR 0009 経路監査 L-4）。
 - ADR 0009 の残りの未確定（`executemany`、IPv4 の到達など。実装時と 07 A-11）。
-- Q-12（通知先）、Q-30（除外の窓口・文面と台帳の置き場所）。
+- Q-12（通知先）。
 - 確定: D-16（0 は伏せない。02 §2.3、M-1）、Q-33（ADR 0003 判断 5）、Q-36（ADR 0003 判断 6）。

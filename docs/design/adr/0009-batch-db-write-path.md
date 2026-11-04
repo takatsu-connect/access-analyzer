@@ -1,17 +1,17 @@
 # ADR 0009: バッチの書き込み経路（psycopg、shared pooler の session mode、専用ロール）
 
 - 状態: 条件付き承認の条件を反映済み。残る確認は実装着手前（docs/security/audits/2026-11-03-write-path-review.md。残る確認は本文「実装着手前の確認項目」）
-- 更新日: 2026-11-03
-- 関係: 02_data_model.md §1・§6、03_data_pipeline.md §7・§14・§15、06_security.md §2.3・§3・§9、ADR 0004、ADR 0005、ADR 0007、NFR-22、NFR-40、NFR-43、NFR-44、NFR-45
+- 更新日: 2026-11-04
+- 関係: 02_data_model.md §1・§6、03_data_pipeline.md §7・§14・§15、06_security.md §2.3・§3・§9、ADR 0004、ADR 0007、NFR-22、NFR-40、NFR-43、NFR-44、NFR-45
 - 変更履歴:
   - 2026-11-03: 新規。ADR 0007 の「supabase-js の upsert、直接接続は使わない」を置き換える
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-4、W-8、L-1〜L-4、L-7 を反映。TLS の 3 段階の基準、接続設定のコード固定、Environment への Secret の移動、`nologin` でのロール作成、漏えい時の影響の書き直し、実装着手前の確認項目
+  - 2026-11-04: 著者の除外（FR-36）を初回対象外にしたため、除外の記述（漏えい時の影響、確認項目 3 の slug、V-4 の件数の確認など）を外した。経路、ロール、TLS の判断は変わらない
 
 ## 文脈
 
 - 内部表は `internal` スキーマにあり、Exposed schemas に含めない（設計レビュー M-7）。したがって PostgREST（supabase クライアント + service role キー）では書けない前提で扱う。
 - バッチは GitHub Actions のランナーで動く。接続先は IPv4 で届く必要があるものとして扱う。
-- バッチは除外リストを読まない（ADR 0005）。これまではコードレビューで守っていた。
 
 事実票（2026-11-03、supabase.com/docs で親が確認）:
 
@@ -31,7 +31,7 @@ psycopg の事実（2026-11-03、context7 で psycopg のドキュメントと�
 | 案 | 内容 | 評価 |
 | --- | --- | --- |
 | A（採用） | psycopg で shared pooler の session mode に接続し、専用ロールで書く | IPv4 で届く。ロールで権限を絞れる。書き込みを 1 トランザクションにできる。接続文字列という秘密が 1 つ要る |
-| B | `internal` を Exposed schemas に足し、supabase クライアント + service role キーで書く | M-7 の多層防御を崩す。service role キーは権限が広く、除外リストの不読をロールで強制できない |
+| B | `internal` を Exposed schemas に足し、supabase クライアント + service role キーで書く | M-7 の多層防御を崩す。service role キーは権限が広く、バッチが触れる表をロールで絞れない |
 | C | `public` に `security definer` の関数を置き、service role から rpc で呼ぶ | 公開面に関数が増える（L-4 の方針と逆行）。数万行の受け渡しにも向かない |
 | D | direct（5432）に接続 | Free では IPv6 のみ。不採用 |
 
@@ -46,14 +46,14 @@ psycopg の事実（2026-11-03、context7 で psycopg のドキュメントと�
 
 | 案 | 評価 |
 | --- | --- |
-| 専用ロール `batch_writer`（採用） | `internal` の必要な表だけに select / insert / update / delete。`excluded_author` と `pub_*` に権限なし。除外リストの不読をロールで強制できる |
+| 専用ロール `batch_writer`（採用） | `internal` の必要な表だけに select / insert / update / delete。`pub_*` に権限なし。バッチが触れる表をロールで絞れる |
 | `postgres` | 全権限。接続文字列の漏えいが全体の侵害になる。不採用 |
 
 ### (4) RLS の扱い
 
 | 案 | 評価 |
 | --- | --- |
-| 表ごとにポリシーを作る（採用） | `create policy batch_writer_all on internal.<表> for all to batch_writer using (true) with check (true)`。マイグレーションに残り、検査できる。`excluded_author` にはポリシーも grant も作らないので 2 重に閉じる。表を足すたびに書く手間は、権限の付け忘れが fail-closed になる利点と引き換えに受け入れる |
+| 表ごとにポリシーを作る（採用） | `create policy batch_writer_all on internal.<表> for all to batch_writer using (true) with check (true)`。マイグレーションに残り、検査できる。表を足すたびに書く手間は、権限の付け忘れが fail-closed になる利点と引き換えに受け入れる |
 | `bypassrls` を付ける | 記述は短い。ただしロール全体に効く属性で、表ごとの統制にならない。Supabase で付与できるかも事実票にない。不採用 |
 | 内部表の RLS を切る | security.md「すべての表で RLS を有効にする」に反する。不採用 |
 
@@ -62,8 +62,8 @@ psycopg の事実（2026-11-03、context7 で psycopg のドキュメントと�
 | 観点 | A: psycopg + 専用ロール | B: PostgREST + service role | C: rpc |
 | --- | --- | --- | --- |
 | `internal` の非公開（M-7） | 保てる | 崩れる | 保てるが `public` に関数が増える |
-| 除外リストの不読をロールで強制 | できる | できない | 関数の中身次第 |
-| 秘密が漏れたときの影響 | 内部表の読み書き。完全性を失う。除外リストの表は直接読めない。ただし書き込みで除外を崩せ、差分で推定もできる（「漏えい時の影響」） | 全表 | 全表 |
+| バッチが触れる表をロールで絞る | できる | できない | 関数の中身次第 |
+| 秘密が漏れたときの影響 | 内部表の読み書き。完全性を失う（「漏えい時の影響」） | 全表 | 全表 |
 | 書き込みの原子性 | 1 トランザクション | リクエストごと | 関数ごと |
 | 秘密のローテーション | `alter role ... password` と Secret の更新 | JWT シークレットの更新 | 同左 |
 | 新しい秘密 | 接続文字列 1 つ（service role キーを置き換える） | なし | なし |
@@ -81,11 +81,10 @@ psycopg の事実（2026-11-03、context7 で psycopg のドキュメントと�
 
 ## 漏えい時の影響
 
-`SUPABASE_BATCH_DB_URL` が漏れたときの影響を、次のように扱う。「除外リストは漏れない」とは書かない。
+`SUPABASE_BATCH_DB_URL` が漏れたときの影響を、次のように扱う。
 
-- 除外リストの表は直接読めない。ただし書き込みで除外を崩せ、差分で推定もできる。
-- 差分: `internal.wp_author` と `pub_author` の差で除外著者が分かる（公開情報だけでも推測できることは NFR-22 が認めている）。`pg_stat_all_tables` や `pg_class` からは件数も読める可能性がある（要確認 V-4）。
-- 書き込みによる無効化: `wp_author` や `wp_post` の slug を書き換えると `not exists` を通り抜け、次回のビルドで除外著者の数値が公開される。再取得の範囲（直近 7 日）より古い改ざんは、日次バッチでは直らない。
+- 読み出し: 内部表を読める。伏せ値の適用前の生値（05 §4.1 で伏せ値なしとされた値）も含む。
+- 書き込み: 内部表を改ざんでき、次回のビルドで BI に出る。再取得の範囲（直近 7 日）より古い改ざんは、日次バッチでは直らない。
 - 容量: Free の容量を埋める攻撃は、ロールの設定では防げない。
 - 対処の順序は 06 §3 に書く。
 
@@ -100,7 +99,7 @@ SQL の全文は 02 §6。要点:
 - `if not exists` は既存のロールの属性を直さない。そこでマイグレーションは続けて `alter role` で属性を揃え、残りの属性は検査で確かめる（W-8。02 §6）。
 - `alter role ... password` の平文は、SQL エディタの履歴やサーバーログに残る可能性がある（経路監査 L-4。要確認 V-5）。見られるのはダッシュボードの権限者なので影響は小さい。SCRAM の verifier を事前に作って渡せるかを、pooler との互換を含めて確かめる（確認項目 3、V-5）。確かめるまでは平文の手順を使い、実行後に履歴の扱いを確認項目 3 の結果に従う。
 - `alter role batch_writer connection limit 2` と、ロールの既定の `statement_timeout`（120 秒）を置く（経路監査 L-3）。接続の上限は同時接続 1 本の設計に余裕を 1 本足した値。pooler のサーバー接続の持ち方によって足りないときは A-11 で分かるので、そこで見直す。既定の `statement_timeout` は通常の実行の歯止めで、接続を持つ者は `set` で変えられる。悪用時の歯止めに数えない。
-- 権限は表の名前を列挙して与える。`all tables in schema` と `alter default privileges` は使わない。`excluded_author` と、それを参照する `internal.article_cumulative`、`internal.benchmark_curve` まで届いてしまうため。表を足すときは grant とポリシーを書かないと書けない。
+- 権限は表の名前を列挙して与える。`all tables in schema` と `alter default privileges` は使わない。バッチに要らない `internal.article_cumulative`、`internal.benchmark_curve` のビューや、後から足す表まで届いてしまうため。表を足すときは grant とポリシーを書かないと書けない。
 - `batch_run` には delete を与えない（経路監査 L-2。保持期間の削除がなく、痕跡を消せないようにする。02 §6）。
 
 ### 接続文字列のブランチへの束縛（W-3）
@@ -158,7 +157,7 @@ CA の失効や交換が起きると、接続は TLS のエラーで失敗し、
 
 ### テスト
 
-- 07 I-DB-18: `batch_writer` の grant とポリシーが許可リストと完全に一致し、`excluded_author` と `pub_*` には読めない。スキーマの権限、関数とシーケンスの grant、ロールの所属まで見る（W-8）。同じ検査をマイグレーション末尾と A-11 の本番確認にも置く。
+- 07 I-DB-18: `batch_writer` の grant とポリシーが許可リストと完全に一致し、`internal.article_cumulative`、`internal.benchmark_curve`、`pub_*` は読めない。スキーマの権限、関数とシーケンスの grant、ロールの所属まで見る（W-8）。同じ検査をマイグレーション末尾と A-11 の本番確認にも置く。
 - 07 U-30: 接続設定の検査（`?host=` の上書き、`hostaddr`、複数 host、TLS 設定を含む接続文字列を拒否し、キーワードで固定した値が渡る）。
 - 07 I-B-11: psycopg の例外の内容がログに出ない。
 - 07 S-10: `daily.yml` のジョブの `environment:` を検査する。
@@ -172,7 +171,7 @@ CA の失効や交換が起きると、接続は TLS のエラーで失敗し、
 | --- | --- | --- |
 | 確認項目 1 | 認証情報なしで pooler の証明書を確かめる: 自分のプロジェクトの host に `openssl s_client -starttls postgres -connect <POOLER-HOST>:5432 -showcerts` を実行し、発行元と SAN が host と合うか、Supabase が配布する CA で検証できるかを見る。結果の host 名と PROJECT-REF を文書やログに書かない（W-1 (c)） | 依頼者 |
 | 確認項目 2 | Supabase の「SSL の強制」の設定があれば有効にできるか。pooler にも効くか | 依頼者 |
-| 確認項目 3 | SQL エディタの履歴、自動保存、Postgres ログ、監査ログ、AI 機能に、slug と `alter role` の文が残るか、外部へ送られるか。残る場合の削除方法と保持期間。組織の AI のオプトインの状態（ADR 0005 の W-6、経路監査 L-4） | 依頼者 |
+| 確認項目 3 | SQL エディタの履歴、自動保存、Postgres ログ、監査ログ、AI 機能に、`alter role` の文が残るか、外部へ送られるか。残る場合の削除方法と保持期間。組織の AI のオプトインの状態（経路監査 L-4） | 依頼者 |
 | 確認項目 4 | GitHub Environment のブランチ制限が public リポジトリと organization のプランで使えるか（W-3。実装前に親が確認）。Supabase と GitHub の管理者全員に多要素認証が有効か。組織のメンバーの一覧 | 親、依頼者 |
 
 次の仕様は監査の時点で文書でも実機でも確かめていない。確定事項として扱わず、実装着手前に出典つきで確かめる。
@@ -182,15 +181,15 @@ CA の失効や交換が起きると、接続は TLS のエラーで失敗し、
 | V-1 | libpq / psycopg: URI の `?host=` の上書き、`conninfo_to_dict` の実効値、平文認証の要求でパスワードを送るか、`require_auth` の対応版、`psycopg-binary` が同梱する libpq の版、`sslrootcert=system` の挙動 | 「TLS」 |
 | V-2 | GitHub: Environment を付けたジョブで OIDC トークンの `sub` が変わるか。WIF の属性条件（`assertion.ref`、`assertion.repository`、`assertion.repository_id`）と `google.subject` の対応に影響しないか | 06 §2.2、§9 |
 | V-3 | Environment が使えない場合の代替: GCP Secret Manager の料金、権限の粒度、取得に使う Action | 「接続文字列のブランチへの束縛」 |
-| V-4 | Postgres: `pg_stat_all_tables` と `pg_class` から `excluded_author` の件数が読めるか。パスワード変更で既存のセッションが切れないこと。`generated always as identity` のシーケンスが grant なしで動くか。`batch_writer` 自身が `connection limit` を変えられないこと | 「漏えい時の影響」、06 §3、02 §6 |
+| V-4 | Postgres: パスワード変更で既存のセッションが切れないこと。`generated always as identity` のシーケンスが grant なしで動くか。`batch_writer` 自身が `connection limit` を変えられないこと | 「漏えい時の影響」、06 §3、02 §6 |
 | V-5 | Postgres / Supabase: `alter role ... password` の平文が履歴やログに残る条件。SCRAM の verifier を渡す方法と pooler との互換 | 「ロールと権限」 |
 | V-6 | Dependabot と pip-audit: `cooldown` の設定とセキュリティ更新の扱い、pip-compile のハッシュの再生成、`pip-audit --disable-pip` の可否 | ADR 0004、06 §10 |
 
 ## 結果
 
-- 良い点: `internal` を公開しないまま書ける。「バッチは除外リストを読まない」がコードレビューだけでなくロールで強制される。書き込みが原子的になり、半端な状態が公開されない。使わない service role キーを配らずに済む。
+- 良い点: `internal` を公開しないまま書ける。バッチが触れる表がコードレビューだけでなくロールで絞られる。書き込みが原子的になり、半端な状態が公開されない。使わない service role キーを配らずに済む。
 - 引き受ける点: 接続文字列という秘密を持つ。パスワードの設定とローテーションが人の手順になる。表を足すときの grant とポリシーの記述が増える。pooler の挙動は CI で確かめられない。shared pooler の接続上限と停止に依存する（1 回のバッチに 1 接続なので当たる見込みは低いが、上限の値は事実票にない）。固定した CA の交換は、人の手順とコミットになる。任意の SQL を流せるセッションを持てるので、接続文字列が漏れたときの容量の消費は防げない（「漏えい時の影響」）。
-- 影響: `.claude/rules/security.md` と NFR-43 の「書き込みは service role だけ」の文言は実態と合わなくなる。親が更新する（監査の「規則の改定文言の案」。open_questions の D-10 の「運用スクリプト（service role）」も同様）。
+- 影響: `.claude/rules/security.md` と NFR-43 の「書き込みは service role だけ」の文言は実態と合わなくなる。親が更新する（監査の「規則の改定文言の案」）。
 
 ## 未確定
 
