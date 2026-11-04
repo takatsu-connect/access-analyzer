@@ -16,3 +16,11 @@ credentials/
 *.p12
 *.key
 *service*account*.json
+
+# Python の仮想環境とキャッシュ
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage

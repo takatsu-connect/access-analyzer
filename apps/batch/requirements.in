@@ -1,0 +1,7 @@
+# 本番の直接の依存（01 §4、ADR 0004）。ロックは Linux と CI と同じ Python 版で生成する。
+google-analytics-data
+httpx
+psycopg[binary]
+pydantic
+# Windows の開発環境で zoneinfo に必要（ADR 0004）
+tzdata

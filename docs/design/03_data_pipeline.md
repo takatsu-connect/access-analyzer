@@ -1,7 +1,7 @@
 # 03 データパイプライン
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-04
+- 更新日: 2026-11-05
 - 参照: FR-70〜FR-76、NFR-01〜NFR-04、NFR-44、NFR-45、NFR-50〜NFR-52、NFR-61、NFR-70〜NFR-72、D-01〜D-03、D-05〜D-09、D-12、D-15、02_data_model.md、ADR 0001、ADR 0002、ADR 0004、ADR 0006、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
@@ -10,10 +10,11 @@
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-7、L-5〜L-7 を反映（§14 の起動時の処理と分類の規則、§10 の作り直し、§16 の接続文字列の形式と置き場所）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`publish_only` は設定変更後の再ビルドとビルド失敗後の再試行のために残し、理由を直した（§2、§8）。§6 の除外の記述を外した
   - 2026-11-04: tech-writer の整合確認。Q-12、Q-13 の確定を反映（§2、§14、§16、§17）。§17 の TLS の基準を第 1 に合わせた
+  - 2026-11-05: 構築 1 の実装を反映（依頼者の決定）。§1: `failed_step` の値に `preflight` と `period` を含めることを明記し、02 §3.6 を揃えた。§5.2: `threads` は `other`、規則に当たらないものは `unmapped` とした
 
 ## 1. 全体の流れ
 
-日次バッチ（GitHub Actions、`apps/batch`、Python）は 1 回の実行で次の工程を順に行う。工程名は `batch_run.failed_step` の値と同じ。
+日次バッチ（GitHub Actions、`apps/batch`、Python）は 1 回の実行で次の工程を順に行う。工程名は `batch_run.failed_step` の値と同じ（`preflight` と `period` を含む 8 つ。02 §3.6）。ログの `step` には、工程に入る前の失敗を示す `startup` もある。`startup` は `failed_step` に入れない（`batch_run` に書けない段階のため）。
 
 | # | 工程 | 入力 | 出力 | 失敗時 |
 | --- | --- | --- | --- | --- |
@@ -110,10 +111,11 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 | facebook | `facebook.com`、`lm.facebook.com`、`l.facebook.com`、`m.facebook.com`、`facebook`、`fb` | `.facebook.com` |
 | x | `t.co`、`twitter.com`、`x.com`、`twitter` | `.twitter.com`、`.x.com` |
 | line | `line.me`、`lin.ee`、`line`、`timeline.line.me` | `.line.me` |
-| other | 上のいずれにも当たらないもの（`threads`、`threads.net` を含む） | ― |
+| other | `threads`、`threads.net` | ― |
+| unmapped | 上のいずれにも当たらないもの。判定の結果としてだけ現れ、格納するときは `other` に数える | ― |
 
 - LINE の値は 2026-11-03 の実測に現れないが、現れたときに拾えるよう規則に入れる。注記（M-11「LINE は実際より少なく見えることがあります」）は維持する。
-- 対応づけられなかった Organic Social の参照元は `sns_source_unmapped` に upsert する（ドメイン名を Actions のログには出さない。NFR-44）。運用担当が月 1 回この表を見て、必要なら規則に追加し、コミットで記録する（規則は公開してよい設定。NFR-22 (1)）。
+- 判定が `unmapped` の Organic Social の参照元は `sns_source_unmapped` に upsert する（`threads`、`threads.net` は規則に載っているので記録しない。ドメイン名を Actions のログには出さない。NFR-44）。運用担当が月 1 回この表を見て、必要なら規則に追加し、コミットで記録する（規則は公開してよい設定。NFR-22 (1)）。
 - 流入チャネル（M-10）の正規化: `Organic Search` → `search`、`Organic Social` → `social`、`Direct` → `direct`、`Referral` → `referral`、それ以外（AI Assistant、Email、Organic Video、Unassigned、Paid 系、Cross-network、Display、Affiliates、Audio、SMS、Mobile Push Notifications）→ `other`。「その他」に含めた区分の一覧は画面の注記に出す（05_screens.md、2 回目）。
 
 ### 5.3 ユーザー数の期間取得（D-06）

@@ -1,0 +1,67 @@
+# 日次バッチの設定。依存は requirements.in / requirements-dev.in に書く（ADR 0004 の P1）。
+# ビルド工程は持たない。実行は PYTHONPATH=src python -m takatsu_batch <サブコマンド>。
+[project]
+name = "takatsu-batch"
+version = "0.1.0"
+description = "高津コネクト アクセス解析 BI の日次バッチ"
+requires-python = ">=3.13,<3.14"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "--strict-markers --tb=short"
+markers = [
+    "db: Supabase ローカルが必要な結合テスト（DATABASE_URL がなければ skip）",
+]
+
+[tool.coverage.run]
+source = ["src/takatsu_batch"]
+branch = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "W",    # pycodestyle の警告
+    "I",    # import の順序
+    "B",    # bugbear
+    "UP",   # 新しい構文
+    "T20",  # print の禁止（03 §15）
+    "DTZ",  # naive な日時の禁止（01 §4）
+    "TID",  # banned-api（03 §14）
+    "PLC0415", # 関数内の import の禁止（__main__.py だけ除外。03 §14 の 4）
+    "S",    # bandit
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"logging".msg = "logging は使わない。takatsu_batch.log の関数を使う（03 §15）"
+"traceback".msg = "例外の情報を出さない（03 §14）"
+"pprint".msg = "任意のオブジェクトを出さない（03 §15）"
+
+[tool.ruff.lint.per-file-ignores]
+# __main__.py は起動時にライブラリのログを止めるために logging を使い（03 §14 の 4・5）、
+# 第三者と本体を遅延 import する。使ってよい属性は tests/test_static_rules.py が検査する。
+"src/takatsu_batch/__main__.py" = ["TID251", "PLC0415"]
+"src/takatsu_batch/log.py" = ["TID251"]
+"src/takatsu_batch/errors.py" = ["TID251"]
+# テストは assert を使い、固定の文字列を偽の秘密として渡し、子プロセスを起動する。
+"tests/**/*.py" = ["S101", "S105", "S106", "S603", "S608", "TID251", "T20", "PLC0415"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/src", "$MYPY_CONFIG_FILE_DIR/tests"]
+explicit_package_bases = true
+namespace_packages = true
+files = ["$MYPY_CONFIG_FILE_DIR/src", "$MYPY_CONFIG_FILE_DIR/tests"]
+
+# Google の例外クラスのコンストラクタは型注釈がない。テストで偽の例外を作るときだけ許す。
+[[tool.mypy.overrides]]
+module = "test_errors"
+disallow_untyped_calls = false

@@ -1,0 +1,9 @@
+# 開発用の依存。本番のロックと同じ版に揃える。
+-c requirements.txt
+# Windows の開発環境で pytest が使う。本番のロックに入れない（経路監査 L-7）
+colorama
+mypy
+pip-tools
+pytest
+pytest-cov
+ruff

@@ -1,7 +1,7 @@
 # 07 テスト計画
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-04
+- 更新日: 2026-11-05
 - 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0006、ADR 0008、ADR 0009
 - 読者: qa-engineer（テストの実装と受入の実施）、backend-engineer / frontend-engineer（単体テストの実装）、devops-engineer（CI の検査）
 - 変更履歴:
@@ -11,6 +11,7 @@
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1、W-3〜W-5、W-7〜W-9、L-1、L-2、L-5〜L-7 を反映（U-30 を追加。§2、§10、U-29、I-B-10、I-B-11、I-DB-18、S-08、S-10、S-18、A-11、§9、§11 を修正）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。I-DB-04 と I-B-10 を欠番に、I-DB-05、I-DB-06、I-DB-16〜18、E-03、E-14、S-17、A-08、A-09、フィクスチャ、§9 の対応表を修正
   - 2026-11-04: tech-writer の整合確認。A-08 に Q-12 の確定を反映。E-09 の「5 回未満」の条件をセルに限定。A-11 の前提を TLS の第 1 に合わせた。§9 に S-16、S-17 を追加
+  - 2026-11-05: 構築 1 の実機確認を反映（依頼者の決定）。I-DB-01、I-DB-15 を、Supabase 管理スキーマを除く検査と集合の完全一致に直した。I-DB-01 に、公開ビューへの書き込みの拒否と service_role の検査を足した
 
 ## 1. 方針
 
@@ -77,7 +78,7 @@
 
 | ID | 検査 | 合格条件 | 受入基準 |
 | --- | --- | --- | --- |
-| I-DB-01 | anon / authenticated / PUBLIC / service_role の権限 | `information_schema.role_table_grants where grantee in ('anon','authenticated','PUBLIC')` が `public.pub_%` の `SELECT`（anon のみ）だけ。`information_schema.routine_privileges` で同じ grantee に EXECUTE がない（L-4）。シーケンスへの grant がない。`anon` で内部表（`internal.wp_post`、`internal.article_daily` など全部）を select すると `permission denied`（スキーマの usage がない）。`service_role` は `has_schema_privilege('service_role','internal','USAGE')` が false（ADR 0009。前回の N-3 の grant を取り消した）。`batch_writer` の権限は I-DB-18 | NFR-43、NFR-40 |
+| I-DB-01 | anon / authenticated / PUBLIC / service_role の権限 | Supabase 管理スキーマ（02 §6 の一覧。基盤が権限を与えており変更しない）を除いて、`information_schema.role_table_grants where grantee in ('anon','authenticated','PUBLIC')` が `public.pub_%` の `SELECT`（anon のみ）だけ。`information_schema.routine_privileges` で同じ grantee に EXECUTE がない（L-4）。シーケンスへの grant がない。`anon` で内部表（`internal.wp_post`、`internal.article_daily` など全部）を select すると `permission denied`（スキーマの usage がない）。`service_role` は `has_schema_privilege('service_role','internal','USAGE')` が false（ADR 0009。前回の N-3 の grant を取り消した）。`pub_*` の `relacl` は所有者と anon の `SELECT` だけで、`postgres` の既定権限（public、`internal`）に所有者以外の grantee がない。anon はすべての `pub_*` を select できる。anon、authenticated、service_role、`batch_writer` はすべての `pub_*` に insert / update / delete / truncate の権限がなく、`set local role service_role` で実行した select / insert / update / delete が `permission denied`（自動更新可能なビューを通じて内部表へ書けないこと）。`batch_writer` の権限は I-DB-18 | NFR-43、NFR-40 |
 | I-DB-02 | RLS | `pg_tables` の全表で `rowsecurity = true`。anon で insert / update / delete が拒否される | NFR-43 |
 | I-DB-03 | `_mask` 列が出ない | `information_schema.columns` で `table_name like 'pub_%'` の列名に `_mask` を含むものがない | FR-73、NFR-33、02 §2.3 |
 | I-DB-04 | 欠番 | 著者の除外は初回対象外（2026-11-04、依頼者の決定）。追加するときに ADR 0005 の検査を戻す。ID は振り直さない | ― |
@@ -91,7 +92,7 @@
 | I-DB-12 | 著者の列 | `pub_author` と `wp_author` の列が display_name / author_slug / author_url（+ 内部の時刻列）だけ。メール・ログイン名・ユーザー ID・アバターの列がない | NFR-35 |
 | I-DB-13 | 削除の反映 | 記事を `wp_post` から削除すると、関連する `article_*` の行が cascade で消え、`pub_*` から消える | FR-72、NFR-52 |
 | I-DB-14 | マイグレーションの再適用 | 空の DB に全マイグレーションを順に適用して成功。`supabase db diff` が空（スキーマがすべてファイルにある） | NFR-73 |
-| I-DB-15 | スキーマの usage | `has_schema_privilege(r, s, 'USAGE')` が、r ∈ {anon, authenticated, public(PUBLIC)} × s ∈ `public` 以外の全スキーマ（`internal` を含む。`pg_catalog`、`information_schema` は除く）で false。`internal` スキーマに `pub_` で始まるオブジェクトがなく、`public` スキーマに `pub_` 以外の表・ビュー・関数がない。`internal.batch_run.counts` に check 制約があり、文字列値を含む jsonb の insert が失敗する（L-6） | NFR-43（設計レビュー M-7、L-4、L-6） |
+| I-DB-15 | スキーマの usage | `has_schema_privilege(r, s, 'USAGE')` が、r ∈ {anon, authenticated, public(PUBLIC)} × s ∈ `public` と Supabase 管理スキーマ（02 §6 の一覧）以外の全スキーマ（`internal` を含む）で false。anon と authenticated が usage を持つスキーマの集合は「管理スキーマ + `public`」と完全に一致する（スキーマが増えたら失敗する。本番で一覧が違うときにマイグレーション末尾の検査で失敗するのは意図どおりで、確かめてから一覧を直す。02 §6）。`internal` スキーマに `pub_` で始まるオブジェクトがなく、`public` スキーマに `pub_` 以外の表・ビュー・関数がない。`internal.batch_run.counts` に check 制約があり、文字列値を含む jsonb の insert が失敗する（L-6） | NFR-43（設計レビュー M-7、L-4、L-6） |
 | I-DB-16 | 公開ビューの列のスナップショット | `information_schema.columns where table_schema='public' and table_name like 'pub_%'` の（ビュー名、列名、型）の集合が `tests/snapshots/pub-columns.json`（02 §5 の対応表から作る）と完全に一致。列名に `_mask` を含むものがなく、`author_count`・`share_count` がない。差分があれば失敗し、スナップショットの更新には NFR-39 の手順（ADR と security-auditor のレビュー）を PR で示す | NFR-43、NFR-39（設計レビュー M-7、M-4、M-5） |
 | I-DB-17 | 分布と帯の計算（ビュー） | `pub_benchmark_curve` の各行が、同じフィクスチャから U-07（`quantiles`）で計算した p25 / p50 / p75・`population_size`・`population_window` と一致（12 か月 → 全期間の拡張、30 本未満で行なし、`scope = cat:<id>` は母集団 30 本以上の子カテゴリだけ、広告を含めない）。`pub_article_summary.band_7d`（age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積と曲線 (all, N) の比較）、`pub_author_summary.band_30d`（own_median_30d と曲線 (all, 30)）が U-08（`band`）の結果と一致。age_days < 3・曲線の行なし・値 null で null。p25 / p75 と等しい値が `middle`。`article_daily` の行を変えると、曲線と帯が次の select で変わる（バッチの再実行なし）。`explain analyze` で `pub_benchmark_curve` の全行 select がローカルの 1,000 本のフィクスチャで 2 秒以内（超えるなら ADR 0003 判断 4 追記の (c) へ） | M-19、M-20、M-27、FR-21、FR-23 (3)、FR-31 (b)、ADR 0003 判断 4 追記（N-1） |
 | I-DB-18 | `batch_writer` の権限 | (1) `information_schema.role_table_grants where grantee = 'batch_writer'` が許可リスト（02 §3.1〜§3.6 の表 × select / insert / update / delete。`batch_run` は delete なし。経路監査 L-2）と完全に一致し、truncate、references、trigger がない。(2) `internal.article_cumulative`、`internal.benchmark_curve`、すべての `public.pub_*` について `has_table_privilege('batch_writer', ..., 'SELECT')` が false。`batch_writer` で接続して `select * from public.pub_post` が `permission denied`。(3) `pg_policies` で `batch_writer_all` が許可リストの全表にあり、他のロール向けのポリシーがない。`pg_roles` で `rolbypassrls`、`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolinherit` がすべて false、`rolconnlimit` が 2。マイグレーションの適用直後（パスワード設定の前）は `rolcanlogin` が false（経路監査 L-1）。ロールの既定の `statement_timeout` が 120 秒。(4) `batch_writer` で許可した表に upsert と delete が成功し、`batch_run` への insert が `counts_is_numeric` の check を通る。`batch_run` への delete は `permission denied`。シーケンスの grant は、この insert が失敗したときだけ足す（経路監査 L-2）。(5) `supabase/migrations` と `supabase/seed` の SQL に `password` の文字列がない（大文字小文字を区別しない。W-4）。(6) `batch_writer` で実行した `create table`、`alter table`、`truncate` が拒否される。(7) すべてのスキーマで `has_schema_privilege` の USAGE と CREATE を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを確認した `public` だけ（`pg_catalog` と `information_schema` は USAGE の判定から除く。02 §6）。(8) `information_schema.routine_privileges` と `role_usage_grants` で `batch_writer` が grantee のものが `internal.counts_is_numeric` と必要なシーケンスだけ。(9) `pg_auth_members` で `batch_writer` が member の行が 0 件。(10) `supabase/checks/batch_writer_privileges.sql` が 0 行を返し、その本文がマイグレーション末尾の検査と一致する（W-8。同じ SQL を A-11 で本番にも流す） | NFR-43、NFR-22、NFR-40、ADR 0009 |
