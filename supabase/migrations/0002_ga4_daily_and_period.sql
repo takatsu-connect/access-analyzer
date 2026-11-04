@@ -1,5 +1,6 @@
 -- GA4 由来の日別表と期間別表（02 §3.2、§3.3）。
 -- 伏せ値の列は <指標名> と <指標名>_mask の 2 列（02 §2.3）。_mask は公開ビューに出さない。
+-- mask が null なら値は not null、mask があれば値は null（監査 M-2）。T の値は制約に書かない。
 
 create table internal.site_daily (
   day date primary key,
@@ -17,6 +18,7 @@ create table internal.site_daily_channel (
   channel text not null check (channel in ('search', 'social', 'direct', 'referral', 'other')),
   sessions integer,
   sessions_mask text check (sessions_mask in ('threshold', 'secondary')),
+  check ((sessions_mask is null) = (sessions is not null)),
   updated_at timestamptz not null default now(),
   primary key (day, channel)
 );
@@ -30,8 +32,10 @@ create table internal.site_daily_device (
   device text not null check (device in ('mobile', 'desktop', 'tablet')),
   pageviews integer,
   pageviews_mask text check (pageviews_mask in ('threshold', 'secondary')),
+  check ((pageviews_mask is null) = (pageviews is not null)),
   sessions integer,
   sessions_mask text check (sessions_mask in ('threshold', 'secondary')),
+  check ((sessions_mask is null) = (sessions is not null)),
   updated_at timestamptz not null default now(),
   primary key (day, device)
 );
@@ -57,6 +61,7 @@ create table internal.site_period (
   engagement_seconds bigint not null,
   active_users integer,
   active_users_mask text check (active_users_mask in ('threshold', 'secondary')),
+  check ((active_users_mask is null) = (active_users is not null)),
   updated_at timestamptz not null default now()
 );
 alter table internal.site_period enable row level security;
@@ -70,6 +75,7 @@ create table internal.site_period_breakdown (
   bucket text not null,
   value integer,
   value_mask text check (value_mask in ('threshold', 'secondary')),
+  check ((value_mask is null) = (value is not null)),
   updated_at timestamptz not null default now(),
   primary key (period_id, axis, bucket)
 );
@@ -84,6 +90,7 @@ create table internal.site_period_heatmap (
   hour smallint not null check (hour between 0 and 23),
   pageviews integer,
   pageviews_mask text check (pageviews_mask in ('threshold', 'secondary')),
+  check ((pageviews_mask is null) = (pageviews is not null)),
   updated_at timestamptz not null default now(),
   primary key (period_id, dow, hour)
 );
@@ -98,10 +105,13 @@ create table internal.article_period (
   pageviews integer not null,
   landing_sessions integer,
   landing_sessions_mask text check (landing_sessions_mask in ('threshold', 'secondary')),
+  check ((landing_sessions_mask is null) = (landing_sessions is not null)),
   scroll_count integer,
   scroll_count_mask text check (scroll_count_mask in ('threshold', 'secondary')),
+  check ((scroll_count_mask is null) = (scroll_count is not null)),
   engagement_seconds integer,
   engagement_seconds_mask text check (engagement_seconds_mask in ('threshold', 'secondary')),
+  check ((engagement_seconds_mask is null) = (engagement_seconds is not null)),
   updated_at timestamptz not null default now(),
   primary key (post_id, period_id)
 );
@@ -118,6 +128,7 @@ create table internal.article_period_breakdown (
   bucket text not null,
   sessions integer,
   sessions_mask text check (sessions_mask in ('threshold', 'secondary')),
+  check ((sessions_mask is null) = (sessions is not null)),
   updated_at timestamptz not null default now(),
   primary key (post_id, period_id, axis, bucket)
 );
@@ -133,6 +144,7 @@ create table internal.author_period_breakdown (
   bucket text not null,
   sessions integer,
   sessions_mask text check (sessions_mask in ('threshold', 'secondary')),
+  check ((sessions_mask is null) = (sessions is not null)),
   updated_at timestamptz not null default now(),
   primary key (author_slug, period_id, axis, bucket)
 );

@@ -14,8 +14,12 @@ type LocalBucket = Literal["kawasaki", "japan_other", "unknown"]
 
 MASK_THRESHOLD: Final = 5
 RECENT_HOT_MIN_PV_7D: Final = 20
-RECENT_HOT_MIN_AGE_DAYS: Final = 15
-LONG_AGE_DAYS: Final = 91
+# 次の 4 つは「基準日 − 公開日」と比べる（M-21、M-22、M-23）。
+# age_days（基準日 − 公開日 + 1）と比べない。
+RECENT_HOT_MIN_DAYS_SINCE_PUBLISH: Final = 15
+NEW_MAX_DAYS_SINCE_PUBLISH: Final = 30
+LONG_MIN_DAYS_SINCE_PUBLISH: Final = 91
+EVERGREEN_MIN_DAYS_SINCE_PUBLISH: Final = 365
 # internal.benchmark_curve の SQL にも現れる（07 I-DB-17 で一致を確かめる）
 BENCHMARK_MIN_POPULATION: Final = 30
 OWN_MEDIAN_MIN_POSTS: Final = 5

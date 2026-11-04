@@ -16,6 +16,9 @@ credentials/
 *.p12
 *.key
 *service*account*.json
+# Google の鍵の既定のファイル名（<プロジェクト>-<16 進 12 桁>.json）と ADC。*.json は広く除外しない
+*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
+application_default_credentials.json
 
 # Python の仮想環境とキャッシュ
 .venv/

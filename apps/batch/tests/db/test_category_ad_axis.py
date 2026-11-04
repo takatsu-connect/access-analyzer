@@ -92,8 +92,9 @@ def fixture_rows(admin: Admin) -> None:
         )
         cursor.executemany(
             """
-            insert into internal.article_period (post_id, period_id, pageviews)
-            values (%s, %s, %s)
+            insert into internal.article_period (
+              post_id, period_id, pageviews, landing_sessions, scroll_count, engagement_seconds
+            ) values (%s, %s, %s, 0, 0, 0)
             """,
             [
                 (NORMAL_POST, PERIOD, 10),

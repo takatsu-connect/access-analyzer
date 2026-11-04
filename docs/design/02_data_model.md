@@ -10,6 +10,7 @@
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-4、W-8、L-1〜L-3、L-7 を反映（§6 のロールの作成を `nologin` に、接続の上限と既定のタイムアウト、`batch_run` の delete を外す、権限の検査の拡張。§8 のテスト用パスワードを seed から除く。§9）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`excluded_author`、ビューの `not exists` と §4 の除外の列、除外後と除外込みの区別を外した。分布と帯のビューでの計算は保ち、理由を直した。伏せ値、二次伏せ、階層差分、`internal`、`batch_writer` は変えない
   - 2026-11-05: 構築 1 の実機確認を反映（依頼者の決定）。§6: `pub_*` と public の既定権限から service_role を外した（自動更新可能なビューを通じて内部表へ書けたため）。末尾の検査の範囲を Supabase 管理スキーマを除く形に直した。§3.6: `failed_step` に `preflight` と `period` を足した。§4: ビューの解釈（`post_count` の定義、広告記事の扱い）を定義として書いた。§4、§9: 広告記事はカテゴリのビューでは広告の軸の行だけで数えることにした（FR-40）
+  - 2026-11-05: 構築 1 のコードレビューと監査（audits/2026-11-05-build1-review.md）を反映（依頼者の決定）。§2.3、§3.3、§3.4: mask と値の整合、上位 N の下限を check 制約に（M-2）。§3.6: `failed_step` を check 制約に（M-3）。§3.1: `is_ad` は広告カテゴリと配下の子。§3.5: `age_days` を累積の n だけに使い、M-21〜M-23 は「基準日 − 公開日」で判定。`own_median_30d` を numeric に。§4.1: `BACKFILL_START` より前に公開した記事を分布から除き、7 日と 30 日の値と帯を null に。§6: 権限の検査を拡張（L-1）
 
 ## 1. 方針
 
@@ -50,7 +51,8 @@
 - 伏せ値を適用する列は、`<指標名> integer`（伏せたときは null）と `<指標名>_mask text`（null = 伏せていない、`threshold` = T 未満で伏せた、`secondary` = 二次伏せ）の 2 列で表す。
 - 公開ビューには `<指標名>` だけを出し、`_mask` 列は出さない。二次伏せかどうかを公開すると「伏せたセルのうち 1 つは T 以上」と分かり、合計との差から値を狭められるため。画面では一次伏せ・二次伏せの区別なく「—」と表示し、セルの近くに「伏せ値」と添える（確定、2026-11-03、Q-33。理由は ADR 0003 判断 5。表示の規則は 05_screens.md §2.3）。
 - しきい値 T = 5（NFR-33）は設定値 `MASK_THRESHOLD` で、バッチが実行記録（`batch_run.mask_threshold`）に残す。
-- 参照元ドメイン・市別の各行の伏せ値は「T 未満の行を格納しない」で表す（ホスト名・市名そのものが識別性を持つため、値だけ伏せて名前を残さない）。
+- 整合の制約（監査 M-2）: `_mask` を持つすべての組に `check ((<指標名>_mask is null) = (<指標名> is not null))` を置く。mask が null なら値は not null、mask があれば値は null。T の値はこの制約に書かない（T 未満を伏せる規則は `mask.py` が持つ）。
+- 参照元ドメイン・市別の各行の伏せ値は「T 未満の行を格納しない」で表す（ホスト名・市名そのものが識別性を持つため、値だけ伏せて名前を残さない）。`site_month_referrer`、`site_month_city`、`article_referrer_30d` の `sessions` に `check (sessions >= 5)` を置く。5 は `MASK_THRESHOLD` で、一致をテストで確かめる。T を変えるときは NFR-39 の手順にこの制約のマイグレーションを含める。
 - 0 の扱い（GA4 が行を返さない区分）: 0 として格納し、伏せない（D-16 確定、2026-11-03、設計レビュー M-1）。二次伏せで追加して伏せるセルは「伏せていない、値が T 以上のセルのうち最小」で、0 と T 未満のセルは候補にしない。該当がなければ追加しない（03 §6.1、ADR 0003 判断 2）。
 - 階層差分（設計レビュー M-2）: 著者 × 内訳軸 のセルは、同じ bucket で伏せた記事セルがちょうど 1 本のときは著者セルも伏せる（`_mask = secondary`）。§3.3 `author_period_breakdown`、03 §6.1 手順 5。
 
@@ -88,7 +90,7 @@
 | published_at | timestamptz | not null。`date_gmt` |
 | published_on | date | not null。`published_at` の Asia/Tokyo 暦日。M-18 の「1 日目」 |
 | modified_at | timestamptz | not null。`modified_gmt`。差分取得の基準（D-03） |
-| is_ad | boolean | not null default false。広告カテゴリ（設定値 `AD_CATEGORY_ID` = 188）に属する（Q-08） |
+| is_ad | boolean | not null default false。広告カテゴリ（設定値 `AD_CATEGORY_ID` = 188）または配下の子に属する（Q-08）。カテゴリのビューの「広告の軸」（§4）と同じ範囲 |
 | first_seen_on | date | not null |
 
 `wp_category`
@@ -271,15 +273,15 @@
 | --- | --- | --- |
 | post_id | integer | PK、FK → wp_post on delete cascade |
 | base_date | date | not null |
-| age_days | integer | not null。基準日 − published_on + 1（公開日を 1 日目） |
-| freshness | text | not null。`new`（1〜30 日）/ `mid`（31〜90 日）/ `long`（91 日以上）（M-21） |
-| pv_7d | integer | null。公開後 7 日間の累積（age_days ≥ 7 のときだけ）（M-20） |
-| pv_30d | integer | null。公開後 30 日間の累積（age_days ≥ 30 のときだけ） |
+| age_days | integer | not null。基準日 − published_on + 1（公開日を 1 日目）。累積の n（M-18、M-20、帯）にだけ使う。M-21、M-22、M-23 の判定には使わない |
+| freshness | text | not null。「基準日 − published_on」で `new`（30 日以内）/ `mid`（31〜90 日）/ `long`（91 日以上）（M-21） |
+| pv_7d | integer | null。公開後 7 日間の累積（age_days ≥ 7 のときだけ。`BACKFILL_START` より前に公開した記事は null。§4.1）（M-20） |
+| pv_30d | integer | null。公開後 30 日間の累積（age_days ≥ 30 のときだけ。`BACKFILL_START` より前に公開した記事は null。§4.1） |
 | pv_total | integer | not null。公開以降の累積 |
 | （band_7d、band_30d） | ― | 内部表には置かない。公開ビュー `pub_article_summary` が `internal.benchmark_curve`（ビュー）から計算する（§4.1。N-1） |
-| is_recent_hot | boolean | not null。M-22「最近読まれている」 |
-| is_revival | boolean | not null。M-22「久しぶりに読まれた」 |
-| is_evergreen_365 | boolean | not null。M-23「1 年たっても読まれています」 |
+| is_recent_hot | boolean | not null。M-22「最近読まれている」。経過は「基準日 − published_on」で判定 |
+| is_revival | boolean | not null。M-22「久しぶりに読まれた」。経過は「基準日 − published_on」で判定 |
+| is_evergreen_365 | boolean | not null。M-23「1 年たっても読まれています」。経過は「基準日 − published_on」で判定 |
 | referrer_30d_computed_on | date | null。`article_referrer_30d` を計算した日（0 行でも日付を入れる） |
 
 `article_milestone`（M-23 の節目）: `post_id`、`milestone integer`（500 / 1000 / 5000 / 10000）、`reached_on date`、PK (post_id, milestone)。到達日は `article_daily` の累積から求める。
@@ -290,7 +292,7 @@
 | --- | --- | --- |
 | author_slug | text | PK、FK → wp_author on delete cascade |
 | base_date | date | not null |
-| own_median_30d | integer | null。直近 12 か月に公開し 30 日以上経過した自分の記事の pv_30d の中央値。該当 5 本未満なら null（M-24） |
+| own_median_30d | numeric | null。直近 12 か月に公開し 30 日以上経過した自分の記事の pv_30d の中央値（偶数本では .5 になる）。`pv_30d` が null の記事は数えない。該当 5 本未満なら null（M-24） |
 | eligible_count | integer | not null |
 | （band_30d） | ― | 内部表には置かない。公開ビュー `pub_author_summary` が own_median_30d と `internal.benchmark_curve`(all, 30) を比べて計算する（§4.1。FR-31 (b)） |
 
@@ -306,7 +308,7 @@
 | base_date | date | not null |
 | mode | text | not null。`daily` / `backfill` / `manual` |
 | status | text | not null。`running` / `success` / `failed` |
-| failed_step | text | null。失敗した工程名（`preflight` / `wp_fetch` / `period` / `ga4_daily` / `ga4_period` / `derive` / `write` / `publish`。03 §1 の工程名と同じ） |
+| failed_step | text | null。失敗した工程名（`preflight` / `wp_fetch` / `period` / `ga4_daily` / `ga4_period` / `derive` / `write` / `publish`。03 §1 の工程名と同じ。公開されるので check 制約で 8 値に限る。`startup` は入れない。監査 M-3） |
 | error_kind | text | null。エラーの種別だけ（`quota` / `auth` / `network` / `validation` / `db` / `unknown`）。メッセージ本文は入れない（NFR-44） |
 | mask_threshold | smallint | not null。実行時の T |
 | counts | jsonb | not null default '{}'。件数と所要時間だけ。キーは固定（ga4_requests、ga4_tokens、ga4_tokens_remaining_day、ga4_tokens_remaining_hour、wp_requests、posts_upserted、posts_deleted、rows_written、duration_ms）で値はすべて数値。バッチ側は固定キー・数値のみの pydantic モデル（`extra="forbid"`、`strict=True`）で書き、DB にも `check` 制約（immutable 関数 `internal.counts_is_numeric(jsonb)`: すべての値が `jsonb_typeof = 'number'` で、キーが上の一覧に含まれる）を置く（設計レビュー L-6）。API の応答や行データは入れない |
@@ -381,8 +383,9 @@
 - `pub_benchmark_curve` = `select scope, n, p25, p50, p75, population_size, population_window from internal.benchmark_curve`。
 - `pub_article_summary` の `band_7d` / `band_30d`: `article_summary` に `internal.article_cumulative`（n = 7 と n = least(age_days, 30) の累積）と `internal.benchmark_curve`（scope = all、同じ n）を left join し、`case when 値 > p75 then 'upper' when 値 < p25 then 'lower' else 'middle' end`。`age_days < 3`、曲線の行がない、累積が null のときは null。`band_7d` は `age_days ≥ 7` のときだけ（pv_7d と曲線 (all, 7) の比較）。
 - `pub_author_summary` の `band_30d`: `author_summary.own_median_30d` と `internal.benchmark_curve`（all, 30）の同じ `case`。own_median_30d が null、曲線の行がないときは null。
+- 計測開始より前に公開した記事（2026-11-05、コードレビュー）: `published_on` が設定値 `BACKFILL_START`（2025-10-08）より前の記事は、初日からの日別がそろわず累積が小さく出る。そこで、分布の母集団（`internal.benchmark_curve` の全 scope。12 か月と全期間の両方）から除き、`pub_article_summary` の `pv_7d`、`pv_30d`、`band_7d`、`band_30d` を null にし、`pub_category_period` の `median_30d_pv` と `published_post_count_30d` から除く。`BACKFILL_START` の当日に公開した記事は含める。バッチも `article_summary` の `pv_7d`、`pv_30d` を null で書くので、M-24 の `own_median_30d` からも外れる（構築 2）。SQL の日付と設定値の一致はテストで確かめる（07 I-DB-17）。`pv_total` と `pub_article_cumulative` は変えない。
 - 関数は作らない（`case` 式をビュー内に書く。06 §2.3、L-4 の方針）。
-- 実行計画の固定（2026-11-05）: `internal.benchmark_curve` と `pub_article_summary` は、累積と曲線を `with ... as materialized` で 1 回だけ計算する。`internal.article_cumulative` は `age_days`、`base_date`、`published_on`、`is_ad` も出し（公開ビューには出さない）、窓関数の結果へ join し直さない。統計が古いと窓関数を行ごとに計算し直す実行計画になることがあり、1,000 本で 520 ms が 41 秒になった例をローカルで確認したため。
+- 実行計画の固定（2026-11-05）: `internal.benchmark_curve` と `pub_article_summary` は、累積と曲線を `with ... as materialized` で 1 回だけ計算する。`internal.article_cumulative` は `age_days`、`base_date`、`published_on`、`is_ad` も出し（公開ビューには出さない）、窓関数の結果へ join し直さない。子カテゴリの母集団は `lateral` と `offset 0` で累積を外側に固定する。統計が古いと窓関数を行ごとに計算し直す実行計画になることがあり、1,000 本で 520 ms が 41 秒になった例をローカルで確認したため。
 - 性能: 記事 225 本 × n 90 ≒ 2 万行の累積に対する分位計算 + 子カテゴリ分で、ビルド時に各ビューを 1 回読むだけ。実装時に `explain analyze` で確認する（07 I-DB-17。ローカルの 1,000 本のフィクスチャで 2 秒以内を目安）。重ければ ADR 0003 判断 4 追記の (c)（`internal` のマテリアライズドビューをバッチが refresh）に切り替えるが、母集団の定義は変えない。
 
 ## 5. 05 §4.1 の表との対応
@@ -513,8 +516,8 @@ revoke all on public.pub_<名前>, ... from public, authenticated, service_role;
 - 接続文字列 `SUPABASE_BATCH_DB_URL` は main だけを許可した GitHub Environment の Secret だけに置く（06 §3、§9）。service role キーはどこにも置かない。Vercel には anon キーだけを置き、ビルド時に `pub_*` を読む。
 - Supabase の API 設定「Exposed schemas」は `public` のみ（`internal` を含めない）。この設定はダッシュボードで行うため、初期設定手順（docs/operations/）に書き、受入（07 §8）で確認する。
 - マイグレーションの最後に次を検査する SQL を置き、CI（07 §4 I-DB-01、I-DB-15、I-DB-16、I-DB-18）でも同じ検査を行う。
-  1. Supabase 管理スキーマ（下記）を除いて、`information_schema.role_table_grants` で anon / authenticated / PUBLIC に grant があるのは `public.pub_%` の anon の `SELECT` だけ。関数（`information_schema.routine_privileges`）・シーケンスへの grant がない。public の表とビューには、所有者と anon の `SELECT` 以外の権限がない（`pg_class.relacl`。service_role を含む）。`postgres` の既定権限（`pg_default_acl`）で public と `internal` に所有者以外の grantee がない。
-  2. Supabase 管理スキーマを除いて、anon / authenticated / PUBLIC が `public` 以外のスキーマ（`internal` を含む）に usage を持たない（`has_schema_privilege`、`nspacl`）。
+  1. Supabase 管理スキーマ（下記）を除いて、`information_schema.role_table_grants` で anon / authenticated / PUBLIC に grant があるのは `public.pub_%` の anon の `SELECT` だけ。関数（`information_schema.routine_privileges`）・シーケンスへの grant がない。public の表とビューには、所有者と anon の `SELECT` 以外の権限がない（`pg_class.relacl`。service_role を含む）。`has_table_privilege` の実効値でも、anon、authenticated、service_role が public と `internal` の表とビューに持つ権限は anon の `pub_*` の `SELECT` だけ（`role_table_grants` は実行ロールから見える範囲に絞られるため。監査 L-1）。public と `internal` に列単位の grant（`pg_attribute.attacl`）がない。`postgres` の既定権限（`pg_default_acl`）で public と `internal` に所有者以外の grantee がない。
+  2. Supabase 管理スキーマを除いて、anon / authenticated / PUBLIC が `public` 以外のスキーマ（`internal` を含む）に usage を持たない（`has_schema_privilege`、`nspacl`）。anon、authenticated、PUBLIC はどのスキーマにも CREATE を持たない（管理スキーマも除かない）。service_role は `internal` に usage も CREATE も持たない（監査 L-1）。
   3. `pub_*` の列名に `_mask` を含むものがない。
   4. `pub_*` の列集合（ビュー名、列名、型）が §5 の対応表から作ったスナップショット（`tests/snapshots/pub-columns.json`）と一致する。差分があればスナップショットの更新と NFR-39 の手順を要求する。
   5. `batch_writer` の権限が許可の範囲に収まる（W-8。下の検査）。
@@ -523,7 +526,7 @@ Supabase 管理スキーマ: `pg_catalog`、`information_schema`、`auth`、`ext
 
 `batch_writer` の権限の検査（W-8）は、違反を 1 行ずつ返す select として `supabase/checks/batch_writer_privileges.sql` に置く。0 行なら合格。同じ select をマイグレーション末尾に `do` ブロックで包んで写し（1 行でもあれば `raise exception`）、07 I-DB-18 でファイルを実行して 2 か所の本文の一致も確かめる。A-11 では本番の SQL エディタで同じファイルの内容を実行する。これで、本番の手変更や既定権限で広がった権限に気づける。検査する内容:
 
-- 表の grant: `information_schema.role_table_grants` が許可リスト（§3.1〜§3.6 の表。`batch_run` は delete なし）に一致する（I-DB-18 (1)）。
+- 表の grant: `information_schema.role_table_grants` が許可リスト（§3.1〜§3.6 の表。`batch_run` は delete なし）に一致する（I-DB-18 (1)）。`has_table_privilege` の実効値でも、public と `internal` の表とビューに許可リストの外の権限がない。列単位の grant（`attacl`）がない（監査 L-1）。
 - スキーマ: すべてのスキーマについて `has_schema_privilege('batch_writer', <スキーマ>, 'USAGE')` と `'CREATE'` を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを `nspacl` で確かめた `public` だけ。`pg_catalog` と `information_schema` は PostgreSQL の既定で PUBLIC が USAGE を持つので USAGE の判定から除く。ほかに PUBLIC 経由の USAGE が見つかったら、ローカルの結果を確かめて可否を決める（Supabase の既定権限は未確認）。`public` の CREATE が PUBLIC に残っていれば `revoke create on schema public from public` をマイグレーションに足す。広げる方向で直さない。
 - 関数とシーケンス: `information_schema.routine_privileges` と `role_usage_grants` で、`batch_writer` を grantee にするものが `internal.counts_is_numeric` と必要なシーケンスだけ。
 - ロールの所属: `pg_auth_members` で `batch_writer` が member の行が 0 件。

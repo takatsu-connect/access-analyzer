@@ -66,6 +66,38 @@ where d.defaclrole = 'postgres'::regrole
   and n.nspname in ('public', 'internal')
   and acl.grantee <> d.defaclrole
 union all
+select 'schema create: ' || role_name || ' ' || n.nspname
+from (values ('anon'), ('authenticated')) as role (role_name)
+cross join pg_namespace n
+where has_schema_privilege(role.role_name, n.oid, 'CREATE')
+union all
+select 'service_role on internal: schema ' || p.privilege_type
+from (values ('USAGE'), ('CREATE')) as p (privilege_type)
+where has_schema_privilege('service_role', 'internal', p.privilege_type)
+union all
+select 'effective privilege: ' || r.role_name || ' ' || n.nspname || '.' || cl.relname || ' ' || p.privilege_type
+from (values ('anon'), ('authenticated'), ('service_role')) as r (role_name)
+cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) as p (privilege_type)
+cross join pg_class cl
+join pg_namespace n on n.oid = cl.relnamespace
+where cl.relkind in ('r', 'v', 'm', 'f', 'p')
+  and n.nspname in ('public', 'internal')
+  and has_table_privilege(r.role_name, cl.oid, p.privilege_type)
+  and not (
+    r.role_name = 'anon'
+    and n.nspname = 'public'
+    and cl.relname like 'pub\_%'
+    and p.privilege_type = 'SELECT'
+  )
+union all
+select 'column grant: ' || acl.grantee::regrole::text || ' ' || n.nspname || '.' || cl.relname || '.' || a.attname
+from pg_attribute a
+join pg_class cl on cl.oid = a.attrelid
+join pg_namespace n on n.oid = cl.relnamespace
+cross join lateral aclexplode(a.attacl) as acl
+where n.nspname in ('public', 'internal')
+  and not a.attisdropped
+union all
 select 'mask column: ' || c.table_name || '.' || c.column_name
 from information_schema.columns c
 where c.table_schema = 'public'

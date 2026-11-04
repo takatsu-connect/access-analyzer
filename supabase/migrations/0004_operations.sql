@@ -36,7 +36,10 @@ create table internal.batch_run (
   base_date date not null,
   mode text not null check (mode in ('daily', 'backfill', 'manual')),
   status text not null check (status in ('running', 'success', 'failed')),
-  failed_step text,
+  -- 公開ビューに出るので自由文字列にしない（監査 M-3）。startup は入れない（03 §1）
+  failed_step text check (failed_step in (
+    'preflight', 'wp_fetch', 'period', 'ga4_daily', 'ga4_period', 'derive', 'write', 'publish'
+  )),
   error_kind text check (error_kind in ('quota', 'auth', 'network', 'validation', 'db', 'unknown')),
   mask_threshold smallint not null,
   counts jsonb not null default '{}' check (internal.counts_is_numeric(counts)),

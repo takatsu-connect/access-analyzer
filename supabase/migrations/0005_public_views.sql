@@ -21,6 +21,7 @@ left join internal.article_daily d
 
 -- 全記事の分布（M-19、M-27）。母集団は広告を除く公開記事で、age_days >= n は累積の行の有無で満たす。
 -- 下の 30 は設定値 BENCHMARK_MIN_POPULATION（07 I-DB-17 で一致を確かめる）。
+-- date '2025-10-08' は設定値 BACKFILL_START。これより前に公開した記事は初日からの日別がそろわないので除く（02 §4.1）。
 create view internal.benchmark_curve as
 -- materialized: 統計が古いと窓関数の結果を行ごとに計算し直す実行計画になり、桁違いに遅くなるため
 with cumulative as materialized (
@@ -31,16 +32,22 @@ with cumulative as materialized (
     published_on >= base_date - 365 as in_12m,
     base_date
   from internal.article_cumulative
-  where not is_ad
+  where not is_ad and published_on >= date '2025-10-08'
 ),
 population as (
   select 'all'::text as scope, c.n, c.cumulative_pv, c.in_12m, c.base_date
   from cumulative c
   union all
-  select 'cat:' || cat.category_id::text, c.n, c.cumulative_pv, c.in_12m, c.base_date
+  select 'cat:' || child.category_id::text, c.n, c.cumulative_pv, c.in_12m, c.base_date
   from cumulative c
-  join internal.wp_post_category pc on pc.post_id = c.post_id
-  join internal.wp_category cat on cat.category_id = pc.category_id and cat.parent_id is not null
+  -- offset 0 で cumulative を外側に固定し、記事ごとに索引で引く。逆順だと 9 万行を記事の数だけ読み直す
+  cross join lateral (
+    select cat.category_id
+    from internal.wp_post_category pc
+    join internal.wp_category cat on cat.category_id = pc.category_id and cat.parent_id is not null
+    where pc.post_id = c.post_id
+    offset 0
+  ) as child
 ),
 aggregated as (
   select
@@ -265,16 +272,19 @@ select
   s.post_id,
   s.age_days,
   s.freshness,
-  s.pv_7d,
-  s.pv_30d,
+  -- date '2025-10-08' は設定値 BACKFILL_START。これより前に公開した記事は累積が欠けるので 7 日、30 日、帯を出さない
+  case when p.published_on >= date '2025-10-08' then s.pv_7d end as pv_7d,
+  case when p.published_on >= date '2025-10-08' then s.pv_30d end as pv_30d,
   s.pv_total,
   case
+    when p.published_on < date '2025-10-08' then null
     when s.age_days < 7 or c.pv_at_7 is null or b7.n is null then null
     when c.pv_at_7 > b7.p75 then 'upper'
     when c.pv_at_7 < b7.p25 then 'lower'
     else 'middle'
   end as band_7d,
   case
+    when p.published_on < date '2025-10-08' then null
     when s.age_days < 3 or c.pv_at_30 is null or b30.n is null then null
     when c.pv_at_30 > b30.p75 then 'upper'
     when c.pv_at_30 < b30.p25 then 'lower'
@@ -285,6 +295,7 @@ select
   s.is_evergreen_365,
   s.referrer_30d_computed_on
 from internal.article_summary s
+join internal.wp_post p on p.post_id = s.post_id
 left join cumulative c on c.post_id = s.post_id
 left join curve b7 on b7.n = 7
 left join curve b30 on b30.n = least(s.age_days, 30);
@@ -366,11 +377,18 @@ select
   count(*)::integer as post_count_total,
   (count(*) filter (where p.published_on between per.start_date and per.end_date))::integer
     as post_count_published,
+  -- date '2025-10-08' は設定値 BACKFILL_START。これより前に公開した記事は 30 日 PV が欠けるので除く
   percentile_cont(0.5) within group (order by s.pv_30d)
-    filter (where p.published_on between per.start_date and per.end_date and s.pv_30d is not null)
+    filter (
+      where p.published_on between per.start_date and per.end_date
+        and p.published_on >= date '2025-10-08'
+        and s.pv_30d is not null
+    )
     as median_30d_pv,
   (count(*) filter (
-    where p.published_on between per.start_date and per.end_date and s.pv_30d is not null
+    where p.published_on between per.start_date and per.end_date
+      and p.published_on >= date '2025-10-08'
+      and s.pv_30d is not null
   ))::integer as published_post_count_30d
 from membership m
 join internal.wp_post p on p.post_id = m.post_id
@@ -501,6 +519,38 @@ where d.defaclrole = 'postgres'::regrole
   and n.nspname in ('public', 'internal')
   and acl.grantee <> d.defaclrole
 union all
+select 'schema create: ' || role_name || ' ' || n.nspname
+from (values ('anon'), ('authenticated')) as role (role_name)
+cross join pg_namespace n
+where has_schema_privilege(role.role_name, n.oid, 'CREATE')
+union all
+select 'service_role on internal: schema ' || p.privilege_type
+from (values ('USAGE'), ('CREATE')) as p (privilege_type)
+where has_schema_privilege('service_role', 'internal', p.privilege_type)
+union all
+select 'effective privilege: ' || r.role_name || ' ' || n.nspname || '.' || cl.relname || ' ' || p.privilege_type
+from (values ('anon'), ('authenticated'), ('service_role')) as r (role_name)
+cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) as p (privilege_type)
+cross join pg_class cl
+join pg_namespace n on n.oid = cl.relnamespace
+where cl.relkind in ('r', 'v', 'm', 'f', 'p')
+  and n.nspname in ('public', 'internal')
+  and has_table_privilege(r.role_name, cl.oid, p.privilege_type)
+  and not (
+    r.role_name = 'anon'
+    and n.nspname = 'public'
+    and cl.relname like 'pub\_%'
+    and p.privilege_type = 'SELECT'
+  )
+union all
+select 'column grant: ' || acl.grantee::regrole::text || ' ' || n.nspname || '.' || cl.relname || '.' || a.attname
+from pg_attribute a
+join pg_class cl on cl.oid = a.attrelid
+join pg_namespace n on n.oid = cl.relnamespace
+cross join lateral aclexplode(a.attacl) as acl
+where n.nspname in ('public', 'internal')
+  and not a.attisdropped
+union all
 select 'mask column: ' || c.table_name || '.' || c.column_name
 from information_schema.columns c
 where c.table_schema = 'public'
@@ -577,6 +627,29 @@ where not exists (
     and g.table_name = a.table_name
     and g.privilege_type = a.privilege_type
 )
+union all
+select 'effective privilege: ' || n.nspname || '.' || cl.relname || ' ' || p.privilege_type
+from (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) as p (privilege_type)
+cross join pg_class cl
+join pg_namespace n on n.oid = cl.relnamespace
+where cl.relkind in ('r', 'v', 'm', 'f', 'p')
+  and n.nspname in ('public', 'internal')
+  and has_table_privilege('batch_writer', cl.oid, p.privilege_type)
+  and not (
+    n.nspname = 'internal'
+    and exists (
+      select 1 from allowed_grant a
+      where a.table_name = cl.relname and a.privilege_type = p.privilege_type
+    )
+  )
+union all
+select 'column grant: ' || n.nspname || '.' || cl.relname || '.' || a.attname
+from pg_attribute a
+join pg_class cl on cl.oid = a.attrelid
+join pg_namespace n on n.oid = cl.relnamespace
+cross join lateral aclexplode(a.attacl) as acl
+where acl.grantee = 'batch_writer'::regrole
+  and not a.attisdropped
 union all
 select 'schema create: ' || n.nspname
 from pg_namespace n

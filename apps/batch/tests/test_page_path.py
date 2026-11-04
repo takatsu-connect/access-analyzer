@@ -18,6 +18,9 @@ from takatsu_batch.page_path import classify_page_path, extract_post_id, normali
         ("/?p=4812", "/"),
         ("/", "/"),
         ("", "/"),
+        ("/4812 ?a=1", "/4812/"),
+        (" /4812/ #top", "/4812/"),
+        ("  ", "/"),
     ],
 )
 def test_normalize(raw: str, expected: str) -> None:
@@ -44,6 +47,12 @@ def test_normalize(raw: str, expected: str) -> None:
         ("/abc123/", None),
         ("/-1/", None),
         ("/2147483648/", None),
+        ("/4812 ?a=1", 4812),
+        ("/04812/", None),
+        ("/00123/", None),
+        ("/0/", None),
+        ("/12345678901/", None),
+        (f"/{'9' * 5000}/", None),
         ("/١٢٣/", None),
     ],
 )

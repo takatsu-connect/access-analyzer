@@ -6,8 +6,9 @@ from typing import Final, Literal
 
 type PageKind = Literal["article", "unknown_article", "non_article"]
 
-# \d は Unicode の数字にも一致するので [0-9] で書く
-_ARTICLE_PATH: Final = re.compile(r"/([0-9]+)/")
+# \d は Unicode の数字にも一致するので [0-9] で書く。先頭ゼロ（/04812/）は記事 ID として扱わない。
+# 桁数は integer の最大（10 桁）までに限り、巨大な数字列を int に変換しない。
+_ARTICLE_PATH: Final = re.compile(r"/([1-9][0-9]{0,9})/")
 _SLASHES: Final = re.compile(r"/{2,}")
 # wp_post.post_id は Postgres の integer。これを超える数字列は投稿 ID になりえない。
 _MAX_POST_ID: Final = 2_147_483_647
@@ -15,10 +16,11 @@ _MAX_POST_ID: Final = 2_147_483_647
 
 def normalize_page_path(raw: str) -> str:
     """規則 1〜3: 小文字化と空白の除去、クエリとフラグメントの除去、スラッシュの整形。"""
-    path = raw.strip().lower()
+    path = raw.lower()
     for separator in ("?", "#"):
         path = path.split(separator, 1)[0]
-    path = _SLASHES.sub("/", path)
+    # クエリの前に空白があっても残らないよう、除去の後で strip する
+    path = _SLASHES.sub("/", path.strip())
     return path if path.endswith("/") else f"{path}/"
 
 

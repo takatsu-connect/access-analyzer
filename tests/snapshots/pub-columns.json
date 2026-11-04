@@ -1,0 +1,690 @@
+{
+  "pub_article_cumulative": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "n",
+      "type": "integer"
+    },
+    {
+      "column": "cumulative_pv",
+      "type": "integer"
+    }
+  ],
+  "pub_article_daily": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "day",
+      "type": "date"
+    },
+    {
+      "column": "pageviews",
+      "type": "integer"
+    }
+  ],
+  "pub_article_milestone": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "milestone",
+      "type": "integer"
+    },
+    {
+      "column": "reached_on",
+      "type": "date"
+    }
+  ],
+  "pub_article_period": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "pageviews",
+      "type": "integer"
+    },
+    {
+      "column": "landing_sessions",
+      "type": "integer"
+    },
+    {
+      "column": "scroll_count",
+      "type": "integer"
+    },
+    {
+      "column": "engagement_seconds",
+      "type": "integer"
+    }
+  ],
+  "pub_article_period_breakdown": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "axis",
+      "type": "text"
+    },
+    {
+      "column": "bucket",
+      "type": "text"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_article_referrer_30d": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "rank",
+      "type": "smallint"
+    },
+    {
+      "column": "source_domain",
+      "type": "text"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_article_summary": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "age_days",
+      "type": "integer"
+    },
+    {
+      "column": "freshness",
+      "type": "text"
+    },
+    {
+      "column": "pv_7d",
+      "type": "integer"
+    },
+    {
+      "column": "pv_30d",
+      "type": "integer"
+    },
+    {
+      "column": "pv_total",
+      "type": "integer"
+    },
+    {
+      "column": "band_7d",
+      "type": "text"
+    },
+    {
+      "column": "band_30d",
+      "type": "text"
+    },
+    {
+      "column": "is_recent_hot",
+      "type": "boolean"
+    },
+    {
+      "column": "is_revival",
+      "type": "boolean"
+    },
+    {
+      "column": "is_evergreen_365",
+      "type": "boolean"
+    },
+    {
+      "column": "referrer_30d_computed_on",
+      "type": "date"
+    }
+  ],
+  "pub_author": [
+    {
+      "column": "author_slug",
+      "type": "text"
+    },
+    {
+      "column": "display_name",
+      "type": "text"
+    },
+    {
+      "column": "author_url",
+      "type": "text"
+    }
+  ],
+  "pub_author_category_period": [
+    {
+      "column": "author_slug",
+      "type": "text"
+    },
+    {
+      "column": "category_id",
+      "type": "integer"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "post_count",
+      "type": "integer"
+    },
+    {
+      "column": "pageviews",
+      "type": "bigint"
+    }
+  ],
+  "pub_author_period": [
+    {
+      "column": "author_slug",
+      "type": "text"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "post_count",
+      "type": "integer"
+    },
+    {
+      "column": "pageviews",
+      "type": "bigint"
+    },
+    {
+      "column": "long_post_count",
+      "type": "integer"
+    },
+    {
+      "column": "long_pageviews",
+      "type": "bigint"
+    }
+  ],
+  "pub_author_period_breakdown": [
+    {
+      "column": "author_slug",
+      "type": "text"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "axis",
+      "type": "text"
+    },
+    {
+      "column": "bucket",
+      "type": "text"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_author_summary": [
+    {
+      "column": "author_slug",
+      "type": "text"
+    },
+    {
+      "column": "own_median_30d",
+      "type": "numeric"
+    },
+    {
+      "column": "eligible_count",
+      "type": "integer"
+    },
+    {
+      "column": "band_30d",
+      "type": "text"
+    }
+  ],
+  "pub_batch_run": [
+    {
+      "column": "run_id",
+      "type": "bigint"
+    },
+    {
+      "column": "started_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "finished_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "base_date",
+      "type": "date"
+    },
+    {
+      "column": "mode",
+      "type": "text"
+    },
+    {
+      "column": "status",
+      "type": "text"
+    },
+    {
+      "column": "failed_step",
+      "type": "text"
+    },
+    {
+      "column": "error_kind",
+      "type": "text"
+    }
+  ],
+  "pub_benchmark_curve": [
+    {
+      "column": "scope",
+      "type": "text"
+    },
+    {
+      "column": "n",
+      "type": "integer"
+    },
+    {
+      "column": "p25",
+      "type": "double precision"
+    },
+    {
+      "column": "p50",
+      "type": "double precision"
+    },
+    {
+      "column": "p75",
+      "type": "double precision"
+    },
+    {
+      "column": "population_size",
+      "type": "integer"
+    },
+    {
+      "column": "population_window",
+      "type": "text"
+    }
+  ],
+  "pub_category": [
+    {
+      "column": "category_id",
+      "type": "integer"
+    },
+    {
+      "column": "name",
+      "type": "text"
+    },
+    {
+      "column": "parent_id",
+      "type": "integer"
+    },
+    {
+      "column": "path",
+      "type": "text"
+    }
+  ],
+  "pub_category_period": [
+    {
+      "column": "category_id",
+      "type": "integer"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "pageviews",
+      "type": "bigint"
+    },
+    {
+      "column": "post_count_total",
+      "type": "integer"
+    },
+    {
+      "column": "post_count_published",
+      "type": "integer"
+    },
+    {
+      "column": "median_30d_pv",
+      "type": "double precision"
+    },
+    {
+      "column": "published_post_count_30d",
+      "type": "integer"
+    }
+  ],
+  "pub_meta": [
+    {
+      "column": "base_date",
+      "type": "date"
+    },
+    {
+      "column": "finished_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "column": "mask_threshold",
+      "type": "smallint"
+    },
+    {
+      "column": "is_stale",
+      "type": "boolean"
+    },
+    {
+      "column": "last_status",
+      "type": "text"
+    }
+  ],
+  "pub_period": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "kind",
+      "type": "text"
+    },
+    {
+      "column": "start_date",
+      "type": "date"
+    },
+    {
+      "column": "end_date",
+      "type": "date"
+    },
+    {
+      "column": "is_confirmed",
+      "type": "boolean"
+    }
+  ],
+  "pub_post": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "title",
+      "type": "text"
+    },
+    {
+      "column": "post_url",
+      "type": "text"
+    },
+    {
+      "column": "author_slug",
+      "type": "text"
+    },
+    {
+      "column": "display_name",
+      "type": "text"
+    },
+    {
+      "column": "published_on",
+      "type": "date"
+    },
+    {
+      "column": "is_ad",
+      "type": "boolean"
+    },
+    {
+      "column": "age_days",
+      "type": "integer"
+    },
+    {
+      "column": "freshness",
+      "type": "text"
+    }
+  ],
+  "pub_post_category": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "category_id",
+      "type": "integer"
+    }
+  ],
+  "pub_post_tag": [
+    {
+      "column": "post_id",
+      "type": "integer"
+    },
+    {
+      "column": "tag_id",
+      "type": "integer"
+    }
+  ],
+  "pub_posting_monthly": [
+    {
+      "column": "month",
+      "type": "date"
+    },
+    {
+      "column": "post_count",
+      "type": "integer"
+    }
+  ],
+  "pub_posting_period": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "post_count",
+      "type": "integer"
+    }
+  ],
+  "pub_site_daily": [
+    {
+      "column": "day",
+      "type": "date"
+    },
+    {
+      "column": "pageviews",
+      "type": "integer"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_site_daily_channel": [
+    {
+      "column": "day",
+      "type": "date"
+    },
+    {
+      "column": "channel",
+      "type": "text"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_site_daily_device": [
+    {
+      "column": "day",
+      "type": "date"
+    },
+    {
+      "column": "device",
+      "type": "text"
+    },
+    {
+      "column": "pageviews",
+      "type": "integer"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_site_month_city": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "rank",
+      "type": "smallint"
+    },
+    {
+      "column": "region",
+      "type": "text"
+    },
+    {
+      "column": "city",
+      "type": "text"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_site_month_referrer": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "rank",
+      "type": "smallint"
+    },
+    {
+      "column": "source_domain",
+      "type": "text"
+    },
+    {
+      "column": "sessions",
+      "type": "integer"
+    }
+  ],
+  "pub_site_period": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "pageviews",
+      "type": "bigint"
+    },
+    {
+      "column": "sessions",
+      "type": "bigint"
+    },
+    {
+      "column": "active_users",
+      "type": "integer"
+    },
+    {
+      "column": "engagement_seconds",
+      "type": "bigint"
+    },
+    {
+      "column": "days",
+      "type": "integer"
+    }
+  ],
+  "pub_site_period_breakdown": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "axis",
+      "type": "text"
+    },
+    {
+      "column": "bucket",
+      "type": "text"
+    },
+    {
+      "column": "value",
+      "type": "integer"
+    }
+  ],
+  "pub_site_period_freshness": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "freshness",
+      "type": "text"
+    },
+    {
+      "column": "post_count",
+      "type": "integer"
+    },
+    {
+      "column": "pageviews",
+      "type": "bigint"
+    }
+  ],
+  "pub_site_period_heatmap": [
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "dow",
+      "type": "smallint"
+    },
+    {
+      "column": "hour",
+      "type": "smallint"
+    },
+    {
+      "column": "pageviews",
+      "type": "integer"
+    }
+  ],
+  "pub_tag": [
+    {
+      "column": "tag_id",
+      "type": "integer"
+    },
+    {
+      "column": "name",
+      "type": "text"
+    }
+  ],
+  "pub_tag_period": [
+    {
+      "column": "tag_id",
+      "type": "integer"
+    },
+    {
+      "column": "period_id",
+      "type": "text"
+    },
+    {
+      "column": "pageviews",
+      "type": "bigint"
+    },
+    {
+      "column": "post_count",
+      "type": "integer"
+    }
+  ]
+}

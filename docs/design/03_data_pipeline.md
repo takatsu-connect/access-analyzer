@@ -11,6 +11,7 @@
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`publish_only` は設定変更後の再ビルドとビルド失敗後の再試行のために残し、理由を直した（§2、§8）。§6 の除外の記述を外した
   - 2026-11-04: tech-writer の整合確認。Q-12、Q-13 の確定を反映（§2、§14、§16、§17）。§17 の TLS の基準を第 1 に合わせた
   - 2026-11-05: 構築 1 の実装を反映（依頼者の決定）。§1: `failed_step` の値に `preflight` と `period` を含めることを明記し、02 §3.6 を揃えた。§5.2: `threads` は `other`、規則に当たらないものは `unmapped` とした
+  - 2026-11-05: 構築 1 のコードレビューを反映（依頼者の決定）。§5.1: クエリ除去の後で空白を除く、先頭ゼロと 11 桁以上は記事以外。§6.2、§16: `age_days` は累積の n にだけ使い、M-21〜M-23 は「基準日 − 公開日」で判定。`BACKFILL_START` より前に公開した記事の扱いを追加
 
 ## 1. 全体の流れ
 
@@ -90,10 +91,10 @@ flowchart LR
 
 規則（`apps/batch/src/takatsu_batch/page_path.py`、単体テスト付き）:
 
-1. 小文字化し、前後の空白を除く。
-2. クエリ文字列とフラグメントは pagePath には含まれない（GA4 の仕様。`pagePathPlusQueryString` は使わない）。含まれていれば `?` 以降を捨てる。
+1. 小文字化する。
+2. クエリ文字列とフラグメントは pagePath には含まれない（GA4 の仕様。`pagePathPlusQueryString` は使わない）。含まれていれば `?` と `#` 以降を捨て、その後で前後の空白を除く。
 3. 末尾にスラッシュがなければ付ける。連続するスラッシュは 1 つにする。
-4. `^/(\d+)/$` に一致すれば記事 ID。`wp_post` にある ID なら「記事」、なければ「削除済み・未知の記事」（記事単位では格納しない。02_metrics.md §3）。
+4. `^/([1-9][0-9]{0,9})/$` に一致し、値が integer の最大以下なら記事 ID。先頭ゼロ（`/04812/`）、`/0/`、11 桁以上は記事 ID として扱わない。`wp_post` にある ID なら「記事」、なければ「削除済み・未知の記事」（記事単位では格納しない。02_metrics.md §3）。
 5. 一致しなければ「記事以外」（トップ `/`、`/category/...`、`/tag/...`、`/author/...`、固定ページ、検索結果、404）。記事単位では格納しない。全体の値は全体の問い合わせ（pagePath なし）から取るので、分類はここでは不要。
 6. `/<数字>/<何か>/`（ページ分割 `/4812/2/`、`/4812/amp/`、`/4812/feed/` など）は「記事以外」とする。該当する pagePath が実測で現れるかは未確定（D-05 の残り。親が GA4 で確認し、現れるなら規則 4 を `^/(\d+)/(?:\d+/)?$` に広げるかを決める）。
 
@@ -180,9 +181,12 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 - 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
 - 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが公開記事（広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は母集団の件数。著者の除外は初回対象外だが（2026-11-04、ADR 0005 保留）、計算の場所はビューのままにする。追加するときに母集団の条件を DB 側の 1 か所に足すだけで済み、バッチに除外リストを読ませずに済むため（経緯と代替案は ADR 0003 判断 4 追記）。`apps/batch/tests/support/reference.py` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
 - 帯（band）: **バッチは計算しない**。公開ビュー `pub_article_summary` が `band_7d`（`pv_7d` を曲線 (all, 7) の p25 / p75 と比べる。age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積を曲線 (all, N) と比べる。「◯日目」として同じ日数の帯と比べる。M-20）を、`pub_author_summary` が `band_30d`（`own_median_30d` を曲線 (all, 30) と比べる）を計算する。p75 と等しいときも p25 と等しいときも `middle`。age_days < 3、曲線の行がない、値が null のときは null。`apps/batch/tests/support/reference.py` の `band()` は参照実装（07 U-08、I-DB-17）。
-- M-22: `is_recent_hot` = age_days ≥ 15 かつ 直近 7 日の PV ≥ 20 かつ 直近 7 日 PV ≥ 2 × (その前 28 日の PV ÷ 4)。`is_revival` = `is_recent_hot` かつ age_days ≥ 91。表示件数の上限（各著者 5、全体 10）は BI 側で `is_recent_hot` の記事を直近 7 日 PV の多い順に切る。
-- M-23: 節目（500、1,000、5,000、10,000）を初めて超えた日 = 累積がその値以上になった最初の `day`。`is_evergreen_365` = age_days ≥ 365 かつ 直近 28 日の PV ≥ 20。
-- M-24: 著者の記事のうち 直近 12 か月公開・age_days ≥ 30 の `pv_30d` の中央値。該当 5 本未満なら null。
+- 経過日数の使い分け: `age_days`（基準日 − 公開日 + 1。公開日を 1 日目）は累積の n（M-18、M-20、帯）にだけ使う。M-21、M-22、M-23 の判定は要件どおり「基準日 − 公開日」（以下 d）で行う。
+- 計測開始より前に公開した記事: `published_on` < `BACKFILL_START` の記事は `pv_7d`、`pv_30d` を null で書く（累積が欠けるため。02 §4.1）。
+- M-21: d ≤ 30 は `new`、31 ≤ d ≤ 90 は `mid`、d ≥ 91 は `long`。
+- M-22: `is_recent_hot` = d ≥ 15 かつ 直近 7 日の PV ≥ 20 かつ 直近 7 日 PV ≥ 2 × (その前 28 日の PV ÷ 4)。`is_revival` = `is_recent_hot` かつ d ≥ 91。表示件数の上限（各著者 5、全体 10）は BI 側で `is_recent_hot` の記事を直近 7 日 PV の多い順に切る。
+- M-23: 節目（500、1,000、5,000、10,000）を初めて超えた日 = 累積がその値以上になった最初の `day`。`is_evergreen_365` = d ≥ 365 かつ 直近 28 日の PV ≥ 20。
+- M-24: 著者の記事のうち 直近 12 か月公開・age_days ≥ 30（`pv_30d` が null でない）の `pv_30d` の中央値。該当 5 本未満なら null。
 - 削除された記事は `wp_post` から消えているので、どの計算にも入らない。
 
 ### 6.3 遅延データと伏せ値（D-08）
@@ -313,15 +317,17 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 
 ## 16. 設定値と環境変数
 
-公開してよい設定（リポジトリ内。バッチは `apps/batch/src/takatsu_batch/config.py`、BI は `apps/web/src/lib/config.ts`。変更はコミットで記録。NFR-22 (1)）。下表の `RATIO_MIN_DENOMINATOR` は BI だけ、`SITE_ORIGIN` は両方（`contracts/constants.json` と突き合わせる。07 S-16）、それ以外はバッチだけ。`BENCHMARK_MIN_POPULATION` は `internal.benchmark_curve` の SQL にも現れる（I-DB-17 で一致を確かめる）。`AD_CATEGORY_ID` は `pub_category_period` と `pub_author_category_period` の SQL にも現れる（I-DB-05 で一致を確かめる）:
+公開してよい設定（リポジトリ内。バッチは `apps/batch/src/takatsu_batch/config.py`、BI は `apps/web/src/lib/config.ts`。変更はコミットで記録。NFR-22 (1)）。下表の `RATIO_MIN_DENOMINATOR` は BI だけ、`SITE_ORIGIN` は両方（`contracts/constants.json` と突き合わせる。07 S-16）、それ以外はバッチだけ。`BENCHMARK_MIN_POPULATION` は `internal.benchmark_curve` の SQL にも現れる（I-DB-17 で一致を確かめる）。`AD_CATEGORY_ID` は `pub_category_period` と `pub_author_category_period` の SQL にも現れる（I-DB-05 で一致を確かめる）。`BACKFILL_START` は `internal.benchmark_curve`、`pub_article_summary`、`pub_category_period` の SQL にも現れる（I-DB-17 で一致を確かめる）。`MASK_THRESHOLD` は上位 N の表の check 制約にも現れる（I-DB-08 で一致を確かめる）:
 
 | 名前 | 既定 | 根拠 |
 | --- | --- | --- |
 | MASK_THRESHOLD | 5 | NFR-33、FR-73 |
 | RATIO_MIN_DENOMINATOR | 20 | NFR-96 |
 | RECENT_HOT_MIN_PV_7D | 20 | M-22 |
-| RECENT_HOT_MIN_AGE_DAYS | 15 | M-22 |
-| LONG_AGE_DAYS | 91 | M-21 |
+| RECENT_HOT_MIN_DAYS_SINCE_PUBLISH | 15（基準日 − 公開日） | M-22 |
+| NEW_MAX_DAYS_SINCE_PUBLISH | 30（基準日 − 公開日） | M-21 |
+| LONG_MIN_DAYS_SINCE_PUBLISH | 91（基準日 − 公開日） | M-21、M-22 |
+| EVERGREEN_MIN_DAYS_SINCE_PUBLISH | 365（基準日 − 公開日） | M-23 |
 | BENCHMARK_MIN_POPULATION | 30 | M-19 |
 | OWN_MEDIAN_MIN_POSTS | 5 | M-24 |
 | MILESTONES | 500, 1000, 5000, 10000 | M-23 |

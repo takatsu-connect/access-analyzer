@@ -40,6 +40,29 @@ where not exists (
     and g.privilege_type = a.privilege_type
 )
 union all
+select 'effective privilege: ' || n.nspname || '.' || cl.relname || ' ' || p.privilege_type
+from (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) as p (privilege_type)
+cross join pg_class cl
+join pg_namespace n on n.oid = cl.relnamespace
+where cl.relkind in ('r', 'v', 'm', 'f', 'p')
+  and n.nspname in ('public', 'internal')
+  and has_table_privilege('batch_writer', cl.oid, p.privilege_type)
+  and not (
+    n.nspname = 'internal'
+    and exists (
+      select 1 from allowed_grant a
+      where a.table_name = cl.relname and a.privilege_type = p.privilege_type
+    )
+  )
+union all
+select 'column grant: ' || n.nspname || '.' || cl.relname || '.' || a.attname
+from pg_attribute a
+join pg_class cl on cl.oid = a.attrelid
+join pg_namespace n on n.oid = cl.relnamespace
+cross join lateral aclexplode(a.attacl) as acl
+where acl.grantee = 'batch_writer'::regrole
+  and not a.attisdropped
+union all
 select 'schema create: ' || n.nspname
 from pg_namespace n
 where has_schema_privilege('batch_writer', n.oid, 'CREATE')

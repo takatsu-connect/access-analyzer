@@ -8,8 +8,10 @@ from takatsu_batch import config
 def test_values_match_design_table() -> None:
     assert config.MASK_THRESHOLD == 5
     assert config.RECENT_HOT_MIN_PV_7D == 20
-    assert config.RECENT_HOT_MIN_AGE_DAYS == 15
-    assert config.LONG_AGE_DAYS == 91
+    assert config.RECENT_HOT_MIN_DAYS_SINCE_PUBLISH == 15
+    assert config.NEW_MAX_DAYS_SINCE_PUBLISH == 30
+    assert config.LONG_MIN_DAYS_SINCE_PUBLISH == 91
+    assert config.EVERGREEN_MIN_DAYS_SINCE_PUBLISH == 365
     assert config.BENCHMARK_MIN_POPULATION == 30
     assert config.OWN_MEDIAN_MIN_POSTS == 5
     assert config.MILESTONES == (500, 1000, 5000, 10000)

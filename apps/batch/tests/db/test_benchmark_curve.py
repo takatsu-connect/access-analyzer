@@ -12,13 +12,14 @@ import pytest
 from psycopg import sql
 
 from support.reference import MIN_POPULATION, PopulationEntry, Quantiles, band, curve_point
-from takatsu_batch.config import BENCHMARK_MIN_POPULATION
+from takatsu_batch.config import BACKFILL_START, BENCHMARK_MIN_POPULATION
 
 pytestmark = pytest.mark.db
 
 type Admin = psycopg.Connection[tuple[object, ...]]
 
 BASE = date(2026, 11, 1)
+MEASUREMENT_START = date.fromisoformat(BACKFILL_START)
 PARENT_CATEGORY = 1
 LARGE_CATEGORY = 10
 SMALL_CATEGORY = 11
@@ -123,7 +124,11 @@ def _fixture_posts() -> list[Post]:
 
 
 def _population(posts: Sequence[Post], n: int) -> list[Post]:
-    return [p for p in posts if not p.is_ad and p.age_days >= n]
+    return [
+        p
+        for p in posts
+        if not p.is_ad and p.age_days >= n and p.published_on >= MEASUREMENT_START
+    ]
 
 
 def _expected_curve(posts: Sequence[Post], scope: str, n: int) -> tuple[object, ...] | None:
@@ -190,7 +195,7 @@ def test_curve_widens_to_all_window(admin: Admin) -> None:
     # 12 か月の内側 10 本 + 外側 25 本 → 全期間 35 本
     posts = [
         Post(2000 + i, BASE - timedelta(days=100), 1 + i) for i in range(10)
-    ] + [Post(3000 + i, BASE - timedelta(days=500), 2 + i) for i in range(25)]
+    ] + [Post(3000 + i, BASE - timedelta(days=380), 2 + i) for i in range(25)]
     _insert_posts(admin, posts)
     actual = _curve_rows(admin)
     for n in (1, 30, 90):
@@ -198,6 +203,90 @@ def test_curve_widens_to_all_window(admin: Admin) -> None:
         assert expected is not None
         assert expected[4] == "all"
         _assert_row_matches(actual.get(("all", n)), expected, n)
+
+
+def _set_summary_values(admin: Admin, posts: Sequence[Post]) -> None:
+    """バッチの不具合で値が入っていてもビューが出さないことを確かめるため、7 日と 30 日を入れる。"""
+    with admin.cursor() as cursor:
+        cursor.executemany(
+            "update internal.article_summary set pv_7d = %s, pv_30d = %s where post_id = %s",
+            [(p.cumulative(7), p.cumulative(30), p.post_id) for p in posts],
+        )
+
+
+def _incomplete_fixture() -> tuple[list[Post], list[Post], Post]:
+    """12 か月内 10 本 + 計測開始の当日以降 20 本で全期間 30 本、その前日公開の 5 本を足す。"""
+    measured = [Post(7000 + i, BASE - timedelta(days=100), 1 + i) for i in range(10)]
+    first_day = [Post(7100 + i, MEASUREMENT_START, 2 + i) for i in range(20)]
+    before = [
+        Post(7200 + i, MEASUREMENT_START - timedelta(days=1), 500 + i, category=LARGE_CATEGORY)
+        for i in range(5)
+    ]
+    return measured + first_day, before, first_day[0]
+
+
+def test_incomplete_posts_are_excluded_from_curve(admin: Admin) -> None:
+    measured, before, _ = _incomplete_fixture()
+    _insert_posts(admin, [*measured, *before])
+    actual = _curve_rows(admin)
+    expected = _expected_curve([*measured, *before], "all", 30)
+    assert expected is not None
+    # 前日公開の 5 本を数えると 35 本になる。計測開始の当日の記事は入る
+    assert expected[3:] == (30, "all")
+    _assert_row_matches(actual.get(("all", 30)), expected, 30)
+
+
+def test_incomplete_posts_have_no_band_or_period_values(admin: Admin) -> None:
+    measured, before, first_day_post = _incomplete_fixture()
+    posts = [*measured, *before]
+    _insert_posts(admin, posts)
+    _set_summary_values(admin, posts)
+    rows = admin.execute(
+        """
+        select post_id, pv_7d, pv_30d, band_7d, band_30d from public.pub_article_summary
+        """
+    ).fetchall()
+    by_id = {int(str(row[0])): row[1:] for row in rows}
+    for post in before:
+        assert by_id[post.post_id] == (None, None, None, None), post.post_id
+    pv_7d, pv_30d, band_7d, band_30d = by_id[first_day_post.post_id]
+    assert (pv_7d, pv_30d) == (first_day_post.cumulative(7), first_day_post.cumulative(30))
+    assert band_7d is not None
+    assert band_30d is not None
+
+
+def test_incomplete_posts_are_excluded_from_category_median(admin: Admin) -> None:
+    measured = Post(7300, MEASUREMENT_START, 1, category=LARGE_CATEGORY)
+    before = Post(7301, MEASUREMENT_START - timedelta(days=1), 1000, category=LARGE_CATEGORY)
+    posts = [measured, before]
+    _insert_posts(admin, posts)
+    _set_summary_values(admin, posts)
+    admin.execute(
+        """
+        insert into internal.period (period_id, kind, start_date, end_date, base_date, is_confirmed)
+        values ('m2025-10', 'month', '2025-10-01', '2025-10-31', %s, true)
+        """,
+        (BASE,),
+    )
+    row = admin.execute(
+        """
+        select post_count_published, median_30d_pv, published_post_count_30d
+        from public.pub_category_period
+        where category_id = %s and period_id = 'm2025-10'
+        """,
+        (LARGE_CATEGORY,),
+    ).fetchone()
+    assert row == (2, float(measured.cumulative(30)), 1)
+
+
+@pytest.mark.parametrize(
+    "view",
+    ["internal.benchmark_curve", "public.pub_article_summary", "public.pub_category_period"],
+)
+def test_measurement_start_matches_config(admin: Admin, view: str) -> None:
+    row = admin.execute("select pg_get_viewdef(%s::regclass)", (view,)).fetchone()
+    assert row is not None
+    assert f"'{BACKFILL_START}'::date" in str(row[0])
 
 
 def test_curve_has_no_row_under_minimum(admin: Admin) -> None:
@@ -305,6 +394,7 @@ def test_cumulative_excludes_days_before_publication_and_fills_gaps(admin: Admin
     ("view", "force_nested_loop"),
     [
         ("pub_benchmark_curve", False),
+        ("pub_benchmark_curve", True),
         ("pub_article_summary", False),
         ("pub_article_summary", True),
     ],

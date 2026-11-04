@@ -1,5 +1,6 @@
 """I-DB-01、02、03、15、16 の一部、18: 権限、RLS、_mask 列（07 §4）。"""
 
+import json
 import os
 import re
 from pathlib import Path
@@ -17,6 +18,7 @@ REPO = Path(__file__).resolve().parents[4]
 MIGRATIONS = REPO / "supabase" / "migrations"
 CHECKS = REPO / "supabase" / "checks"
 SEED = REPO / "supabase" / "seed"
+SNAPSHOT = REPO / "tests" / "snapshots" / "pub-columns.json"
 
 BATCH_WRITER_TABLES = {
     "period",
@@ -262,6 +264,62 @@ def test_i_db_03_no_mask_columns_and_views_match_design(admin: Admin) -> None:
     assert not columns & {"author_count", "share_count"}
 
 
+def _actual_columns(admin: Admin) -> dict[str, list[dict[str, str]]]:
+    rows = _rows(
+        admin,
+        """
+        select table_name, column_name, data_type
+        from information_schema.columns
+        where table_schema = 'public' and table_name like 'pub\\_%'
+        order by table_name, ordinal_position
+        """,
+    )
+    actual: dict[str, list[dict[str, str]]] = {}
+    for view, column, data_type in rows:
+        actual.setdefault(str(view), []).append({"column": str(column), "type": str(data_type)})
+    return actual
+
+
+def _snapshot() -> dict[str, list[dict[str, str]]]:
+    loaded: dict[str, list[dict[str, str]]] = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+    return loaded
+
+
+def test_i_db_16_columns_match_snapshot(admin: Admin) -> None:
+    # 差分があれば、スナップショットの更新と NFR-39 の手順を PR で示す（ADR と security-auditor）
+    assert _actual_columns(admin) == _snapshot()
+
+
+def test_i_db_16_snapshot_has_no_forbidden_columns() -> None:
+    snapshot = _snapshot()
+    assert set(snapshot) == PUB_VIEWS
+    columns = {item["column"] for items in snapshot.values() for item in items}
+    assert not [column for column in columns if "_mask" in column]
+    assert not columns & {"author_count", "share_count", "age_days_raw", "modified_at", "counts"}
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        # 内部の列を足す
+        """
+        create or replace view public.pub_tag as
+        select tag_id, name, updated_at from internal.wp_tag
+        """,
+        # 型を変える
+        """
+        drop view public.pub_tag;
+        create view public.pub_tag as select tag_id::bigint as tag_id, name from internal.wp_tag
+        """,
+        # 新しいビューを足す
+        "create view public.pub_extra as select tag_id from internal.wp_tag",
+    ],
+)
+def test_i_db_16_detects_changes(admin: Admin, statement: str) -> None:
+    admin.execute(statement.encode())
+    assert _actual_columns(admin) != _snapshot()
+
+
 def test_i_db_15_schema_usage(admin: Admin) -> None:
     rows = _rows(
         admin,
@@ -320,12 +378,66 @@ def test_check_files_return_no_violation(admin: Admin, name: str) -> None:
             "default privilege: service_role",
         ),
         ("grant usage on schema internal to anon", "schema usage: anon internal"),
+        ("grant create on schema public to anon", "schema create: anon public"),
+        ("grant create on schema public to authenticated", "schema create: authenticated public"),
+        (
+            "grant usage on schema internal to service_role",
+            "service_role on internal: schema USAGE",
+        ),
+        (
+            "grant select on internal.wp_post to service_role",
+            "effective privilege: service_role internal.wp_post SELECT",
+        ),
+        (
+            "grant select (day) on public.pub_site_daily to authenticated",
+            "column grant: authenticated public.pub_site_daily.day",
+        ),
+        (
+            "grant update (title) on internal.wp_post to anon",
+            "column grant: anon internal.wp_post.title",
+        ),
     ],
 )
 def test_check_detects_regression(admin: Admin, statement: str, expected: str) -> None:
     # 検査そのものが働くことを、権限を広げて確かめる（変更はロールバックする）
     admin.execute(statement.encode())
     violations = [str(row[0]) for row in _rows(admin, _check_body("anon_privileges"))]
+    assert any(violation.startswith(expected) for violation in violations), violations
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected"),
+    [
+        ("grant truncate on internal.site_daily to batch_writer", "extra table grant: internal"),
+        ("grant delete on internal.batch_run to batch_writer", "extra table grant: internal"),
+        ("grant select on public.pub_post to batch_writer", "extra table grant: public"),
+        ("grant select on internal.benchmark_curve to batch_writer", "extra table grant: internal"),
+        ("revoke select on internal.wp_post from batch_writer", "missing table grant: internal"),
+        (
+            "grant select (title) on public.pub_post to batch_writer",
+            "column grant: public.pub_post.title",
+        ),
+        ("grant select on public.pub_post to public", "effective privilege: public.pub_post"),
+        ("grant create on schema internal to batch_writer", "schema create: internal"),
+        ("grant usage on schema storage to batch_writer", "schema usage: storage"),
+        ("grant anon to batch_writer", "role membership: anon"),
+        ("alter role batch_writer createdb", "role attribute: batch_writer"),
+        ("alter role batch_writer connection limit 3", "role attribute: batch_writer"),
+        (
+            "create function internal.extra() returns integer language sql as 'select 1';"
+            "grant execute on function internal.extra() to batch_writer",
+            "routine grant: internal.extra",
+        ),
+        (
+            "create sequence internal.extra_seq;"
+            "grant usage on sequence internal.extra_seq to batch_writer",
+            "usage grant: internal.extra_seq",
+        ),
+    ],
+)
+def test_batch_writer_check_detects_regression(admin: Admin, statement: str, expected: str) -> None:
+    admin.execute(statement.encode())
+    violations = [str(row[0]) for row in _rows(admin, _check_body("batch_writer_privileges"))]
     assert any(violation.startswith(expected) for violation in violations), violations
 
 
