@@ -1,6 +1,6 @@
 # 06 セキュリティ
 
-- 状態: レビュー中（2026-11-03）
+- 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
 - 更新日: 2026-11-04
 - 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36（初回対象外）、ADR 0002、ADR 0003、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0009、docs/operations/initial_setup.md
 - 変更履歴:

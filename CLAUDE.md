@@ -18,7 +18,7 @@ WordPress で運営する「高津コネクト」(https://takatsu-connect.com/) 
 | --- | --- | --- |
 | 要件定義 | requirements-analyst | docs/requirements/ |
 | 設計 | architect | docs/design/（ADR は docs/design/adr/） |
-| 構築 | backend-engineer, frontend-engineer, qa-engineer, code-reviewer | apps/batch/（日次バッチ）, apps/web/（BI）, packages/shared/, supabase/migrations/（ADR 0004 の monorepo 構成。各 apps 配下に tests を置く） |
+| 構築 | backend-engineer, frontend-engineer, qa-engineer, code-reviewer | apps/batch/（日次バッチ、Python）, apps/web/（BI、TypeScript）, supabase/migrations/（ADR 0004 の構成。各 apps 配下に tests を置く） |
 | デプロイ | devops-engineer | docs/operations/, .github/workflows/, Dockerfile など |
 | 横断 | tech-writer | docs/ 全体, docs/glossary.md, README.md |
 | 横断 | security-auditor | docs/security/audits/（監査報告。コードや設定は変更しない） |
@@ -56,4 +56,4 @@ docs/
 - 2026-11-03: 全体構成を決定（GitHub Actions の日次バッチ → Supabase → Vercel の BI。ログインなしで公開。リポジトリは public）。security-auditor と .claude/rules/security.md を追加し、初期監査を実施。GitHub の設定を堅牢化（docs/operations/initial_setup.md）。
 - 2026-11-03: 要件定義の草案を docs/requirements/ に作成。analytics-advisor（指標と見せ方の助言。docs/requirements/advice/）を追加し、助言を全採用。security-auditor の要件レビュー 2 回（docs/security/audits/）の指摘を反映し、状態を「レビュー中」に。残りは open_questions.md の依頼者回答（Q-04〜Q-07 ほか）と GA4 の確認スクリプトの結果。公開データの線引き（05 §4.1）に関する判断は設計工程で ADR に書く（D-14）。
 - 2026-11-03: GA4 の確認結果と Q-04（noindex）・Q-06（無料枠、Hobby）の回答を反映し、要件を「確定」にした。中・低の未確定事項は仮置きで進める。
-- 2026-11-03: 設計を docs/design/ に作成（00〜07、traceability、ADR 0001〜0008）。architect 4 回、security-auditor の設計レビュー 3 回（高 1・中 9 を反映、ADR 0003 承認）、analytics-advisor の画面レビュー 1 回を経て、状態を「レビュー中」に。構築に進んでよいと判定。残り: 依頼者の確認（Vercel の Standard Protection、Q-12・Q-13・Q-30、Q-29 のライター確認）、D-17（CSP の script-src）、tech-writer の整合確認。
+- 2026-11-04: 設計を docs/design/ に確定（00〜07、traceability、ADR 0001〜0009。ADR 0005 は保留）。バッチは Python、BI は TypeScript。書き込みは専用ロール `batch_writer` で、TLS は verify-full + 固定した CA。著者の非表示の仕組みは初回対象外。Supabase プロジェクトは作成済み。構築に着手。残り: デプロイ工程で Vercel の Standard Protection、GitHub Environment の可否、WIF の設定、Q-29 のライター確認、D-17（CSP の script-src）。
