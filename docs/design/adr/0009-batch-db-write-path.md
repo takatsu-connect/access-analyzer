@@ -146,7 +146,7 @@ SQL の全文は 02 §6。要点:
 
 実装に入る前に、認証情報なしで証明書の鎖と SAN を確かめる（確認項目 1）。結果に応じて基準の段階を決め、この ADR に記録する。第 1 か第 2 で成立するまで本番に接続しない。
 
-途中経過（2026-11-04、認証情報なしの `openssl s_client` で確認）: TLS 1.3 で接続できた。サーバー証明書の SAN は `*.pooler.supabase.com` と `*.pooler.supabase.co` で、host 名と合う。鎖は Supabase Intermediate 2021 CA から Supabase Root 2021 CA（自己署名）で、公開の CA ではない。証明書の有効期限は 2030-03-11。ダッシュボードの CA で検証できるかは未確認で、それが済むまで基準の段階は確定しない。第 1 基準（verify-full + 固定した CA）で成立する見込み。SSL の強制は公式文書（supabase.com/docs/guides/platform/ssl-enforcement、2026-11-04 確認）によると shared pooler にも効く。
+途中経過（2026-11-04、認証情報なしの `openssl s_client` で確認）: TLS 1.3 で接続できた。サーバー証明書の SAN は `*.pooler.supabase.com` と `*.pooler.supabase.co` で、host 名と合う。鎖は Supabase Intermediate 2021 CA から Supabase Root 2021 CA（自己署名）で、公開の CA ではない。証明書の有効期限は 2030-03-11。ダッシュボードから取得した CA（Supabase Root 2021 CA、SHA-256 指紋 `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA`、有効期限 2031-04-26）で、鎖と host 名の検証が通った（`Verification: OK`）。したがって基準は第 1（verify-full + 固定した CA）とする。CA の有効期限を運用手順に控える。ただしこの確認は openssl によるもので、psycopg からの接続、認証、Actions のランナーからの到達は未確認（A-11）。SSL の強制は公式文書（supabase.com/docs/guides/platform/ssl-enforcement、2026-11-04 確認）によると shared pooler にも効く。
 
 #### CA の失効と交換
 
