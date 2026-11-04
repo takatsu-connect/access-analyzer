@@ -38,7 +38,7 @@
 | ロール | 使う場所 | 権限 |
 | --- | --- | --- |
 | `batch_writer` | GitHub Actions のバッチだけ。Environment `production` の Secret `SUPABASE_BATCH_DB_URL`（shared pooler の session mode、TLS。ADR 0009） | 許可した内部表の select / insert / update / delete（`batch_run` は delete なし。経路監査 L-2）、必要な場合だけシーケンスの usage、`internal.counts_is_numeric` の execute。接続の上限 2。`internal.article_cumulative`、`internal.benchmark_curve`、`pub_*` への権限なし。`bypassrls` なし（表ごとのポリシー。02 §6） |
-| service role | 使わない。キーをどこにも置かない | `internal` の権限なし（02 §6） |
+| service role | 使わない。キーをどこにも置かない | `internal` と `pub_*` の権限なし（02 §6） |
 | anon | Vercel のビルド（サーバー側）。環境変数 `SUPABASE_ANON_KEY`（`NEXT_PUBLIC_` を付けない） | `public.pub_*` ビューの select のみ。`internal` スキーマへの usage なし |
 | authenticated、PUBLIC | 使わない | grant なし。`internal` への usage なし。関数の EXECUTE も PUBLIC から取り消す（L-4） |
 | 運用担当（人） | Supabase ダッシュボード / CLI | スキーマはマイグレーションだけで変える。`batch_writer` のパスワードの設定とローテーションは SQL エディタで行う（ADR 0009） |

@@ -313,7 +313,7 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 
 ## 16. 設定値と環境変数
 
-公開してよい設定（リポジトリ内。バッチは `apps/batch/src/takatsu_batch/config.py`、BI は `apps/web/src/lib/config.ts`。変更はコミットで記録。NFR-22 (1)）。下表の `RATIO_MIN_DENOMINATOR` は BI だけ、`SITE_ORIGIN` は両方（`contracts/constants.json` と突き合わせる。07 S-16）、それ以外はバッチだけ。`BENCHMARK_MIN_POPULATION` は `internal.benchmark_curve` の SQL にも現れる（I-DB-17 で一致を確かめる）:
+公開してよい設定（リポジトリ内。バッチは `apps/batch/src/takatsu_batch/config.py`、BI は `apps/web/src/lib/config.ts`。変更はコミットで記録。NFR-22 (1)）。下表の `RATIO_MIN_DENOMINATOR` は BI だけ、`SITE_ORIGIN` は両方（`contracts/constants.json` と突き合わせる。07 S-16）、それ以外はバッチだけ。`BENCHMARK_MIN_POPULATION` は `internal.benchmark_curve` の SQL にも現れる（I-DB-17 で一致を確かめる）。`AD_CATEGORY_ID` は `pub_category_period` と `pub_author_category_period` の SQL にも現れる（I-DB-05 で一致を確かめる）:
 
 | 名前 | 既定 | 根拠 |
 | --- | --- | --- |

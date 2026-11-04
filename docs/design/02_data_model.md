@@ -9,7 +9,7 @@
   - 2026-11-03: 書き込みを専用ロール `batch_writer` に変更（ADR 0009）。§6 の service_role への grant を取り消し、表ごとの grant とポリシーに置き換え（§1、§6、§8、§9）。バッチの言語を Python に変更（ADR 0004）
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-4、W-8、L-1〜L-3、L-7 を反映（§6 のロールの作成を `nologin` に、接続の上限と既定のタイムアウト、`batch_run` の delete を外す、権限の検査の拡張。§8 のテスト用パスワードを seed から除く。§9）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`excluded_author`、ビューの `not exists` と §4 の除外の列、除外後と除外込みの区別を外した。分布と帯のビューでの計算は保ち、理由を直した。伏せ値、二次伏せ、階層差分、`internal`、`batch_writer` は変えない
-  - 2026-11-05: 構築 1 の実機確認を反映（依頼者の決定）。§6: `pub_*` と public の既定権限から service_role を外した（自動更新可能なビューを通じて内部表へ書けたため）。末尾の検査の範囲を Supabase 管理スキーマを除く形に直した。§3.6: `failed_step` に `preflight` と `period` を足した。§4: ビューの解釈（`post_count` の定義、広告記事の扱い）を定義として書いた。§9: 広告記事とカテゴリの軸の食い違いを未確定に足した
+  - 2026-11-05: 構築 1 の実機確認を反映（依頼者の決定）。§6: `pub_*` と public の既定権限から service_role を外した（自動更新可能なビューを通じて内部表へ書けたため）。末尾の検査の範囲を Supabase 管理スキーマを除く形に直した。§3.6: `failed_step` に `preflight` と `period` を足した。§4: ビューの解釈（`post_count` の定義、広告記事の扱い）を定義として書いた。§4、§9: 広告記事はカテゴリのビューでは広告の軸の行だけで数えることにした（FR-40）
 
 ## 1. 方針
 
@@ -371,7 +371,7 @@
 - `pub_author_category_period.post_count` と `pub_tag_period.post_count`: その著者とカテゴリ、またはそのタグに属する記事の数。期間内に公開した数ではない（期間ごとに同じ値になる）。
 - `pub_author_period.long_post_count`: その著者の `freshness = long` の記事の数。基準日時点の区分で数え、期間によらない。`long_pageviews` は、それらの記事の期間内の読まれた回数の合計。
 - `pub_author_category_period` のカテゴリは、記事に直接付いたカテゴリだけを数える。親への繰り上げはしない（`pub_category_period` の親カテゴリ行とは数え方が違う）。
-- 広告記事（`is_ad = true`）: 分布（`internal.benchmark_curve`、§4.1）の母集団からだけ除く。著者、カテゴリ、タグ、鮮度区分の合計と本数、公開本数には含める。一覧からの除外（FR-20、FR-22、FR-25）は BI が `is_ad` で行う。カテゴリの軸との関係は §9 の未確定を参照。
+- 広告記事（`is_ad = true`）: 分布（`internal.benchmark_curve`、§4.1）の母集団から除く。`pub_category_period` と `pub_author_category_period` では、広告の軸の行（`category_id` が `AD_CATEGORY_ID` = 188、または `parent_id` が 188）だけで数え、それ以外のカテゴリの行からは除く（FR-40）。広告記事しか属さない広告以外のカテゴリは行がない。著者の合計、タグの合計、鮮度区分、公開本数には含める。一覧からの除外（FR-20、FR-22、FR-25）は BI が `is_ad` で行う。ビューの 188 は設定値と 07 I-DB-05 で突き合わせる。
 
 ### 4.1 分布と帯の計算（`internal.benchmark_curve` ビュー。N-1）
 
@@ -382,6 +382,7 @@
 - `pub_article_summary` の `band_7d` / `band_30d`: `article_summary` に `internal.article_cumulative`（n = 7 と n = least(age_days, 30) の累積）と `internal.benchmark_curve`（scope = all、同じ n）を left join し、`case when 値 > p75 then 'upper' when 値 < p25 then 'lower' else 'middle' end`。`age_days < 3`、曲線の行がない、累積が null のときは null。`band_7d` は `age_days ≥ 7` のときだけ（pv_7d と曲線 (all, 7) の比較）。
 - `pub_author_summary` の `band_30d`: `author_summary.own_median_30d` と `internal.benchmark_curve`（all, 30）の同じ `case`。own_median_30d が null、曲線の行がないときは null。
 - 関数は作らない（`case` 式をビュー内に書く。06 §2.3、L-4 の方針）。
+- 実行計画の固定（2026-11-05）: `internal.benchmark_curve` と `pub_article_summary` は、累積と曲線を `with ... as materialized` で 1 回だけ計算する。`internal.article_cumulative` は `age_days`、`base_date`、`published_on`、`is_ad` も出し（公開ビューには出さない）、窓関数の結果へ join し直さない。統計が古いと窓関数を行ごとに計算し直す実行計画になることがあり、1,000 本で 520 ms が 41 秒になった例をローカルで確認したため。
 - 性能: 記事 225 本 × n 90 ≒ 2 万行の累積に対する分位計算 + 子カテゴリ分で、ビルド時に各ビューを 1 回読むだけ。実装時に `explain analyze` で確認する（07 I-DB-17。ローカルの 1,000 本のフィクスチャで 2 秒以内を目安）。重ければ ADR 0003 判断 4 追記の (c)（`internal` のマテリアライズドビューをバッチが refresh）に切り替えるが、母集団の定義は変えない。
 
 ## 5. 05 §4.1 の表との対応
@@ -559,7 +560,6 @@ Supabase 管理スキーマ: `pg_catalog`、`information_schema`、`auth`、`ext
 - Supabase の既定権限の正確な内容は未確認（外部の事実）。§6 の grant と revoke をマイグレーションに置き、ローカル環境で確認する（07 I-DB-01、I-DB-18）。
 - `batch_writer` のパスワードの設定手順（docs/operations/）。`nologin` で作るので、未設定の間の拒否を pooler の挙動に頼らない（経路監査 L-1）。
 - `generated always as identity` のシーケンスの grant の要否、`connection limit` の pooler との相性（ADR 0009 V-4、A-11）。
-- 広告記事とカテゴリの軸: FR-40 は「広告カテゴリは別枠で出し、他の軸の合計には含めない」とする。今の `pub_category_period` は記事の `is_ad` で絞らないので、広告カテゴリと他の親カテゴリの両方に属する記事は、他の軸の合計にも入る（2026-11-05 にローカルで確認）。両方に属する記事が実在するかと、直し方は依頼者の判断待ち。
 
 確定した事項（2026-11-03、設計レビューの反映で「未確定」から移動）:
 
@@ -567,4 +567,5 @@ Supabase 管理スキーマ: `pg_catalog`、`information_schema`、`auth`、`ext
 - Q-33: 二次伏せを公開しない。表示は「—」と「伏せ値」の添え書き（§2.3、ADR 0003 判断 5）。
 - Q-36: 全体 × 期間 × 流入チャネル / デバイス は `site_period_breakdown` の axis `channel` / `device_pv` / `device_sessions` として期間ごとに格納する（§3.3、ADR 0003 判断 6）。
 - M-41（シェア数）: 初回対象外。表・列・問い合わせを作らない（§1、設計レビュー M-4）。
+- 広告記事とカテゴリの軸（2026-11-05 確定）: 広告カテゴリの記事は 2 本で、どちらも他のカテゴリにも属する（2026-11-05、WP REST API で依頼者が確認）。FR-40 のとおり、カテゴリのビューでは広告の軸の行だけで数える（§4）。
 - D-14（全記事の分布の母集団）: 広告を除く公開記事。著者の除外は初回対象外（2026-11-04、ADR 0005 保留）で、除外を追加するときは除外著者の記事を母集団から外す（順位のずれから除外記事の帯や値が分かるため。ADR 0003 判断 4 追記）。計算は公開ビュー側（§4.1）。

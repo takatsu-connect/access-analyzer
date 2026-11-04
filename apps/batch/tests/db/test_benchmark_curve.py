@@ -301,19 +301,32 @@ def test_cumulative_excludes_days_before_publication_and_fills_gaps(admin: Admin
     assert rows == [(1, 5), (2, 5), (3, 12)]
 
 
-@pytest.mark.parametrize("view", ["pub_benchmark_curve", "pub_article_summary"])
-def test_curve_performance_with_1000_posts(admin: Admin, view: str) -> None:
+@pytest.mark.parametrize(
+    ("view", "force_nested_loop"),
+    [
+        ("pub_benchmark_curve", False),
+        ("pub_article_summary", False),
+        ("pub_article_summary", True),
+    ],
+)
+def test_curve_performance_with_1000_posts(
+    admin: Admin, view: str, force_nested_loop: bool
+) -> None:
     # 07 I-DB-17: 1,000 本で全行 select が 2 秒以内の目安。
     # pub_article_summary は同じ曲線を読むので併せて見る。
+    # 統計が古いときの実行計画でも遅くならないことを、nested loop を強制して確かめる。
     posts = [
         Post(10_000 + i, BASE - timedelta(days=100 + i % 200), 1 + i % 50, category=LARGE_CATEGORY)
         for i in range(1000)
     ]
     _insert_posts(admin, posts)
     admin.execute("analyze internal.article_daily")
+    if force_nested_loop:
+        admin.execute("set local enable_hashjoin = off")
+        admin.execute("set local enable_mergejoin = off")
     query = sql.SQL("explain (analyze, format json) select * from public.{}")
     plan = admin.execute(query.format(sql.Identifier(view))).fetchone()
     assert plan is not None
     execution_ms = plan[0][0]["Execution Time"]  # type: ignore[index]
-    print(f"{view}: {execution_ms:.0f} ms")
+    print(f"{view} force_nested_loop={force_nested_loop}: {execution_ms:.0f} ms")
     assert execution_ms < 2000, execution_ms

@@ -6,7 +6,12 @@ create view internal.article_cumulative as
 select
   p.post_id,
   g.n,
-  (sum(coalesce(d.pageviews, 0)) over (partition by p.post_id order by g.n))::integer as cumulative_pv
+  (sum(coalesce(d.pageviews, 0)) over (partition by p.post_id order by g.n))::integer as cumulative_pv,
+  -- 下のビューが窓関数の結果へ join し直さずに済むよう、母集団の判定に使う列も出す（公開ビューには出さない）
+  s.age_days,
+  s.base_date,
+  p.published_on,
+  p.is_ad
 from internal.wp_post p
 join internal.article_summary s on s.post_id = p.post_id
 cross join lateral generate_series(1, least(s.age_days, 90)) as g (n)
@@ -17,30 +22,25 @@ left join internal.article_daily d
 -- 全記事の分布（M-19、M-27）。母集団は広告を除く公開記事で、age_days >= n は累積の行の有無で満たす。
 -- 下の 30 は設定値 BENCHMARK_MIN_POPULATION（07 I-DB-17 で一致を確かめる）。
 create view internal.benchmark_curve as
-with population as (
+-- materialized: 統計が古いと窓関数の結果を行ごとに計算し直す実行計画になり、桁違いに遅くなるため
+with cumulative as materialized (
   select
-    'all'::text as scope,
-    c.n,
-    c.cumulative_pv,
-    p.published_on >= s.base_date - 365 as in_12m,
-    s.base_date
-  from internal.article_cumulative c
-  join internal.wp_post p on p.post_id = c.post_id
-  join internal.article_summary s on s.post_id = c.post_id
-  where not p.is_ad
+    post_id,
+    n,
+    cumulative_pv,
+    published_on >= base_date - 365 as in_12m,
+    base_date
+  from internal.article_cumulative
+  where not is_ad
+),
+population as (
+  select 'all'::text as scope, c.n, c.cumulative_pv, c.in_12m, c.base_date
+  from cumulative c
   union all
-  select
-    'cat:' || cat.category_id::text,
-    c.n,
-    c.cumulative_pv,
-    p.published_on >= s.base_date - 365,
-    s.base_date
-  from internal.article_cumulative c
-  join internal.wp_post p on p.post_id = c.post_id
-  join internal.article_summary s on s.post_id = c.post_id
+  select 'cat:' || cat.category_id::text, c.n, c.cumulative_pv, c.in_12m, c.base_date
+  from cumulative c
   join internal.wp_post_category pc on pc.post_id = c.post_id
   join internal.wp_category cat on cat.category_id = pc.category_id and cat.parent_id is not null
-  where not p.is_ad
 ),
 aggregated as (
   select
@@ -245,7 +245,22 @@ where s.referrer_30d_computed_on is not null;
 grant select on public.pub_article_referrer_30d to anon;
 
 -- 帯は曲線 (all, n) と比べる。p25 / p75 と等しいときは middle（03 §6.2）。
+-- materialized と集約: 統計が古いときに窓関数や分位の計算を行ごとにやり直さないようにする
 create view public.pub_article_summary as
+with cumulative as materialized (
+  select
+    c.post_id,
+    max(c.cumulative_pv) filter (where c.n = 7) as pv_at_7,
+    max(c.cumulative_pv) filter (where c.n = least(c.age_days, 30)) as pv_at_30
+  from internal.article_cumulative c
+  where c.n <= 30
+  group by c.post_id
+),
+curve as materialized (
+  select n, p25, p75
+  from internal.benchmark_curve
+  where scope = 'all'
+)
 select
   s.post_id,
   s.age_days,
@@ -254,15 +269,15 @@ select
   s.pv_30d,
   s.pv_total,
   case
-    when s.age_days < 7 or c7.cumulative_pv is null or b7.scope is null then null
-    when c7.cumulative_pv > b7.p75 then 'upper'
-    when c7.cumulative_pv < b7.p25 then 'lower'
+    when s.age_days < 7 or c.pv_at_7 is null or b7.n is null then null
+    when c.pv_at_7 > b7.p75 then 'upper'
+    when c.pv_at_7 < b7.p25 then 'lower'
     else 'middle'
   end as band_7d,
   case
-    when s.age_days < 3 or c30.cumulative_pv is null or b30.scope is null then null
-    when c30.cumulative_pv > b30.p75 then 'upper'
-    when c30.cumulative_pv < b30.p25 then 'lower'
+    when s.age_days < 3 or c.pv_at_30 is null or b30.n is null then null
+    when c.pv_at_30 > b30.p75 then 'upper'
+    when c.pv_at_30 < b30.p25 then 'lower'
     else 'middle'
   end as band_30d,
   s.is_recent_hot,
@@ -270,14 +285,9 @@ select
   s.is_evergreen_365,
   s.referrer_30d_computed_on
 from internal.article_summary s
-left join internal.article_cumulative c7
-  on c7.post_id = s.post_id and c7.n = 7
-left join internal.benchmark_curve b7
-  on b7.scope = 'all' and b7.n = 7
-left join internal.article_cumulative c30
-  on c30.post_id = s.post_id and c30.n = least(s.age_days, 30)
-left join internal.benchmark_curve b30
-  on b30.scope = 'all' and b30.n = least(s.age_days, 30);
+left join cumulative c on c.post_id = s.post_id
+left join curve b7 on b7.n = 7
+left join curve b30 on b30.n = least(s.age_days, 30);
 grant select on public.pub_article_summary to anon;
 
 create view public.pub_article_milestone as
@@ -314,8 +324,11 @@ select
   coalesce(sum(ap.pageviews), 0)::bigint as pageviews
 from internal.wp_post p
 join internal.wp_post_category pc on pc.post_id = p.post_id
+join internal.wp_category c on c.category_id = pc.category_id
 cross join internal.period per
 left join internal.article_period ap on ap.post_id = p.post_id and ap.period_id = per.period_id
+-- 広告記事は広告の軸の行だけで数える（FR-40）。188 は設定値 AD_CATEGORY_ID（07 I-DB-05 で一致を確かめる）
+where not p.is_ad or c.category_id = 188 or c.parent_id = 188
 group by p.author_slug, pc.category_id, per.period_id;
 grant select on public.pub_author_category_period to anon;
 
@@ -334,7 +347,8 @@ from internal.author_summary a
 left join internal.benchmark_curve b on b.scope = 'all' and b.n = 30;
 grant select on public.pub_author_summary to anon;
 
--- 親カテゴリの行は、親または配下の子に属する記事を distinct で数える（02 §4）
+-- 親カテゴリの行は、親または配下の子に属する記事を distinct で数える（02 §4）。
+-- 広告記事は広告の軸の行だけで数える（FR-40）。188 は設定値 AD_CATEGORY_ID（07 I-DB-05 で一致を確かめる）
 create view public.pub_category_period as
 with membership as (
   select distinct c.category_id, pc.post_id
@@ -342,6 +356,8 @@ with membership as (
   join internal.wp_category member
     on member.category_id = c.category_id or member.parent_id = c.category_id
   join internal.wp_post_category pc on pc.category_id = member.category_id
+  join internal.wp_post ad_check on ad_check.post_id = pc.post_id
+  where not ad_check.is_ad or c.category_id = 188 or c.parent_id = 188
 )
 select
   m.category_id,
