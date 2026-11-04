@@ -8,6 +8,7 @@
   - 2026-11-03: バッチを Python に（ADR 0004）、書き込みを専用ロール `batch_writer` と接続文字列 `SUPABASE_BATCH_DB_URL` に（ADR 0009）、除外リストの変更を SQL エディタに（ADR 0005）。service role キーを配らない形に変更
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-5、W-6、W-9、L-1〜L-4、L-7 を反映（§2.3 の漏えい時の影響、§3 の対処の順序と TLS、§5 の手順、§9 の Environment、§10 の依存の更新、§13）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。§5 を置き換え、§1、§2、§3、§4、§12、§13 の除外リストの記述を外した
+  - 2026-11-04: tech-writer の整合確認。Q-12 の確定を反映（§3、§10、§13）。TLS の基準を第 1 に合わせた（§3、§13）
 
 ## 1. 守る資産と前提
 
@@ -70,14 +71,14 @@
 | Supabase の `postgres` のパスワード | マイグレーションの適用のときに運用担当が入力する（保存先は docs/operations/ で決める。リポジトリには置かない） | リポジトリ、Actions、Vercel | Supabase でリセットする |
 | SUPABASE_ANON_KEY | Vercel 環境変数（サーバー / ビルド）、Actions には不要 | `NEXT_PUBLIC_*`、クライアントのバンドル | 影響は公開ビューの直接読み出しのみ。ローテーションは任意 |
 | VERCEL_DEPLOY_HOOK_URL | main だけを許可した GitHub Environment（`production`）の Secret（W-3） | リポジトリの Secret | Hook を再作成 |
-| 通知先（Q-12） | Actions Secrets | ― | 再発行 |
+| 失敗通知 | 秘密を置かない（GitHub のメール。Q-12 確定） | ― | ― |
 | ローカルの鍵（開発者の `.env`、`credentials/`） | `.gitignore` 済みのパス | 別の場所 | ローテーション |
 
 - `.env.example` には名前だけを書く（03 §16 の表の名前）。
 - 秘密を含みうる値はログ、エラーメッセージ、コミットメッセージ、Issue（beads を含む）、文書に書かない（NFR-44）。
 - 秘密が git 履歴に入ったら、履歴を消す前に無効化と再発行をする。
 - バッチで秘密を読むのは `apps/batch/src/takatsu_batch/env.py` の 1 か所に限り、pydantic（`hide_input_in_errors=True`、`SecretStr`）で必須・形式を検証する。検証に失敗したときのメッセージは変数名だけ（値を出さない）。
-- DB 接続の TLS（W-1、ADR 0009「TLS」）: 接続先の証明書を検証する。第 1 の基準は verify-full + 固定した CA。第 2 は verify-ca + 固定した CA で、CA が Supabase 専用と確かめられた場合に限り、ADR に残余リスク（host 名を検証しない）を書いて認める。第 3 の `require` は認めない。依頼者が ADR でリスクを受容し再監査を通すまで本番に接続しない。`sslmode` と `sslrootcert` は `psycopg.connect` のキーワードでコードから固定し（CA は `apps/batch/certs/`）、接続文字列に頼らない。`env.py` は `conninfo_to_dict` で解析した実効値を検査し、`host`、`port`、`user`、`password`、`dbname` 以外のキーがあれば失敗にする。TLS なしの接続は、`host` の実効値が `localhost` / `127.0.0.1` のときだけ。
+- DB 接続の TLS（W-1、ADR 0009「TLS」）: 接続先の証明書を検証する。第 1 の基準は verify-full + 固定した CA で、これを採用した（2026-11-04、ADR 0009）。第 2 は verify-ca + 固定した CA で、CA が Supabase 専用と確かめられた場合に限り、ADR に残余リスク（host 名を検証しない）を書いて認める。第 3 の `require` は認めない。依頼者が ADR でリスクを受容し再監査を通すまで本番に接続しない。`sslmode` と `sslrootcert` は `psycopg.connect` のキーワードでコードから固定し（CA は `apps/batch/certs/`）、接続文字列に頼らない。`env.py` は `conninfo_to_dict` で解析した実効値を検査し、`host`、`port`、`user`、`password`、`dbname` 以外のキーがあれば失敗にする。TLS なしの接続は、`host` の実効値が `localhost` / `127.0.0.1` のときだけ。
 
 `SUPABASE_BATCH_DB_URL` が漏れたときの対処（W-2。順序を守る）:
 
@@ -154,7 +155,7 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 
 - バッチの `requirements.txt`、`requirements-dev.txt`（ハッシュ固定）と BI の `apps/web/pnpm-lock.yaml` をコミットする。Dependabot を `pip`（`/apps/batch`）、`npm`（`/apps/web`）、`github-actions`（`/`）で有効にする。
 - CI で `pip-audit --require-hashes -r apps/batch/requirements.txt` と `pnpm audit --audit-level=high`（`apps/web`）を実行し、致命的・高が残った状態でデプロイしない（Vercel のビルドは CI とは別なので、main への merge 前の CI で止める）。`pip-audit` は深刻度で絞れないので、脆弱性が 1 件でもあれば失敗にし、誤検知や修正版のないものは `--ignore-vuln` に理由つきで足す。`--disable-pip` が使えるなら足す（要確認 ADR 0009 V-6）。
-- merge 前の CI だけでは、PR のない日に公表された脆弱性を止められない。週 1 の `schedule`（`audit.yml`。§9）で同じ `pip-audit` と `pnpm audit` を流し、失敗を通知する（通知先は 03 §14 の失敗通知と同じ。Q-12 の回答までは GitHub のメール通知）（W-9）。
+- merge 前の CI だけでは、PR のない日に公表された脆弱性を止められない。週 1 の `schedule`（`audit.yml`。§9）で同じ `pip-audit` と `pnpm audit` を流し、失敗を通知する（通知先は 03 §14 の失敗通知と同じ GitHub のメール。Q-12 確定）（W-9）。
 - Dependabot の更新（W-9）: `cooldown`（例: 7 日。セキュリティ更新を除く。設定の形とセキュリティ更新の扱いは要確認 ADR 0009 V-6）を設定する。wheel のコードは import 時に接続文字列の下で動くので、公開直後の悪意ある版を merge すると翌日に Secrets の下で実行される。自動 merge を禁止し、人が merge する。Dependabot が pip-compile のハッシュを再生成することを初回の PR で確かめる。再生成しないと分かったら、この節の更新手順を見直す。
 - Python の依存は wheel だけを入れる（`--only-binary :all:`）。インストール時にビルドスクリプトを実行しない。S-10 で `daily.yml` の `--require-hashes --only-binary :all:` を検査する。
 - 開発でしか要らない依存を本番のロックに入れない。`colorama` は `requirements-dev.in` に置く（経路監査 L-7）。
@@ -197,8 +198,7 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 - Vercel（依頼者の確認事項、設計レビュー §6）: (a) Hobby プランで Deployment Protection の Standard Protection（本番ドメイン以外のすべてのデプロイ URL の保護）が設定できるか、過去デプロイの保持数と削除の可否（M-6）。(b) fork からの PR でプレビューが作られるか、Preview の環境変数が渡るか（§2.4 の代替で足りるか）。
 - GCP（依頼者の確認事項）: WIF の属性条件に `assertion.repository_id` を加える（L-10）。SA が GA4 閲覧者のみで GCP ロールを持たないこと、「サービス アカウント トークン作成者」の削除。
 - Supabase（依頼者の確認事項）: Exposed schemas が `public` のみで `internal` を含まないこと、`graphql_public` の無効化。`batch_writer` の有効化とパスワードの設定。
-- 実装着手前の確認項目 1〜4 と、仕様の確認 V-1〜V-6（ADR 0009「実装着手前の確認項目」）。TLS の基準の段階は確認項目 1 で決まり、第 1 か第 2 で成立するまで本番に接続しない。Environment の可否は確認項目 4（親）。
+- 実装着手前の確認項目 1〜4 と、仕様の確認 V-1〜V-6（ADR 0009「実装着手前の確認項目」）。TLS の基準は確認項目 1 の結果で第 1 に確定した。psycopg からの接続は 07 A-11 で確かめる。Environment の可否は確認項目 4（親）。
 - SQL エディタの履歴などに `alter role` の文が残るか（確認項目 3。ADR 0009 経路監査 L-4）。
 - ADR 0009 の残りの未確定（`executemany`、IPv4 の到達など。実装時と 07 A-11）。
-- Q-12（通知先）。
-- 確定: D-16（0 は伏せない。02 §2.3、M-1）、Q-33（ADR 0003 判断 5）、Q-36（ADR 0003 判断 6）。
+- 確定: D-16（0 は伏せない。02 §2.3、M-1）、Q-33（ADR 0003 判断 5）、Q-36（ADR 0003 判断 6）、Q-12（失敗通知は GitHub のメール）。

@@ -9,6 +9,7 @@
 - 変更履歴: 2026-11-03: security-auditor の設計レビュー（docs/security/audits/2026-11-03-design-review.md）の H-1・M-1・M-2・M-4・M-5・L-3 を反映。「伏せ値」（0 は伏せない）、「二次伏せ」（候補は T 以上の最小セル、著者 × 内訳軸 の階層差分）、「非表示の申し出」（記事から合算する集計はすべて除外後）、「広告カテゴリ」（カテゴリ別の値は除外後）の行を修正
 - 変更履歴: 2026-11-03: analytics-advisor の画面レビュー（docs/requirements/advice/2026-11-03-screens-review.md）の高 1〜5 と中の要件関連分を反映。§1「自分の普段と比べて」（「あなた」を「◯◯さん」に）、§1「数字が隠れている」（伏せ値の注記を「逆算」を使わない言い方に）、§4「普通の記事」の帯（「だいたい」を「多くの記事は」に）の行を修正
 - 変更履歴: 2026-11-04: 依頼者の決定（ライターの非表示の申し出への対応は申し出があったときに考える。除外の仕組みは初回で作らない）を反映。「非表示の申し出」「広告カテゴリ」「Supabase」の行から除外の仕組みと「除外後 / 除外込み」の記述を外した
+- 変更履歴: 2026-11-04: tech-writer の整合確認。「service role キー」を使わないものに直し、`batch_writer` を追加。イベント名と add-to-any の行に、シェア数が初回対象外であることを反映
 
 この文書は、運営者・ライターの言葉、画面で使う言葉、GA4 の指標名のずれを残すためのもの。要件（docs/requirements/02_metrics.md）の指標 ID と対応させる。画面に出す言葉は「画面で使う言葉」の列に従い、GA4 の指標名は括弧でのみ添える（NFR-99）。「添える注記」は画面に埋め込む 1 文の案で、確定文ではない（tech-writer が仕上げる）。
 
@@ -73,7 +74,7 @@
 | pagePath | URL のパス部分（例: /4800/）。クエリ文字列を含まない。記事 ID との突き合わせに使う |
 | エンゲージメント | 10 秒以上の滞在、2 ページ以上の閲覧、コンバージョンのいずれかがあること。本 BI ではこの言葉を画面に出さない |
 | 拡張計測機能 | GA4 がスクロール（90% 到達）、外部リンクのクリック、サイト内検索、動画、ファイルダウンロード、ページ変更、フォームの操作を自動で計測する設定。対象サイトではすべて有効で、scroll イベントが届いていることを確認済み（2026-11-03、Q-25 回答済み） |
-| イベント名（eventName） | GA4 が記録する行動の名前。本 BI で使うのは scroll（M-09）と AddToAnyShare（add-to-any のシェア。M-41、D-09）だけ。対象サイトで届いているイベント名は page_view、user_engagement、session_start、first_visit、scroll、click、form_start、form_submit、AddToAnyShare、view_search_results、file_download（2026-11-03 確認）。scroll と AddToAnyShare 以外は取得しない（NFR-32） |
+| イベント名（eventName） | GA4 が記録する行動の名前。初回の BI で使うのは scroll（M-09）だけ。AddToAnyShare（add-to-any のシェア。M-41、D-09）は FR-61 を実装するときに使う（初回対象外）。対象サイトで届いているイベント名は page_view、user_engagement、session_start、first_visit、scroll、click、form_start、form_submit、AddToAnyShare、view_search_results、file_download（2026-11-03 確認）。scroll と AddToAnyShare 以外は取得しない（NFR-32） |
 | カスタム次元 | サイト側が GA4 に追加した独自の次元。対象サイトにはイベントスコープの page_type（投稿 post か、そうでない other か）がある。Analytify プラグインが作った 10 個は本 BI では使わない。著者・カテゴリのカスタム次元はなく、記事との結合は pagePath の記事 ID で行う（D-15） |
 | チャネルグループ（sessionDefaultChannelGroup） | GA4 が流入経路を分類したもの。Organic Search、Direct、Organic Social、Referral、AI Assistant、Unassigned、Email、Organic Video など。本 BI では 検索 / SNS / 直接 / 他のサイトから / その他 の 5 区分に正規化する（M-10）。AI Assistant 以下は「その他」 |
 | データの確定 | GA4 の日次データは処理に通常 12 時間、24〜48 時間かかることがあり、遅れて届くデータは最大 7 日。確定前は値が変わる |
@@ -94,7 +95,7 @@
 | 公開状態 | publish（公開）だけが REST API に出る。下書き、非公開は出ないため BI にも入らない。パスワード付きは publish のまま content.protected = true で出るため、取り込み時に除く（NFR-34、FR-72） |
 | コメント | 対象サイトでは使われていない（公開コメント 0 件、comment_status は closed）。M-42、FR-62、DS-07 は廃止 |
 | wp-ulike | 「いいね」ボタンのプラグイン。いいね数は REST API からも GA4 からも現状は取れない（M-40） |
-| add-to-any | SNS シェアボタンのプラグイン。GA4 に AddToAnyShare というイベント名で届いている（2026-11-03 確認。M-41、D-09） |
+| add-to-any | SNS シェアボタンのプラグイン。GA4 に AddToAnyShare というイベント名で届いている（2026-11-03 確認。M-41、D-09）。シェア数は初回対象外（FR-61） |
 | Analytify | WordPress 管理画面で GA4 の数字を見るプラグイン（wp-analytify/v1）。運営者がこれまで見てきた数字の出所である可能性がある（Q-32）。本 BI は使わない |
 | Xserver | 対象サイトのホスティング先（sv16640.xserver.jp、nginx）。アクセスログの取得可否は Q-21 |
 
@@ -136,5 +137,6 @@
 | Vercel | BI の Web アプリの配信先。依頼者の決定 |
 | GitHub Actions | 日次バッチの実行環境。依頼者の決定。public リポジトリで動く |
 | RLS | Row Level Security。Supabase の表ごとに読める行を制限する仕組み |
-| service role キー | Supabase の書き込み権限を持つキー。バッチだけが使い、ブラウザに渡さない |
+| service role キー | Supabase の権限の広いキー。本 BI では使わず、どこにも置かない（ADR 0009） |
+| `batch_writer` | バッチが内部表に書き込むための専用ロール。psycopg で shared pooler の session mode に接続し、接続先を verify-full + 固定した CA で検証する（ADR 0009） |
 | noindex | 検索エンジンに載せない指示。本 BI は全ページ noindex（確定、Q-04、NFR-21） |

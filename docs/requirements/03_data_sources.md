@@ -6,6 +6,7 @@
 - 変更履歴: 2026-11-03: security-auditor の要件レビュー（audits/2026-11-03-requirements-review.md）の指摘 H-1・H-2・M-1〜M-6・L-2〜L-6 を反映（L-2: 著者を表示名だけで書く。M-3: パスワード付き投稿の REST 応答の記述を直し、確認結果を追記）
 - 変更履歴: 2026-11-03: GA4 Admin API と Data API の確認結果（タイムゾーン、導入時期、保持設定、カスタム次元、拡張計測、イベント名、規模）を反映。§2.6 の「未確認」を事実に置き換え、DS-06 を「取得可」に、開始日を 2025-10-08 に確定
 - 変更履歴: 2026-11-04: 依頼者の決定（ライターの非表示の申し出への対応は申し出があったときに考える。除外の仕組みは初回で作らない）を反映。著者の情報の節から除外リストと Q-30 の記述を外した
+- 変更履歴: 2026-11-04: tech-writer の整合確認。DS-06 の記述を初回対象外と D-09 の確認結果（サービス別は取れない）に合わせた
 
 事実は親エージェントが 2026-11-03 に確認した事実票に基づく。GA4 側の事実は、同日に依頼者が GA4 Admin API と Data API を読み取り専用で実行した確認スクリプトの結果に基づく。未確認の事項は推測せず「未確認」と書き、open_questions.md の Q-xx または D-xx を参照する。
 
@@ -18,7 +19,7 @@
 | DS-03 | サーバーログ | GA4 で計測されない閲覧の補完 | 使わない（仮）。ホスティングは Xserver（確認済み）。アクセスログの取得可否は未確認（Q-21） |
 | DS-04 | Google Search Console | 検索結果での記事別の表示・クリック（M-50。検索語は出さない） | 要確認（Q-09）。初回スコープ外（仮） |
 | DS-05 | wp-ulike（いいね） | いいね数（M-40） | 現状は取得不可（2026-11-03 確認）。出すならサイト側の変更が必要（Q-10 の 1） |
-| DS-06 | add-to-any（シェアボタン） | シェア数（M-41）。GA4 のイベント `AddToAnyShare` として取る | 取得可（2026-11-03 確認。直近 90 日で 36 件）。優先度 低。サービス別のパラメータは設計で確認（D-09） |
+| DS-06 | add-to-any（シェアボタン） | シェア数（M-41）。GA4 のイベント `AddToAnyShare` として取る | 取得可（2026-11-03 確認。直近 90 日で 36 件）。優先度 低。初回対象外（FR-61）。サービス別は GA4 Data API から取れない（D-09 確認済み） |
 | DS-07 | 廃止（2026-11-03） | コメント件数（M-42、廃止） | 廃止。公開コメントは 0 件、comment_status は closed で、コメント機能は使われていない（Q-10 の 3 回答済み）。ID は再利用しない |
 | DS-08 | official-facebook-pixel（Meta ピクセル） | ― | 対象外。データは Meta 側にあり、本 BI では扱わない |
 | DS-09 | Jetpack Stats、WP Statistics、Matomo、Site Kit | ― | 対象外。トップページから検出されず、導入されていないと見る |
@@ -83,7 +84,7 @@
 - city の粒度（確認済み、Q-11 回答済み）: 日本では市のレベル。川崎市は「Kawasaki」として市単位で出る。東京 23 区は「Shinjuku City」のように区単位で出るが、川崎市の区（高津区）は出ない。「地元の読者の目安」（M-14）は川崎市として取れる。地域不明（(not set) と空）は分母に含める。
 - カスタム次元（確認済み、Q-25 回答済み）: 11 個。サイト側が設定したのはイベントスコープの `page_type`（表示名「ページタイプ」。投稿 post か、そうでない other か）1 つだけ。残り 10 個（country、exit_page、source、device_category、landing_page、campaign、page_title、page_path、user_type、medium）は Analytify プラグインが作ったもので、本 BI では使わない（GA4 の標準の次元で同じ内容が取れ、page_title は取得しない方針と重なるため）。著者・カテゴリのカスタム次元とカスタム指標はない。記事との結合は pagePath の記事 ID で行う（02 §3）。`page_type` を記事以外のページの判定に併用できるかは D-15。
 - 拡張計測（確認済み）: すべて有効。スクロール（90% 到達）、外部リンクのクリック、サイト内検索（検索パラメータ q、s、search、query、keyword）、動画、ファイルダウンロード、ページ変更、フォームの操作。
-- イベント名と直近 90 日のイベント数（確認済み）: page_view 13,753、user_engagement 9,653、session_start 8,815、first_visit 6,702、scroll 2,721、click 797、form_start 54、form_submit 52、AddToAnyShare 36、view_search_results 20、file_download 11。scroll は M-09 の分子に使える（サイト全体では scroll ÷ page_view ≈ 20%）。add-to-any のシェアは `AddToAnyShare` というイベント名で届いている（M-41、DS-06。サービス別のパラメータは D-09）。view_search_results、form_start / form_submit、file_download、click は存在するが本 BI では取得しない（NFR-32、FR-63）。
+- イベント名と直近 90 日のイベント数（確認済み）: page_view 13,753、user_engagement 9,653、session_start 8,815、first_visit 6,702、scroll 2,721、click 797、form_start 54、form_submit 52、AddToAnyShare 36、view_search_results 20、file_download 11。scroll は M-09 の分子に使える（サイト全体では scroll ÷ page_view ≈ 20%）。add-to-any のシェアは `AddToAnyShare` というイベント名で届いている（M-41、DS-06。サービス別は取れない。D-09）。view_search_results、form_start / form_submit、file_download、click は存在するが本 BI では取得しない（NFR-32、FR-63）。
 - 規模（確認済み）: 月別の表示回数は 2025-10〜2026-10 でおおむね 3,000〜7,700、直近 3 か月は 3,700〜4,500。月別の訪問回数は 1,000〜5,500、読んだ人の数は 700〜4,600。2026-04、05、07 に山がある。2025-11 の値（表示回数 1,274）は他の月と不連続（理由は確認しない。画面では注記しない）。直近 90 日の訪問回数のデバイス別はスマホ 6,710（77%）、パソコン 1,911（22%）、タブレット 135。チャネル別は Organic Search 5,749（66%）、Direct 1,709（20%）、Organic Social 912（10%）、Referral 239、AI Assistant 95、Unassigned 32、Email 2、Organic Video 1（M-10 では AI Assistant 以下を「その他」に入れる）。この規模で伏せ値 T = 5 と M-22 の下限 20 を維持する（D-11）。
 - pagePath の形（確認済み）: 記事は「/<記事 ID>/」の形（直近 28 日の上位は /4812/ 780、/4725/ 592、/4686/ 278 など）。記事以外（トップ「/」335、カテゴリ一覧「/category/event/」279）が混ざる。記事以外の判定は 02 §3 と D-05・D-15。
 - Search Console との連携の有無は未確認（Q-09）。
@@ -153,7 +154,7 @@
 | ID | プラグイン | 取得の見込み | 状態 |
 | --- | --- | --- | --- |
 | DS-05 | wp-ulike | いいねボタンは記事ページにある。REST API の wp-ulike/v1 には templates のルートしかなく、いいね数は REST では取れない（D-04 確認済み）。GA4 イベントも送っていない（記事 HTML の gtag は config だけ）。出すならサイト側の変更（カウントを返す REST ルートの追加か GA4 イベントの送信）が必要 | 現状は取得不可（2026-11-03）。Q-10 の 1 |
-| DS-06 | add-to-any | シェアボタンはある。a2a_config に計測の設定はないが、GA4 には `AddToAnyShare` というイベント名で届いている（2026-11-03 確認。直近 90 日で 36 件）。取得は DS-01 の eventName / eventCount で行う。サービス別（Instagram、X など）がイベントパラメータに入っているかは設計で確認する | 取得可、優先度 低（D-09。Q-10 の 2 回答済み） |
+| DS-06 | add-to-any | シェアボタンはある。a2a_config に計測の設定はないが、GA4 には `AddToAnyShare` というイベント名で届いている（2026-11-03 確認。直近 90 日で 36 件）。取得は DS-01 の eventName / eventCount で行う。サービス別（Instagram、X など）は GA4 Data API から取れない（D-09 確認済み） | 取得可、優先度 低、初回対象外（FR-61。D-09。Q-10 の 2 回答済み） |
 | DS-07 | 廃止（2026-11-03） | 公開コメントは 0 件、確認した記事の comment_status は closed。コメント機能は使われていない | 廃止（Q-10 の 3 回答済み） |
 | DS-08 | official-facebook-pixel | Meta 側のデータ。取得しない | 対象外 |
 | DS-09 | spotlight-social-photo-feeds、snow-monkey-forms ほか | アクセス解析の対象データなし。フォームの送信内容は出さない（NFR-32） | 対象外 |
@@ -182,7 +183,7 @@
 - DS-01（GA4）: M-01〜M-03、M-06、M-09〜M-17。M-41 は GA4 にイベントが届いている場合のみ。
 - DS-02（WP REST API、wp/v2 のみ）: M-26、M-30〜M-33、全指標の記事・著者・カテゴリ・タグ次元。
 - 派生（DS-01 + DS-02）: M-18〜M-25、M-27、M-32、M-34。
-- 要確認: DS-04（M-50）。DS-06（M-41）は 2026-11-03 に取得可と確認した（サービス別のパラメータは D-09）。
+- 要確認: DS-04（M-50）。DS-06（M-41）は 2026-11-03 に取得可と確認した（サービス別は取れない。D-09）。初回対象外（FR-61）。
 - 現状は取得不可: DS-05（M-40）。
 - 廃止: DS-07（M-42）。M-04、M-05、M-07、M-08 の廃止に伴い、engagedSessions、engagementRate、bounceRate、averageSessionDuration、totalUsers、newUsers は取得しない。
 - 対象外: DS-03、DS-08、DS-09、M-43。

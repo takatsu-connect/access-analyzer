@@ -7,6 +7,7 @@
   - 2026-11-03: バッチを Python に変更し `packages/shared` を廃止（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。除外リストの変更を SQL エディタに変更（ADR 0005）
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1、W-3、W-8、W-9 を反映（週 1 の `audit.yml`、`apps/batch/certs/`、`supabase/checks/`、Environment の Secret）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`excluded_author` と運用担当の除外の経路を図と表から外した
+  - 2026-11-04: tech-writer の整合確認。§6 の CLAUDE.md への言及を現状に合わせた
 - 参照: 00_overview.md §3〜§5、ADR 0001、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0007、ADR 0009
 
 ## 1. 概要
@@ -96,7 +97,7 @@ flowchart TB
 
 ## 6. リポジトリ構成
 
-1 つのリポジトリに Python のバッチと TypeScript の BI を置く（ADR 0004）。workspace は使わない。CLAUDE.md の「src/、tests/」は次の形に読み替える。
+1 つのリポジトリに Python のバッチと TypeScript の BI を置く（ADR 0004）。workspace は使わない。CLAUDE.md の表にある `packages/shared/` は置かない（ADR 0004）。構成は次のとおり。
 
 ```
 apps/

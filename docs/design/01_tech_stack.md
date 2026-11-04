@@ -7,6 +7,7 @@
   - 2026-11-03: バッチを Python に、BI を TypeScript のままに。`packages/shared` を廃止（ADR 0004）。書き込みを psycopg と専用ロールに（ADR 0009）
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の L-7 と W-1 の表記を反映（`colorama` を `requirements-dev.in` へ、TLS の未確定の書き方）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。除外リストの記述と選ばなかった案の行を外した
+  - 2026-11-04: tech-writer の整合確認。未確定から TLS の基準を外した（第 1 に確定。ADR 0009）
 - 参照: ADR 0001（全体構成）、ADR 0002（WIF）、ADR 0004（言語とフレームワーク）、ADR 0006（配信方式）、ADR 0007（集計の持ち方）、ADR 0009（書き込み経路）
 
 ## 1. 選定の方針
@@ -105,6 +106,6 @@
 - グラフ・UI ライブラリ（2 回目、05_screens.md と同時）。
 - Python と Node.js の正確な版（実装時）。
 - pip-compile のロックを Windows と Linux の両方で使えるか、Dependabot がハッシュ付きのロックを更新できるか（実装時。ADR 0004）。
-- pooler の TLS の基準の段階（第 1 か第 2。実装着手前の確認項目 1）と `executemany` の挙動（実装時。ADR 0009）。
+- `executemany` の挙動（実装時。ADR 0009）。pooler の TLS の基準は第 1（verify-full + 固定した CA）に確定した（確認項目 1。ADR 0009）。
 - Vercel Hobby のビルド時間の月間上限（事実票にない。Q-34 として親に確認を依頼。1 日 1 回 2〜3 分のビルドなら月 90 分程度で、どの上限でも収まる見込み）。
 - Supabase CLI をローカルで動かすために Docker が要る（結合テストと `supabase db push`）。開発環境の前提として docs/operations/ に書く。

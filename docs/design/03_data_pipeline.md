@@ -9,6 +9,7 @@
   - 2026-11-03: バッチを Python に変更（ADR 0004）。書き込みを psycopg と専用ロール `batch_writer` に変更（ADR 0009）。例外とログの規律を Python と psycopg に合わせて作り直し（§14、§15）。`packages/shared` のパスを `apps/batch` と `apps/web` に変更
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-7、L-5〜L-7 を反映（§14 の起動時の処理と分類の規則、§10 の作り直し、§16 の接続文字列の形式と置き場所）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`publish_only` は設定変更後の再ビルドとビルド失敗後の再試行のために残し、理由を直した（§2、§8）。§6 の除外の記述を外した
+  - 2026-11-04: tech-writer の整合確認。Q-12、Q-13 の確定を反映（§2、§14、§16、§17）。§17 の TLS の基準を第 1 に合わせた
 
 ## 1. 全体の流れ
 
@@ -42,7 +43,7 @@ flowchart LR
 
 ## 2. 実行時刻とトリガー
 
-- `schedule`: `cron: '0 8 * * *'`（UTC 08:00 = JST 17:00、FR-70 の仮置き。Q-13 で T を確定したら合わせる）。GA4 の日次データが揃う JST 15:30 より後、NFR-02 の T = 18:00（仮）より前。
+- `schedule`: `cron: '0 8 * * *'`（UTC 08:00 = JST 17:00。FR-70、Q-13 確定）。GA4 の日次データが揃う JST 15:30 より後、NFR-02 の T = 18:00（Q-13 確定）より前。
 - GitHub の cron は遅延・欠落することがあるため、`cron: '0 9 * * *'`（JST 18:00）にも登録し、preflight で「同じ基準日の success があれば終了」とする。2 回目は保険であり、通常は 1 回目で終わる。
 - `workflow_dispatch`: 手動の再実行（FR-70）。入力は `mode`（`daily` / `backfill` / `publish_only`）、`from`、`to`（バックフィル時）。`publish_only` は工程 7（Deploy Hook の呼び出し）だけを行い、設定値や辞書（`ui-text.ts`）の変更後の再ビルド、ビルド失敗後の再試行に使う。データを更新しないので `batch_run` に行を書かない（`pub_meta` の最終更新を変えない。設計レビュー L-7）。
 - 定期実行は main ブランチのワークフローだけが動く（NFR-45 (4)。schedule は既定ブランチでしか動かないが、ジョブ側でも `if: github.ref == 'refs/heads/main'` を付ける）。
@@ -293,7 +294,7 @@ Supabase Free は 1 週間アクセスがないと一時停止するが、日次
 - 接続の設定（ADR 0009「TLS」）: `sslmode` と `sslrootcert` は `psycopg.connect` のキーワードでコードから渡し、`env.py` が `conninfo_to_dict` の実効値を検査する。接続文字列に TLS の設定を書かない。
 - 接続文字列の扱い: `pydantic.SecretStr` で持ち、`psycopg.connect` に渡す直前にだけ `get_secret_value()` を呼ぶ。`repr` に出ない。
 - テスト: 07 U-29、U-30、I-B-11（例外時のログに `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、6 桁以上の数字列、`Traceback` が出ない）。
-- 通知（FR-74）: 通知先は Q-12 で未確定。実装は GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。Q-12 の回答まではワークフロー失敗時の GitHub のメール通知（リポジトリの管理者に届く）で代える。
+- 通知（FR-74）: 通知先は GitHub の失敗通知メール（Q-12 確定。リポジトリの管理者に届く）。あとから Slack や LINE に変えるときは、GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。
 - BI は前回の成功時のデータで表示を続ける（NFR-90）。失敗した日は Deploy Hook を呼ばないので画面は変わらず、FR-02 の表示が「更新が遅れています」になる（§12 のクライアント側の判定）。
 
 ## 15. ログの規律
@@ -344,18 +345,16 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | SUPABASE_ANON_KEY | Vercel 環境変数のみ（`NEXT_PUBLIC_` を付けない） | ビルド時に `pub_*` を読む |
 | VERCEL_DEPLOY_HOOK_URL | GitHub Environment（`production`、main のみ）の Secret | 再ビルドの起動 |
 | LOCAL_BATCH_WRITER_PASSWORD | ローカルの `.env` だけ（CI は実行時に生成する。本番では使わない） | ローカルの `batch_writer` のパスワード（02 §8） |
-| NOTIFY_WEBHOOK_URL など | Actions Secrets | 失敗通知（Q-12 の回答後に名前を決める） |
+| （失敗通知の Secret） | 置かない | 失敗通知は GitHub のメール（Q-12 確定）。Slack や LINE に変えるときに名前を決める |
 | BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行 |
 
 `env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。Environment が使えない場合の代替は ADR 0009「接続文字列のブランチへの束縛」。
 
 ## 17. 未確定
 
-- ADR 0009 の未確定: pooler の TLS の基準の段階（第 1 か第 2。確認項目 1）、`executemany` の挙動、IPv4 での到達（実装時と 07 A-11）。
+- ADR 0009 の未確定: psycopg からの接続、`executemany` の挙動、IPv4 での到達（実装時と 07 A-11）。TLS の基準は第 1（verify-full + 固定した CA）に確定した。
 - 漏えい後の作り直し（§10、06 §3）: `backfill` の upsert で消えない、攻撃者が足した行をどう消すか。`batch_writer` には truncate がない。GA4 から取り直せない期間があるときに値をどう扱うか。手順は docs/operations/ で決める。
 - W-7 の対策が頼るライブラリの挙動（`GRPC_VERBOSITY` の値、fd 2 の塞ぎ方で足りるか）は監査の時点で未確認。07 I-B-11 で確かめる。
-- Q-13: 実行時刻 T（仮 17:00 JST、鮮度 18:00）。cron の遅延を踏まえ、1 回目を 16:30 JST に前倒しする案も依頼者に示す。
-- Q-12: 失敗通知の宛先。
 - D-05 の残り: `/<ID>/<何か>/` の pagePath が実測で現れるか（親が GA4 で確認）。
 - D-03 の残り: `modified_after` が対象サイトの WordPress で使えるか（実装時に 1 回確認。使えなければ §4 の代替）。
 - 全体 × 日 × 流入チャネルの「二次伏せ」で、日によっては 5 区分のうち 2〜3 区分が伏さる見込み（other、referral が小さい）。日別推移には内訳を描かず、期間の構成（FR-13、FR-14）は Q-36 で確定した期間値（G19、G20）で出すことで表示上の問題を避ける（05_screens.md §3）。
