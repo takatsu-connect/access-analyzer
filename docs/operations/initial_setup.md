@@ -59,7 +59,7 @@ gh api -X PUT repos/takatsu-connect/access-analyzer/actions/permissions/fork-pr-
 
 ### 依頼者が GitHub の画面で行うこと
 
-- organization `takatsu-connect` の Settings → Authentication security で「Require two-factor authentication」を有効にする（2026-11-03 時点で未設定）。有効にすると、2 要素認証を設定していないメンバーは organization から外れるので、先に全員の設定を確認する。API からは変更できない。
+- organization `takatsu-connect` の Settings → Authentication security で「Require two-factor authentication」を有効にする（2026-11-04 に依頼者が設定し、API で有効を確認済み。メンバー 2 アカウントとも組織に残っている）。
 - 任意: リポジトリの Settings → Code security で secret scanning の non-provider patterns と validity checks を有効にする。public リポジトリでは無料。
 
 ## 2. GCP: GA4 認証を Workload Identity Federation にする（未実施）
