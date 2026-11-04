@@ -146,6 +146,8 @@ SQL の全文は 02 §6。要点:
 
 実装に入る前に、認証情報なしで証明書の鎖と SAN を確かめる（確認項目 1）。結果に応じて基準の段階を決め、この ADR に記録する。第 1 か第 2 で成立するまで本番に接続しない。
 
+途中経過（2026-11-04、認証情報なしの `openssl s_client` で確認）: TLS 1.3 で接続できた。サーバー証明書の SAN は `*.pooler.supabase.com` と `*.pooler.supabase.co` で、host 名と合う。鎖は Supabase Intermediate 2021 CA から Supabase Root 2021 CA（自己署名）で、公開の CA ではない。証明書の有効期限は 2030-03-11。ダッシュボードの CA で検証できるかは未確認で、それが済むまで基準の段階は確定しない。第 1 基準（verify-full + 固定した CA）で成立する見込み。SSL の強制は公式文書（supabase.com/docs/guides/platform/ssl-enforcement、2026-11-04 確認）によると shared pooler にも効く。
+
 #### CA の失効と交換
 
 CA の失効や交換が起きると、接続は TLS のエラーで失敗し、`sqlstate` のない `OperationalError` として `network` に分類される（03 §14）。ログだけでは一時的な障害と区別できないので、docs/operations/ の手順書に切り分けを書く: 連続して失敗したら確認項目 1 のコマンドで現在の鎖を確かめ、`apps/batch/certs/` の CA で検証できなければ CA を差し替える。証明書の確認で分かった CA の有効期限も手順書に控える。
