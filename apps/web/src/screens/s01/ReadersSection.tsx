@@ -198,7 +198,7 @@ export function ReadersSection({ data, period, site, heat, onHeatChange }: Reade
               total={site.sessions}
             />
             <Notice>{metricNote('M14')}</Notice>
-            <Notice>{t('s01.local.note')}</Notice>
+            <Notice>{t('metric.M14.local.note')}</Notice>
           </>
         )}
         <h4 className={styles.h4}>{t('s01.monthly.heading', { label: t('s01.city.label') })}</h4>

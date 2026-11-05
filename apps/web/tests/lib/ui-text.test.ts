@@ -20,7 +20,6 @@ import {
   RETIRED_MARK,
   RETIRED_METRIC_IDS,
   t,
-  uiText,
 } from '@/lib/ui-text';
 
 // U-19: 辞書の完全性（NFR-97、NFR-99）。
@@ -428,15 +427,5 @@ describe('補助', () => {
       '夕方 16〜19 時',
       '夜 20〜23 時',
     ]);
-  });
-
-  it('古い形の uiText は辞書と同じ文言を返す', () => {
-    expect(uiText.site.title).toBe(t('site.title'));
-    expect(uiText.scaffold.notice).toBe(t('scaffold.notice'));
-    expect(uiText.scaffold.probeIdle).toBe(t('scaffold.probeIdle'));
-    expect(uiText.scaffold.probeToggled).toBe(t('scaffold.probeToggled'));
-    expect(uiText.scaffold.probeButton).toBe(t('scaffold.probeButton'));
-    expect(uiText.notFound.heading).toBe(t('notFound.h1'));
-    expect(uiText.notFound.body).toBe(t('notFound.lead'));
   });
 });

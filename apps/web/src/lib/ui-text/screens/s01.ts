@@ -68,6 +68,5 @@ export const S01_TEXT = {
     '「1 日あたりの平均」は、期間の合計を期間の日数（{days} 日）で割った値です。',
   's01.device.h3': 'どんな端末で読まれたか',
   's01.device.sessions.summary': '詳しく（訪問回数で見る）',
-  's01.local.note': '多くても少なくても良し悪しではありません。',
   's01.newReturning.h3': '初めての人とまた来た人',
 } as const satisfies ScreenTexts<'s01'>;

@@ -461,7 +461,7 @@ const baseDictionary = {
   'metric.M14.label': 'おおよその地域（都道府県・市）',
   'metric.M14.note': '通信会社の仕組み上、実際と違う市になることがあります。',
   'metric.M14.local.label': '地元の読者の目安',
-  'metric.M14.local.note': '高くても低くても良し悪しではありません。',
+  'metric.M14.local.note': '多くても少なくても良し悪しではありません。',
   'metric.M15.label': '初めての人 / また来た人',
   'metric.M15.note': 'スマホでは「初めて」が多めに出ます。',
   'metric.M16.label': 'いつ読まれているか',
@@ -500,12 +500,6 @@ const baseDictionary = {
   'metric.M34.note': 'カテゴリごとの読まれた回数を、月ごとに並べたものです。',
   'metric.M41.label': '（初回対象外）シェア',
   'metric.M41.note': 'シェアのボタンが押された回数です。初回は対象外です。',
-
-  // --- 土台の確認用（仮の画面が使う。本物の画面に置き換えたら消す） ---
-  'scaffold.notice': '画面は準備中です。',
-  'scaffold.probeIdle': '切り替え前の表示です。',
-  'scaffold.probeToggled': '切り替え後の表示です。',
-  'scaffold.probeButton': '表示を切り替える',
 } as const satisfies Readonly<Record<string, string>> & Readonly<Record<RequiredKey, string>>;
 
 /**
@@ -618,23 +612,3 @@ export function metricNote(id: MetricId): string {
 export function heatmapSlotLabels(): string[] {
   return t('heatmap.slots').split(' / ');
 }
-
-/**
- * 土台の画面と E2E が使っている古い形。値は辞書から取る（文言の実体は辞書の 1 か所だけ）。
- * 新しい画面は t() を使う。土台の画面を置き換えたら消す。
- */
-export const uiText = {
-  site: {
-    title: dictionary['site.title'],
-  },
-  scaffold: {
-    notice: dictionary['scaffold.notice'],
-    probeIdle: dictionary['scaffold.probeIdle'],
-    probeToggled: dictionary['scaffold.probeToggled'],
-    probeButton: dictionary['scaffold.probeButton'],
-  },
-  notFound: {
-    heading: dictionary['notFound.h1'],
-    body: dictionary['notFound.lead'],
-  },
-} as const;

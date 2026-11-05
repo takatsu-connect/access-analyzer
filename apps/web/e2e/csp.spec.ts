@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
 
-import { dictionary, t, uiText } from '../src/lib/ui-text';
+import { dictionary, t } from '../src/lib/ui-text';
 
 /**
  * CSP の検証（D-17、07 §6 E-01）。
@@ -187,7 +187,7 @@ test('一覧にないパスは 404 の固定文で、同じヘッダが付く（
     expect.soft(directives, directive).toContain(directive);
   }
 
-  expect.soft(await response.text()).toContain(uiText.notFound.heading);
+  expect.soft(await response.text()).toContain(t('notFound.h1'));
 });
 
 test('更新の状況と共通の説明文は、レイアウトが全ページに 1 つずつ出す（404 を含む）', async ({
