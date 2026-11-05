@@ -95,7 +95,7 @@ const postRow = {
   id,
   title: text,
   url: text,
-  authorSlug: text,
+  authorSlug: text.nullable(),
   authorName: text,
   publishedOn: day,
   isAd: z.boolean(),
@@ -308,7 +308,7 @@ export const activityDataSchema = z.strictObject({
   monthly: z.array(z.strictObject({ month: z.string().regex(/^\d{4}-\d{2}$/), postCount: count })),
   posting: byPeriod(z.strictObject({ postCount: count })),
   authorCounts: byPeriod(
-    z.array(z.strictObject({ name: text, slug: text, postCount: count.min(1) })),
+    z.array(z.strictObject({ name: text, slug: text.nullable(), postCount: count.min(1) })),
   ),
   categoryMix: byPeriod(
     z.array(z.strictObject({ categoryId: id, path: text, postCountPublished: count })),

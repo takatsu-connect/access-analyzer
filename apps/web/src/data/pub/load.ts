@@ -13,7 +13,7 @@ import type { PubCache } from '@/lib/pub-types';
 
 import { createPubClient, type PubClient } from './client';
 import * as schemas from './schemas';
-import type { PubViewName } from './schemas';
+import type { PubReadViewName, PubViewName } from './schemas';
 
 /** 1 回の問い合わせで読む行数（PostgREST の既定の上限）。 */
 export const PAGE_SIZE = 1000;
@@ -29,7 +29,8 @@ export type ViewQuery = {
 export type ViewSource = { select(columns: string): ViewQuery };
 
 export type ViewSpec<Row> = {
-  name: PubViewName;
+  /** 読むビュー。契約として検査するだけのビュー（CONTRACT_ONLY_VIEWS）は、型で弾く。 */
+  name: PubReadViewName;
   schema: z.ZodType<Row>;
   /** 読む列。 */
   columns: readonly string[];
@@ -57,7 +58,7 @@ export class PubReadError extends Error {
 }
 
 function view<Row>(
-  name: PubViewName,
+  name: PubReadViewName,
   schema: z.ZodType<Row> & { shape: Record<string, unknown> },
   orderBy: readonly (keyof Row & string)[],
   open: (client: PubClient) => ViewSource,
@@ -82,7 +83,12 @@ function asSource(builder: { select(columns: string): unknown }): ViewSource {
   return builder as ViewSource;
 }
 
-/** PubCache の項目 → 読むビュー。ビューの名前は、lint（S-02）のために文字列リテラルで書く。 */
+/**
+ * 読むビューの一覧。PubCache の項目 → 読むビュー。ビューの名前は、lint（S-02）のために文字列リテラルで書く。
+ *
+ * ここに置くのは、画面で使うビューだけ。契約として検査するビューの一覧（schemas.ts の PUB_ROW_SCHEMAS）とは別に持つ。
+ * 画面で使わないビュー（CONTRACT_ONLY_VIEWS）は読まない。
+ */
 export const VIEWS = {
   meta: view('pub_meta', schemas.pubMetaSchema, ['base_date'], (c) => asSource(c.from('pub_meta'))),
   periods: view('pub_period', schemas.pubPeriodSchema, ['period_id'], (c) =>
@@ -107,18 +113,6 @@ export const VIEWS = {
   ),
   siteDaily: view('pub_site_daily', schemas.pubSiteDailySchema, ['day'], (c) =>
     asSource(c.from('pub_site_daily')),
-  ),
-  siteDailyChannel: view(
-    'pub_site_daily_channel',
-    schemas.pubSiteDailyChannelSchema,
-    ['day', 'channel'],
-    (c) => asSource(c.from('pub_site_daily_channel')),
-  ),
-  siteDailyDevice: view(
-    'pub_site_daily_device',
-    schemas.pubSiteDailyDeviceSchema,
-    ['day', 'device'],
-    (c) => asSource(c.from('pub_site_daily_device')),
   ),
   sitePeriod: view('pub_site_period', schemas.pubSitePeriodSchema, ['period_id'], (c) =>
     asSource(c.from('pub_site_period')),
@@ -269,7 +263,7 @@ export async function readView<Row>(spec: ViewSpec<Row>, open: () => ViewSource)
   }
 }
 
-/** 全ビューを読む。 */
+/** 読むビュー（VIEWS）をすべて読む。 */
 export async function readAllViews(client: PubClient): Promise<PubCache> {
   const read = <Row>(spec: ViewSpec<Row>): Promise<Row[]> =>
     readView(spec, () => spec.open(client));
@@ -284,8 +278,6 @@ export async function readAllViews(client: PubClient): Promise<PubCache> {
     postCategories,
     postTags,
     siteDaily,
-    siteDailyChannel,
-    siteDailyDevice,
     sitePeriod,
     sitePeriodBreakdown,
     siteHeatmap,
@@ -301,8 +293,6 @@ export async function readAllViews(client: PubClient): Promise<PubCache> {
     read(VIEWS.postCategories),
     read(VIEWS.postTags),
     read(VIEWS.siteDaily),
-    read(VIEWS.siteDailyChannel),
-    read(VIEWS.siteDailyDevice),
     read(VIEWS.sitePeriod),
     read(VIEWS.sitePeriodBreakdown),
     read(VIEWS.siteHeatmap),
@@ -361,8 +351,6 @@ export async function readAllViews(client: PubClient): Promise<PubCache> {
     postCategories,
     postTags,
     siteDaily,
-    siteDailyChannel,
-    siteDailyDevice,
     sitePeriod,
     sitePeriodBreakdown,
     siteHeatmap,
@@ -410,10 +398,6 @@ export const getPostCategories = async (): Promise<T.PubPostCategory[]> =>
   (await loadAll()).postCategories;
 export const getPostTags = async (): Promise<T.PubPostTag[]> => (await loadAll()).postTags;
 export const getSiteDaily = async (): Promise<T.PubSiteDaily[]> => (await loadAll()).siteDaily;
-export const getSiteDailyChannel = async (): Promise<T.PubSiteDailyChannel[]> =>
-  (await loadAll()).siteDailyChannel;
-export const getSiteDailyDevice = async (): Promise<T.PubSiteDailyDevice[]> =>
-  (await loadAll()).siteDailyDevice;
 export const getSitePeriod = async (): Promise<T.PubSitePeriod[]> => (await loadAll()).sitePeriod;
 export const getSitePeriodBreakdown = async (): Promise<T.PubSitePeriodBreakdown[]> =>
   (await loadAll()).sitePeriodBreakdown;

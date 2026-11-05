@@ -1,13 +1,14 @@
 # 04 データ契約（公開ビューと埋め込み JSON）
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-04
+- 更新日: 2026-11-05
 - 関係: ADR 0006（ビルド時生成）、02_data_model.md §4（公開ビュー）、05_screens.md、06_security.md §7、NFR-11、NFR-42、NFR-91、FR-01、FR-03、FR-06
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
   - 2026-11-03: `packages/shared` の廃止に伴いパスを `apps/web/src/lib/` に変更（ADR 0004）。契約の内容は変わらない
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（ArticleDetailData の period から prev* を外す、AuthorPageData の siteMedianPostCount を削除、PostRow の band7 を埋め込まない、一覧の benchmark を n = 30 だけに、ActivityData.authorCounts は 1 本以上の著者だけ。N-1: pub_benchmark_curve と帯の列はビューが可視記事から計算するが列集合は変わらない）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。契約のコメントから除外後と除外込みの区別を外した（型は変えない）
+  - 2026-11-05: 構築 3 の実装を反映（§3.9 にまとめた）。型の正は `apps/web/src/lib/page-data.ts`。区分の名前を `contracts/constants.json` に合わせ、数え始める前に公開した記事の印（`isPreMeasure`、`measureStart`）、著者ページのない著者（`authorSlug` が null）、読み出しの方法（§5）、JSON の大きさの実測（§6）を追記
 
 ## 1. 方針（HTTP API はない）
 
@@ -259,10 +260,26 @@ type Band = 'upper' | 'middle' | 'lower';
 
 `null` の意味は 1 つだけ: **伏せ値**（`pub_*` で null の値）。「該当なし」「まだ比較できません」「前年のデータなし」は、行や期間が**存在しない**か、専用の状態値（`referrer30d.status`、`band = null` は「比較できない」で例外として明記）で表す。画面側の描き分けは 05 §2.3。
 
+### 3.9 構築 3 で確定した差分（2026-11-05）
+
+上の §3.1〜§3.7 の型の記述より、こちらと `apps/web/src/lib/page-data.ts` を正とする。
+
+- 区分の名前は `contracts/constants.json` を正とする。流入チャネルは `'search' | 'social' | 'direct' | 'referral' | 'other'`（上の `Channel` の `'sns'` は古い表記）、地元は `'kawasaki' | 'japan_other' | 'unknown'`（`'jp_other'` は古い表記）。
+- `PageCommon.meta.measureStart`: 読まれた回数を数え始めた日（`'YYYY-MM-DD'`。設定値 `MEASURE_START` = バッチの `BACKFILL_START`。`contracts/constants.json` で突き合わせる）。
+- `Period.id` は選べる期間（`SelectablePeriodId`）だけ。`prev7` / `prev28` / `prev90` は `prevId` の参照先としてだけ現れる。
+- `PostRow.isPreMeasure`: 数え始める前に公開した記事（`publishedOn` < `measureStart`）。この記事は `pv7`、`pv30`、`band30` が null で、`pvTotal` は数え始めてからの合計。画面は null から不在の理由を推測せず、この印で文言を切り替える（advice/2026-11-05-pre-measurement-posts.md）。`pv7` / `pv30` の null は伏せ値ではなく「値がない」（まだその日数がたっていないか、数え始める前に公開した記事）。
+- `PostRow.authorSlug` は `string | null`。著者ページを作るのは slug が `^[a-z0-9-]+$` の著者だけなので（06 §7）、それ以外の著者は null にし、画面は名前をリンクにしない。`ActivityData.authorCounts[].slug` も同じ。一覧の `authors[]` と `AuthorIndexData.authors` は、著者ページのある著者だけ。
+- `ArticleDetailData.cumulative`: 数え始める前に公開した記事は空の配列（曲線を出さない。`pub_article_cumulative` に行がない）。
+- `ArticleDetailData.benchmark` の `p25` / `p50` / `p75` は `(number | null)[]`。母集団が足りない n（ビューに行がない n）は null（伏せ値ではない）。
+- `CategoryData` の `median30` の null は「該当なし」（伏せ値ではない）。
+- 記事ごとの値（`pvByPeriod`、`topIndex`、`topChannelByPeriod`）と `authorCounts` に入れるのは、選べる期間だけ（比較用の `prev*` を入れない。記事では前の期間と比べないため）。集計値（サイト、著者、カテゴリ、タグ、公開本数）は、選べる期間とその `prevId`、`yoyId`。
+- カテゴリの軸の順は、広告の軸（`category_id` が設定値 `AD_CATEGORY_ID` の親カテゴリ）を最後に、ほかの親は `category_id` の昇順。
+- `pub_meta.last_status` は読むが、埋め込まない（画面で使わない）。
+
 ## 4. 型定義（apps/web/src/lib）
 
 - `apps/web/src/lib/pub-types.ts`: 公開ビューの行の型（`PubMeta`、`PubPeriod`、`PubPost`、`PubArticlePeriod`、…）。02 §4 の表と列名・型を一致させ、手書きで固定する。`supabase gen types` の出力と突き合わせるテストを置く（01 §4、07 §3）。
-- `apps/web/src/lib/page-data.ts`: §3 の `PageCommon` と各 `*Data` 型。`zod` スキーマも併置し、ビルド時に組み立てた JSON を一度 `parse` してから埋め込む（列の欠け・型違いをビルド失敗で検出する）。
+- `apps/web/src/lib/page-data.ts`: §3 の `PageCommon` と各 `*Data` 型。`zod` スキーマは `apps/web/src/lib/page-data-schema.ts` に置き（構築 3。クライアントの部品が型だけを読み、`zod` を読み込まないようにするため）、ビルド時に組み立てた JSON を一度 `parse` してから埋め込む（列の欠け・型違いをビルド失敗で検出する）。型とスキーマのずれはコンパイルで検出する。
 - `apps/web/src/lib/ui-text.ts`: 画面の言葉と注記の辞書（05 §2.1）。
 - `apps/web/src/lib/query.ts`: URL クエリの許可リスト検証（§8）。
 - 列指向配列（`pvByPeriod` など）は `posts` の順序に依存する。順序は `post_id` 昇順で固定し、組み立て関数が保証する。
@@ -291,6 +308,14 @@ type Band = 'upper' | 'middle' | 'lower';
 | `getCategoryPeriodAll()` / `getTagPeriodAll()` | ― | 全行 | pub_category_period / pub_tag_period |
 | `getPostingMonthly()` / `getPostingPeriod()` | ― | 全行 | pub_posting_monthly / pub_posting_period |
 | `getBenchmarkCurve()` | ― | scope = all の行（n = 1〜90。母集団 30 未満の n は行がない）。ビューが公開記事から計算した値（02 §4.1） | pub_benchmark_curve |
+
+読み出しの実装（構築 3 で確定）:
+
+- `loadAll()` は、プロセスの中で 1 回だけ読む（モジュール内の Promise を使い回す）。React の `cache()` の範囲は 1 回のレンダリングなので、それだけではページごとに読み直すことになる。ビルドのワーカーが複数なら、ワーカーの数だけ読む。
+- 画面で使うビューだけを読む。`pub_site_daily_channel`、`pub_site_daily_device`、`pub_batch_run` は読まない（行の型とスキーマは、公開ビューの契約の検査のために持つ）。
+- すべてのビューを、主キーの順で 1,000 行ずつ読み、空のページが返ったら終える。サーバー側の上限が 1,000 行より小さく設定されたときに、途中で切れたまま気づかないのを防ぐため。1 回の `loadAll()` は約 80 リクエストになる（§2 の目安の約 40 より多い）。
+- 行は `zod` で検証する。定義にない区分や軸の行があれば、捨てずにビルドを失敗させる。読み出しのエラーに入れるのはビュー名だけ（URL、キー、行の値を出さない）。
+- 公開ビューの列の集合と型は、`tests/snapshots/pub-columns.json`（I-DB-16 のスナップショット）と Vitest で突き合わせる（07 U-20 の `supabase gen types` の代わり）。
 
 組み立て層（`apps/web/src/data/pages/*.ts`）。`PubCache` から各ページの JSON を作り、`zod` で検証して返す。
 
@@ -324,6 +349,8 @@ type Band = 'upper' | 'middle' | 'lower';
 | S-03 記事詳細 | daily ≤ 390 × 4 B ≒ 1.6 KB、cumulative 0.4 KB、benchmark 90 × 3 ≒ 1.5 KB、period 16 × 80 B ≒ 1.3 KB（prev* を含めない）、breakdown 16 × 13 セル ≒ 3.5 KB、その他 ≒ 1.5 KB | **約 10 KB** | 年 +3 KB。50 KB を超える見込みはない |
 | S-05 著者（最大、120 本） | posts 120 × 150 B ≒ 18 KB、pvByPeriod 19 × 120 ≒ 9 KB、topChannel 19 × 120 ≒ 8 KB、breakdown / categoryMix ≒ 8 KB | 約 45 KB（典型は 10 KB） | 記事 +250 B / 本 |
 | S-06 / S-06b / S-07 / S-08 | 期間 × カテゴリ（約 30）またはタグ（約 50） | 各 10〜20 KB | 月 +1 KB |
+
+実測（2026-11-05、構築 3。架空の記事 42 本、選べる期間 17 のフィクスチャ）: どの画面も目安の中（S-01 35 KB、S-02e 21 KB、S-03 最大 11 KB、S-05 最大 29 KB）。ただし `PostRow` は 1 本あたり約 420 B（上の見積もりは 180 B。行ごとにキー名を繰り返すため）で、記事が 225 本になると S-02e は約 99 KB、S-02b は約 87 KB になる見込み。本番のデータで実測してから、下の案に加えて、`PostRow` を列指向にする、URL をパスだけにする、を検討する。
 
 HTML 全体はこれに初期表示の DOM（既定期間 = 直近 28 日の描画分）が加わる。S-02e は上限に近いので、超えたときの順に次の案を用意する。
 

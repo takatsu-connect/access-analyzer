@@ -20,7 +20,7 @@ import {
   listAuthorSlugs,
   listTagIds,
 } from '@/data/pages';
-import { MAX_MONTHS, MEASURE_START } from '@/lib/config';
+import { AD_CATEGORY_ID, MAX_MONTHS, MEASURE_START } from '@/lib/config';
 import { formatPeriodLabel } from '@/lib/format';
 import type { ArticleListKind } from '@/lib/page-data';
 import {
@@ -37,7 +37,16 @@ import {
 } from '@/lib/page-data-schema';
 import type { PubPeriod } from '@/lib/pub-types';
 
-import { BUILT_AT, makeCache, SATO, TANAKA } from './fixture';
+import {
+  addPagelessAuthor,
+  AUTHOR_X,
+  AUTHOR_X_NAME,
+  BUILT_AT,
+  makeCache,
+  MAP_CATEGORY_ID,
+  SATO,
+  TANAKA,
+} from './fixture';
 
 const LIST_KINDS: ArticleListKind[] = ['top', 'new', 'long', 'recent', 'search'];
 
@@ -371,12 +380,12 @@ describe('buildArticleList（S-02）', () => {
 
   it('絞り込みの一覧（カテゴリ、著者の名前順）と分布の 1 行を持つ', () => {
     const data = ids('search');
+    // 著者は、著者ページのある著者だけ（slug が決まった形でない suzuki_jiro は入れない）。
     expect(data.authors).toEqual([
       { slug: SATO, name: 'さとう はなこ' },
-      { slug: 'suzuki_jiro', name: 'すずき じろう' },
       { slug: TANAKA, name: 'たなか たろう' },
     ]);
-    expect(data.categories).toHaveLength(5);
+    expect(data.categories).toHaveLength(6);
     expect(data.categories.find((category) => category.id === 3)).toEqual({
       id: 3,
       name: 'グルメ',
@@ -580,15 +589,145 @@ describe('著者（S-04、S-05）', () => {
   });
 });
 
+describe('著者ページのない著者をリンクにしない', () => {
+  // slug に下線を含む著者（author_x）と、その記事 107 を足した cache。
+  const cache = addPagelessAuthor(makeCache());
+  const sato = { slug: SATO, name: 'さとう はなこ' };
+  const tanaka = { slug: TANAKA, name: 'たなか たろう' };
+
+  it('著者ページを作らず、著者一覧にも入れない', () => {
+    expect(listAuthorSlugs(cache)).toEqual([SATO, TANAKA]);
+    expect(buildAuthorPage(cache, AUTHOR_X, BUILT_AT)).toBeNull();
+    expect(buildAuthorIndex(cache, BUILT_AT).authors.map((author) => author.slug)).toEqual([
+      SATO,
+      TANAKA,
+    ]);
+  });
+
+  it('記事の authorSlug は null。名前は残す', () => {
+    const list = buildArticleList(cache, 'search', BUILT_AT);
+    expect(list.posts.find((post) => post.id === 107)).toMatchObject({
+      authorSlug: null,
+      authorName: AUTHOR_X_NAME,
+    });
+    expect(buildArticleDetail(cache, 107, BUILT_AT)?.post).toMatchObject({
+      authorSlug: null,
+      authorName: AUTHOR_X_NAME,
+    });
+    // 著者ページのある著者は、これまでどおり slug を持つ。
+    expect(list.posts.find((post) => post.id === 102)?.authorSlug).toBe(SATO);
+    expect(buildArticleDetail(cache, 103, BUILT_AT)?.post.authorSlug).toBe(TANAKA);
+  });
+
+  it('どの一覧でも、authorSlug は null か、著者ページのある著者の slug', () => {
+    const allowed = new Set<string | null>([null, ...listAuthorSlugs(cache)]);
+    for (const kind of LIST_KINDS) {
+      const data = buildArticleList(cache, kind, BUILT_AT);
+      expect(data.posts.filter((post) => !allowed.has(post.authorSlug))).toEqual([]);
+    }
+  });
+
+  it('絞り込みの許可リスト（authors）は、著者ページのある著者だけ', () => {
+    expect(buildArticleList(cache, 'search', BUILT_AT).authors).toEqual([sato, tanaka]);
+  });
+
+  it('著者別の公開本数は、行を残して slug を null にする（名前の順のまま）', () => {
+    const data = buildActivity(cache, BUILT_AT);
+    expect(data.authorCounts.last28).toEqual([
+      { name: AUTHOR_X_NAME, slug: null, postCount: 1 },
+      { name: 'さとう はなこ', slug: SATO, postCount: 1 },
+      { name: 'たなか たろう', slug: TANAKA, postCount: 2 },
+    ]);
+    expect(data.authorCounts.last7).toEqual([
+      { name: 'たなか たろう', slug: TANAKA, postCount: 1 },
+    ]);
+  });
+
+  it('著者ページのない著者の slug は、一覧、詳細、投稿活動、著者一覧の JSON に現れない', () => {
+    const pages = [
+      buildArticleList(cache, 'search', BUILT_AT),
+      buildArticleDetail(cache, 107, BUILT_AT),
+      buildActivity(cache, BUILT_AT),
+      buildAuthorIndex(cache, BUILT_AT),
+    ];
+    for (const page of pages) expect(JSON.stringify(page)).not.toContain(AUTHOR_X);
+  });
+
+  it('pub_author に行のない著者の記事も、リンクにしない', () => {
+    const orphan = makeCache();
+    orphan.authors = orphan.authors.filter((author) => author.author_slug !== TANAKA);
+    expect(buildArticleDetail(orphan, 103, BUILT_AT)?.post).toMatchObject({
+      authorSlug: null,
+      authorName: 'たなか たろう',
+    });
+    expect(buildArticleDetail(orphan, 102, BUILT_AT)?.post.authorSlug).toBe(SATO);
+  });
+});
+
 describe('カテゴリ（S-06、S-06b）', () => {
   const cache = makeCache();
+  const parentIds = (axes: { parent: { id: number } }[]) => axes.map((axis) => axis.parent.id);
 
-  it('軸は親の ID の順で、広告を最後に置く', () => {
+  it('軸は親の ID の順で、広告の軸（AD_CATEGORY_ID の親）を最後に置く', () => {
     const data = buildCategories(cache, BUILT_AT);
     expect(data.axes).toEqual([
       { parent: { id: 1, name: '記事' }, children: [{ id: 3, name: 'グルメ' }] },
       { parent: { id: 7, name: 'イベント' }, children: [] },
-      { parent: { id: 5, name: '広告' }, children: [{ id: 6, name: 'PR' }] },
+      // 広告の親より ID が大きくても、広告の前に置く。
+      { parent: { id: MAP_CATEGORY_ID, name: 'マップ' }, children: [] },
+      { parent: { id: AD_CATEGORY_ID, name: '広告' }, children: [{ id: 6, name: 'PR' }] },
+    ]);
+    expect(MAP_CATEGORY_ID).toBeGreaterThan(AD_CATEGORY_ID);
+  });
+
+  it('配下の記事がすべて広告でも、AD_CATEGORY_ID でない親は広告の軸にしない', () => {
+    const allAds = makeCache();
+    // イベント（7）に属する記事（103、106）を、どちらも広告にする。
+    allAds.posts = allAds.posts.map((post) =>
+      post.post_id === 103 || post.post_id === 106 ? { ...post, is_ad: true } : post,
+    );
+    expect(parentIds(buildCategories(allAds, BUILT_AT).axes)).toEqual([
+      1,
+      7,
+      MAP_CATEGORY_ID,
+      AD_CATEGORY_ID,
+    ]);
+  });
+
+  it('配下に広告の記事がなくても、AD_CATEGORY_ID の親は広告の軸', () => {
+    const noAds = makeCache();
+    noAds.posts = noAds.posts.map((post) => ({ ...post, is_ad: false }));
+    noAds.postCategories = noAds.postCategories.filter((link) => link.category_id !== 6);
+    expect(parentIds(buildCategories(noAds, BUILT_AT).axes)).toEqual([
+      1,
+      7,
+      MAP_CATEGORY_ID,
+      AD_CATEGORY_ID,
+    ]);
+  });
+
+  it('AD_CATEGORY_ID の親カテゴリがなければ、広告の軸はない（ID の昇順のまま）', () => {
+    // AD_CATEGORY_ID のカテゴリが、そもそもない。
+    const without = makeCache();
+    without.categories = without.categories.filter(
+      (category) =>
+        category.category_id !== AD_CATEGORY_ID && category.parent_id !== AD_CATEGORY_ID,
+    );
+    expect(parentIds(buildCategories(without, BUILT_AT).axes)).toEqual([1, 7, MAP_CATEGORY_ID]);
+
+    // AD_CATEGORY_ID のカテゴリが、親でなく子カテゴリ。
+    const asChild = makeCache();
+    asChild.categories = asChild.categories.map((category) =>
+      category.category_id === AD_CATEGORY_ID
+        ? { ...category, parent_id: 1, path: '記事 > 広告' }
+        : category,
+    );
+    const axes = buildCategories(asChild, BUILT_AT).axes;
+    expect(parentIds(axes)).toEqual([1, 7, MAP_CATEGORY_ID]);
+    expect(axes[0]?.children.map((child) => child.id).sort((a, b) => a - b)).toEqual([
+      3,
+      6,
+      AD_CATEGORY_ID,
     ]);
   });
 
@@ -612,7 +751,9 @@ describe('カテゴリ（S-06、S-06b）', () => {
       3: { 'm2025-10': 300, 'm2026-10': 175 },
       7: { 'm2026-10': 328 },
     });
-    expect(data.axes).toHaveLength(3);
+    // 軸の順は、カテゴリの画面と同じ（広告の軸が最後）。
+    expect(data.axes).toEqual(buildCategories(cache, BUILT_AT).axes);
+    expect(parentIds(data.axes)).toEqual([1, 7, MAP_CATEGORY_ID, AD_CATEGORY_ID]);
   });
 });
 
@@ -718,6 +859,9 @@ const NULL_ALLOWED = [
   /^period\.[^.]+\.(landingSessions|scrollCount|engagementSeconds)$/,
   // 例外: 比較の相手がない
   /^periods\.\d+\.(prevId|yoyId)$/,
+  // 例外: 著者ページがない著者（リンクにしない）
+  /^(posts\.\d+|post)\.authorSlug$/,
+  /^authorCounts\.[^.]+\.\d+\.slug$/,
   // 例外: 値がない、まだ比較できない
   /^(posts\.\d+|post)\.(pv7|pv30|band30)$/,
   /^categories\.\d+\.parentId$/,
@@ -731,7 +875,12 @@ const NULL_ALLOWED = [
 
 describe('U-21: 埋め込み JSON のスキーマ', () => {
   const cache = makeCache();
+  // 著者ページのない著者（authorSlug と authorCounts[].slug が null）を含む cache。
+  const pageless = addPagelessAuthor(makeCache());
   const pages: [name: string, data: unknown][] = [
+    ['articles/search（著者ページのない著者）', buildArticleList(pageless, 'search', BUILT_AT)],
+    ['articles/107（著者ページのない著者）', buildArticleDetail(pageless, 107, BUILT_AT)],
+    ['activity（著者ページのない著者）', buildActivity(pageless, BUILT_AT)],
     ['dashboard', buildDashboard(cache, BUILT_AT)],
     ...LIST_KINDS.map(
       (kind) => [`articles/${kind}`, buildArticleList(cache, kind, BUILT_AT)] as [string, unknown],
@@ -806,6 +955,20 @@ describe('U-21: 埋め込み JSON のスキーマ', () => {
     expect(articleDetailDataSchema.safeParse({ ...detail, isEvergreen365: null }).success).toBe(
       false,
     );
+  });
+
+  it('著者の slug は null を受け付ける。キーの欠けは受け付けない', () => {
+    const list = buildArticleList(pageless, 'search', BUILT_AT);
+    expect(list.posts.some((post) => post.authorSlug === null)).toBe(true);
+    expect(articleListDataSchema.safeParse(list).success).toBe(true);
+    const withoutSlug = list.posts.map((post) => ({ ...post, authorSlug: undefined }));
+    expect(articleListDataSchema.safeParse({ ...list, posts: withoutSlug }).success).toBe(false);
+
+    const activity = buildActivity(pageless, BUILT_AT);
+    expect(activity.authorCounts.last28?.some((row) => row.slug === null)).toBe(true);
+    expect(activityDataSchema.safeParse(activity).success).toBe(true);
+    const counts = { last28: [{ name: AUTHOR_X_NAME, postCount: 1 }] };
+    expect(activityDataSchema.safeParse({ ...activity, authorCounts: counts }).success).toBe(false);
   });
 
   it('未知のキーを落とさずに失敗させる', () => {

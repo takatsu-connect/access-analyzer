@@ -30,6 +30,7 @@ import {
   byPeriod,
   compareJa,
   dailySeries,
+  pageAuthors,
   pvByPeriodOf,
   rowsOf,
   selectableIds,
@@ -140,12 +141,8 @@ export function buildArticleList(
         parentId: row.parent_id,
         path: row.path,
       })),
-    authors: [...cache.authors]
-      .sort(
-        (a, b) =>
-          compareJa(a.display_name, b.display_name) || (a.author_slug < b.author_slug ? -1 : 1),
-      )
-      .map((row) => ({ slug: row.author_slug, name: row.display_name })),
+    // 絞り込みの許可リスト。著者ページのある著者だけ（posts[].authorSlug に現れる値と同じ集合）。
+    authors: pageAuthors(cache).map((row) => ({ slug: row.author_slug, name: row.display_name })),
     benchmark: benchmark30(cache),
   };
   return articleListDataSchema.parse(data);

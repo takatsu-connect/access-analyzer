@@ -11,6 +11,9 @@ export const SITE_ORIGIN = 'https://takatsu-connect.com';
 /** 読まれた回数を数え始めた日（JST の暦日）。バッチの BACKFILL_START と同じ値。 */
 export const MEASURE_START = '2025-10-08';
 
+/** 広告カテゴリの ID（配下の子カテゴリも広告の軸）。 */
+export const AD_CATEGORY_ID = 188;
+
 /** 流入チャネルの 5 区分。 */
 export const CHANNEL_BUCKETS = ['search', 'social', 'direct', 'referral', 'other'] as const;
 

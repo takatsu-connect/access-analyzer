@@ -251,7 +251,10 @@ export const pubBenchmarkCurveSchema = z.strictObject({
   population_window: text,
 });
 
-/** ビュー名 → 行のスキーマ。スナップショットの全ビューを持つ。 */
+/**
+ * 契約として検査するビューの一覧。ビュー名 → 行のスキーマ。スナップショットの全ビューを持つ。
+ * BI が読むビューの一覧は、これとは別に load.ts の VIEWS が持つ。
+ */
 export const PUB_ROW_SCHEMAS = {
   pub_article_cumulative: pubArticleCumulativeSchema,
   pub_article_daily: pubArticleDailySchema,
@@ -290,6 +293,21 @@ export const PUB_ROW_SCHEMAS = {
 } as const;
 
 export type PubViewName = keyof typeof PUB_ROW_SCHEMAS;
+
+/**
+ * 契約として検査するだけで、BI が読まないビュー。行の型、スキーマ、スナップショットとの突き合わせは残す。
+ *
+ * - pub_batch_run: loadAll() の対象にしていない。
+ * - pub_site_daily_channel、pub_site_daily_device: 画面で使わない（04 §2: S-01 では読まない）。
+ */
+export const CONTRACT_ONLY_VIEWS = [
+  'pub_batch_run',
+  'pub_site_daily_channel',
+  'pub_site_daily_device',
+] as const satisfies readonly PubViewName[];
+
+/** BI が読むビューの名前（契約として検査するビューから、検査だけのビューを除いたもの）。 */
+export type PubReadViewName = Exclude<PubViewName, (typeof CONTRACT_ONLY_VIEWS)[number]>;
 
 // --- 型とスキーマの突き合わせ（コンパイル時） ---
 

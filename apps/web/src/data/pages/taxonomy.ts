@@ -1,6 +1,7 @@
 /**
  * S-06 カテゴリ、S-06b 季節、S-07 タグ（docs/design/04_api.md §3.6）。
  */
+import { AD_CATEGORY_ID } from '@/lib/config';
 import type {
   CategoryAxis,
   CategoryData,
@@ -40,7 +41,8 @@ const SEASONAL_MONTHS = 24;
 /**
  * カテゴリの軸（いちばん上の親と、その配下）。親は category_id の昇順で、広告の軸を最後に置く。
  *
- * 広告の軸の ID は公開ビューにないので、「配下に属する記事がすべて広告」の親を広告の軸とみなす。
+ * 広告の軸は、category_id が設定値（AD_CATEGORY_ID）の親カテゴリ。記事の中身からは推定しない。
+ * その親カテゴリがなければ、広告の軸はない（すべて category_id の昇順）。
  */
 export function categoryAxes(cache: PubCache): CategoryAxis[] {
   const byId = new Map(cache.categories.map((category) => [category.category_id, category]));
@@ -56,22 +58,8 @@ export function categoryAxes(cache: PubCache): CategoryAxis[] {
     return current.category_id;
   };
 
-  const adById = new Map(cache.posts.map((post) => [post.post_id, post.is_ad]));
-  const tally = new Map<number, { ads: number; others: number }>();
-  for (const link of cache.postCategories) {
-    const category = byId.get(link.category_id);
-    const isAd = adById.get(link.post_id);
-    if (category === undefined || isAd === undefined) continue;
-    const root = rootOf(category);
-    const counts = tally.get(root) ?? { ads: 0, others: 0 };
-    if (isAd) counts.ads += 1;
-    else counts.others += 1;
-    tally.set(root, counts);
-  }
-  const isAdAxis = (root: number): boolean => {
-    const counts = tally.get(root);
-    return counts !== undefined && counts.ads > 0 && counts.others === 0;
-  };
+  // rootIds に入るのは親カテゴリだけなので、AD_CATEGORY_ID が子カテゴリの ID なら、どの軸も広告の軸にならない。
+  const isAdAxis = (rootId: number): boolean => rootId === AD_CATEGORY_ID;
 
   const rootIds = [...new Set(cache.categories.map(rootOf))].sort(
     (a, b) => Number(isAdAxis(a)) - Number(isAdAxis(b)) || a - b,

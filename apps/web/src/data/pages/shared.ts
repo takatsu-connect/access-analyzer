@@ -18,7 +18,7 @@ import type {
   SelectablePeriodId,
   WindowId,
 } from '@/lib/page-data';
-import type { PubBenchmarkCurve, PubCache, PubPost } from '@/lib/pub-types';
+import type { PubAuthor, PubBenchmarkCurve, PubCache, PubPost } from '@/lib/pub-types';
 
 // --- 期間 ID ---
 
@@ -120,6 +120,31 @@ export function rowsOf<Row, Key extends keyof Row>(
   value: Row[Key],
 ): readonly Row[] {
   return groupRows(rows, column).get(value) ?? [];
+}
+
+// --- 著者ページ ---
+
+/**
+ * 著者ページのある著者か。ページを作るのは、pub_author にあり、slug が決まった形の著者だけ
+ * （listAuthorSlugs と同じ条件）。
+ */
+export function hasAuthorPage(cache: PubCache, slug: string): boolean {
+  return SLUG_PATTERN.test(slug) && rowsOf(cache.authors, 'author_slug', slug).length > 0;
+}
+
+/** 著者ページへのリンクに使う slug。著者ページのない著者は null（リンクにしない）。 */
+export function authorPageSlug(cache: PubCache, slug: string): string | null {
+  return hasAuthorPage(cache, slug) ? slug : null;
+}
+
+/** 著者ページのある著者。名前の順（同じ名前は slug の順）。 */
+export function pageAuthors(cache: PubCache): PubAuthor[] {
+  return cache.authors
+    .filter((author) => hasAuthorPage(cache, author.author_slug))
+    .sort(
+      (a, b) =>
+        compareJa(a.display_name, b.display_name) || (a.author_slug < b.author_slug ? -1 : 1),
+    );
 }
 
 // --- 区分ごとの値 ---
@@ -245,7 +270,8 @@ export function toPostRow(cache: PubCache, post: PubPost, withTaxonomy: boolean)
     id: post.post_id,
     title: post.title,
     url: post.post_url,
-    authorSlug: post.author_slug,
+    // 著者ページのない著者は、リンクにしない。
+    authorSlug: authorPageSlug(cache, post.author_slug),
     authorName: post.display_name,
     publishedOn: post.published_on,
     isAd: post.is_ad,

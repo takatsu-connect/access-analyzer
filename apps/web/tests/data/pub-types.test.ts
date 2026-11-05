@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import type * as z from 'zod';
 
 import { VIEWS } from '@/data/pub/load';
-import { PUB_ROW_SCHEMAS, type PubViewName } from '@/data/pub/schemas';
+import { CONTRACT_ONLY_VIEWS, PUB_ROW_SCHEMAS, type PubViewName } from '@/data/pub/schemas';
 
 type SnapshotColumn = { column: string; type: string };
 
@@ -72,9 +72,22 @@ describe('公開ビューの列（スナップショットとの突き合わせ�
 describe('読むビューの定義', () => {
   const specs = Object.values(VIEWS);
 
-  it('pub_batch_run 以外の全ビューを読む', () => {
+  it('契約として検査するだけのビューは、画面で使わない 3 つ', () => {
+    expect([...CONTRACT_ONLY_VIEWS].sort()).toEqual([
+      'pub_batch_run',
+      'pub_site_daily_channel',
+      'pub_site_daily_device',
+    ]);
+    // 読まなくても、契約（列の集合と型の検査）の対象には残す。
+    for (const name of CONTRACT_ONLY_VIEWS) expect(viewNames).toContain(name);
+  });
+
+  it('読むビューは、契約として検査するビューから、検査だけのビューを除いたもの', () => {
+    const contractOnly: readonly string[] = CONTRACT_ONLY_VIEWS;
     const read = specs.map((spec) => spec.name).sort();
-    expect(read).toEqual(viewNames.filter((name) => name !== 'pub_batch_run').sort());
+    expect(read).toEqual(viewNames.filter((name) => !contractOnly.includes(name)).sort());
+    expect(read).not.toContain('pub_site_daily_channel');
+    expect(read).not.toContain('pub_site_daily_device');
   });
 
   it.each(specs.map((spec) => [spec.name, spec] as const))(

@@ -3,10 +3,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { createPubClient, PubConfigError } from '@/data/pub/client';
+import { createPubClient, PubConfigError, type PubClient } from '@/data/pub/client';
 import {
   PAGE_SIZE,
   PubReadError,
+  readAllViews,
   readView,
   VIEWS,
   type ViewQuery,
@@ -142,6 +143,51 @@ describe('readView', () => {
     expect(error).toBeInstanceOf(PubReadError);
     expect((error as PubReadError).kind).toBe('shape');
     expect((error as PubReadError).message).toBe('公開ビュー pub_tag の行が、想定した形と違います');
+  });
+});
+
+describe('readAllViews', () => {
+  /** pub_meta だけ 1 行、ほかは 0 行を返す偽のクライアント。問い合わせたビューの名前を asked に残す。 */
+  function fakeClient(asked: string[]): PubClient {
+    const metaRow = {
+      base_date: '2026-11-03',
+      finished_at: '2026-11-04T19:12:34.567891+00:00',
+      mask_threshold: 5,
+      is_stale: false,
+      last_status: 'success',
+    };
+    const from = (name: string): ViewSource => ({
+      select: () => {
+        const query: ViewQuery = {
+          eq: () => query,
+          order: () => query,
+          range: (offset) => {
+            if (offset === 0) asked.push(name);
+            const rows = name === 'pub_meta' && offset === 0 ? [metaRow] : [];
+            return Promise.resolve({ data: rows, error: null });
+          },
+        };
+        return query;
+      },
+    });
+    return { from } as unknown as PubClient;
+  }
+
+  it('読むビュー（VIEWS）だけに問い合わせる。画面で使わないビューは読まない', async () => {
+    const asked: string[] = [];
+    const cache = await readAllViews(fakeClient(asked));
+
+    expect([...asked].sort()).toEqual(
+      Object.values(VIEWS)
+        .map((spec) => spec.name)
+        .sort(),
+    );
+    expect(asked).not.toContain('pub_site_daily_channel');
+    expect(asked).not.toContain('pub_site_daily_device');
+    // PubCache の項目は、読むビューの一覧と同じ。
+    expect(Object.keys(cache).sort()).toEqual(Object.keys(VIEWS).sort());
+    expect(cache).not.toHaveProperty('siteDailyChannel');
+    expect(cache).not.toHaveProperty('siteDailyDevice');
   });
 });
 

@@ -3,7 +3,9 @@
  *
  * 記事 6 本（101 = 数え始める前に公開、105 = 広告）、著者 3 人（1 人は slug が決まった形でなく、記事もない）、
  * タグ 3 つ（203 は記事が 0 本）、期間は last7 / prev7 / last28 / prev28 と月 3 つ。基準日は 2026-11-03。
+ * カテゴリの親は 4 つ（記事、イベント、マップ、広告）。広告の親の ID は設定値（AD_CATEGORY_ID）。
  */
+import { AD_CATEGORY_ID } from '@/lib/config';
 import type {
   PubArticlePeriod,
   PubArticlePeriodBreakdown,
@@ -18,6 +20,11 @@ import type {
 export const BUILT_AT = new Date('2026-11-05T01:02:03Z');
 export const SATO = 'sato-hanako';
 export const TANAKA = 'tanaka-taro';
+/** slug に下線を含む著者。著者ページを作らない。addPagelessAuthor で足す。 */
+export const AUTHOR_X = 'author_x';
+export const AUTHOR_X_NAME = 'こばやし えっくす';
+/** 広告の親より ID の大きい親カテゴリ。広告の軸が、ID の順でなく設定値で最後になることを確かめる。 */
+export const MAP_CATEGORY_ID = AD_CATEGORY_ID + 1;
 const SITE = 'https://takatsu-connect.com';
 
 function post(
@@ -115,6 +122,30 @@ function siteDaily(): PubSiteDaily[] {
   return rows;
 }
 
+/**
+ * 著者ページのない著者（slug に下線を含む author_x）と、その記事 107 を足す。渡した cache を書き換えて返す。
+ * 記事 107 は 2026-10-20 に公開。著者は直近 28 日に 1 本公開している。
+ */
+export function addPagelessAuthor(cache: PubCache): PubCache {
+  cache.authors.push({
+    author_slug: AUTHOR_X,
+    display_name: AUTHOR_X_NAME,
+    author_url: `${SITE}/author/${AUTHOR_X}/`,
+  });
+  cache.posts.push(post(107, [AUTHOR_X, AUTHOR_X_NAME], '2026-10-20', 14, 'mid'));
+  cache.articleSummary.push(summary(107, { pv_7d: 20, pv_total: 33 }));
+  cache.articlePeriod.push(...articlePeriods('last28', { 107: 33 }));
+  cache.authorPeriod.push({
+    author_slug: AUTHOR_X,
+    period_id: 'last28',
+    post_count: 1,
+    pageviews: 33,
+    long_post_count: 0,
+    long_pageviews: 0,
+  });
+  return cache;
+}
+
 export function makeCache(): PubCache {
   const sato: [string, string] = [SATO, 'さとう はなこ'];
   const tanaka: [string, string] = [TANAKA, 'たなか たろう'];
@@ -158,9 +189,10 @@ export function makeCache(): PubCache {
     categories: [
       { category_id: 1, name: '記事', parent_id: null, path: '記事' },
       { category_id: 3, name: 'グルメ', parent_id: 1, path: '記事 > グルメ' },
-      { category_id: 5, name: '広告', parent_id: null, path: '広告' },
-      { category_id: 6, name: 'PR', parent_id: 5, path: '広告 > PR' },
+      { category_id: AD_CATEGORY_ID, name: '広告', parent_id: null, path: '広告' },
+      { category_id: 6, name: 'PR', parent_id: AD_CATEGORY_ID, path: '広告 > PR' },
       { category_id: 7, name: 'イベント', parent_id: null, path: 'イベント' },
+      { category_id: MAP_CATEGORY_ID, name: 'マップ', parent_id: null, path: 'マップ' },
     ],
     tags: [
       { tag_id: 201, name: 'さんぽ' },
@@ -182,8 +214,6 @@ export function makeCache(): PubCache {
       { post_id: 103, tag_id: 202 },
     ],
     siteDaily: siteDaily(),
-    siteDailyChannel: [],
-    siteDailyDevice: [],
     sitePeriod: [
       {
         period_id: 'last7',
@@ -461,7 +491,7 @@ export function makeCache(): PubCache {
         published_post_count_30d: 0,
       },
       {
-        category_id: 5,
+        category_id: AD_CATEGORY_ID,
         period_id: 'last7',
         pageviews: 20,
         post_count_total: 1,

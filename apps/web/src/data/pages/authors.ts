@@ -7,7 +7,7 @@ import { AUTHOR_AXES, CHANNEL_BUCKETS, SNS_BUCKETS } from '@/lib/config';
 import { topChannel } from '@/lib/derive';
 import type { AuthorBreakdown, AuthorIndexData, AuthorPageData, Masked } from '@/lib/page-data';
 import { authorIndexDataSchema, authorPageDataSchema } from '@/lib/page-data-schema';
-import type { PubAuthor, PubCache } from '@/lib/pub-types';
+import type { PubCache } from '@/lib/pub-types';
 
 import {
   benchmark30,
@@ -16,6 +16,7 @@ import {
   byPeriod,
   compareJa,
   comparableIds,
+  pageAuthors,
   pvByPeriodOf,
   rowsOf,
   selectableIds,
@@ -26,17 +27,7 @@ import {
 
 type AxisRow = { axis: string; bucket: string; value: Masked };
 
-/** 著者ページを作れる著者（slug が決まった形のものだけ）。名前の順。 */
-function pageAuthors(cache: PubCache): PubAuthor[] {
-  return cache.authors
-    .filter((author) => SLUG_PATTERN.test(author.author_slug))
-    .sort(
-      (a, b) =>
-        compareJa(a.display_name, b.display_name) || (a.author_slug < b.author_slug ? -1 : 1),
-    );
-}
-
-/** generateStaticParams 用。 */
+/** generateStaticParams 用。著者ページを作るのは、slug が決まった形の著者だけ。 */
 export function listAuthorSlugs(cache: PubCache): string[] {
   return pageAuthors(cache)
     .map((author) => author.author_slug)

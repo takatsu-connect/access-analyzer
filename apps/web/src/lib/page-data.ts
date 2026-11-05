@@ -119,8 +119,8 @@ export type PostRow = {
   id: number;
   title: string;
   url: string;
-  /** href にだけ使う。画面に文字として出さない。 */
-  authorSlug: string;
+  /** href にだけ使う。著者ページがない著者は null。 */
+  authorSlug: string | null;
   authorName: string;
   /** 'YYYY-MM-DD'。 */
   publishedOn: string;
@@ -266,7 +266,7 @@ export type CategoryPeriodValue = {
 };
 
 export type CategoryData = PageCommon & {
-  /** 記事 / イベント / マップ / 広告 の順。 */
+  /** 親の category_id の昇順。広告の軸（category_id が AD_CATEGORY_ID の親）は最後。 */
   axes: CategoryAxis[];
   period: ByPeriod<Record<number, CategoryPeriodValue>>;
 };
@@ -299,7 +299,7 @@ export type ActivityData = PageCommon & {
   /** 'YYYY-MM'。直近 24 か月。 */
   monthly: { month: string; postCount: number }[];
   posting: ByPeriod<{ postCount: number }>;
-  /** 名前の順で固定。期間内に 1 本以上公開した著者だけ。 */
-  authorCounts: ByPeriod<{ name: string; slug: string; postCount: number }[]>;
+  /** 名前の順で固定。期間内に 1 本以上公開した著者だけ。slug は href にだけ使う。著者ページがない著者は null。 */
+  authorCounts: ByPeriod<{ name: string; slug: string | null; postCount: number }[]>;
   categoryMix: ByPeriod<{ categoryId: number; path: string; postCountPublished: number }[]>;
 };

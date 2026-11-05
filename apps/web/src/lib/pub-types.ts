@@ -251,7 +251,10 @@ export type PubBenchmarkCurve = {
 
 // --- 全ビューの全行 ---
 
-/** ビルド時に読んだ公開ビューの全行（04 §5 の loadAll の結果）。 */
+/**
+ * ビルド時に読んだ公開ビューの全行（04 §5 の loadAll の結果）。
+ * 画面で使うビューだけを持つ。pub_site_daily_channel と pub_site_daily_device は読まない（04 §2）。
+ */
 export type PubCache = {
   meta: PubMeta;
   periods: PubPeriod[];
@@ -263,8 +266,6 @@ export type PubCache = {
   postCategories: PubPostCategory[];
   postTags: PubPostTag[];
   siteDaily: PubSiteDaily[];
-  siteDailyChannel: PubSiteDailyChannel[];
-  siteDailyDevice: PubSiteDailyDevice[];
   sitePeriod: PubSitePeriod[];
   sitePeriodBreakdown: PubSitePeriodBreakdown[];
   siteHeatmap: PubSitePeriodHeatmap[];

@@ -5,7 +5,15 @@ import type { ActivityData } from '@/lib/page-data';
 import { activityDataSchema } from '@/lib/page-data-schema';
 import type { PubCache } from '@/lib/pub-types';
 
-import { buildCommon, byPeriod, compareJa, comparableIds, rowsOf, selectableIds } from './shared';
+import {
+  authorPageSlug,
+  buildCommon,
+  byPeriod,
+  compareJa,
+  comparableIds,
+  rowsOf,
+  selectableIds,
+} from './shared';
 
 /** 月ごとの公開本数に出す月の数。 */
 const ACTIVITY_MONTHS = 24;
@@ -52,15 +60,26 @@ export function buildActivity(cache: PubCache, builtAt: Date): ActivityData {
       return row === undefined ? undefined : { postCount: row.post_count };
     }),
     // 期間内に 1 本以上公開した著者だけを、名前の順で。数で並べ替えない。
+    // 著者ページのない著者も行は残し、slug を null にする（リンクにしない）。
     authorCounts: byPeriod(selectableIds(common), (id) =>
       rowsOf(cache.authorPeriod, 'period_id', id)
         .flatMap((row) => {
           const author = authorBySlug.get(row.author_slug);
           return author === undefined || row.post_count < 1
             ? []
-            : [{ name: author.display_name, slug: author.author_slug, postCount: row.post_count }];
+            : [{ author, postCount: row.post_count }];
         })
-        .sort((a, b) => compareJa(a.name, b.name) || (a.slug < b.slug ? -1 : 1)),
+        // 同じ名前の順は、元の slug で決める（slug を null にする前に並べる）。
+        .sort(
+          (a, b) =>
+            compareJa(a.author.display_name, b.author.display_name) ||
+            (a.author.author_slug < b.author.author_slug ? -1 : 1),
+        )
+        .map(({ author, postCount }) => ({
+          name: author.display_name,
+          slug: authorPageSlug(cache, author.author_slug),
+          postCount,
+        })),
     ),
     categoryMix: byPeriod(comparable, (id) => {
       const rows = rowsOf(cache.categoryPeriod, 'period_id', id).filter(
