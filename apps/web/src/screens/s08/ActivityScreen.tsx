@@ -7,7 +7,7 @@ import { Notice, StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { AuthorLink } from '@/components/SiteLinks';
 import { usePeriod } from '@/components/usePeriod';
-import { share } from '@/lib/derive';
+import { monthProgress, share } from '@/lib/derive';
 import { formatNumber, formatShare, formatYearMonth } from '@/lib/format';
 import type { ActivityData } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
@@ -43,9 +43,10 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
   const prevPosting = prevId === null ? undefined : data.posting[prevId];
 
   // --- 月ごとの公開本数。新しい月を上にする ---
-  const unconfirmed = new Set<string>(
+  // 公開本数は月末で固まるので、「途中まで」を添えるのは、まだ終わっていない月だけ。
+  const inProgress = new Set<string>(
     data.periods
-      .filter((item) => item.kind === 'month' && !item.isConfirmed)
+      .filter((item) => item.kind === 'month' && monthProgress(item) === 'inProgress')
       .map((item) => item.id),
   );
   const countByMonth = new Map(data.monthly.map((item) => [item.month, item.postCount]));
@@ -54,7 +55,7 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
     .reverse()
     .map(({ month, postCount }) => {
       const name = formatYearMonth(month);
-      const label = unconfirmed.has(`m${month}`)
+      const label = inProgress.has(`m${month}`)
         ? t('period.month.unconfirmed', { label: name })
         : name;
       const yoy = countByMonth.get(yoyOf(month)) ?? null;

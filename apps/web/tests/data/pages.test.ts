@@ -81,7 +81,7 @@ describe('buildCommon', () => {
     expect(byId.get('m2026-11')).toMatchObject({
       kind: 'month',
       start: '2026-11-01',
-      end: '2026-11-30',
+      end: '2026-11-03',
       isConfirmed: false,
       prevId: 'm2026-10',
       yoyId: null,

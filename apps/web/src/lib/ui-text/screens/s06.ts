@@ -44,12 +44,13 @@ export const S06_TEXT = {
   's06b.cell': '{month} {category}: {count} 回',
   's06b.cell.yoy': '{text}。{label} {diff}',
   's06b.cell.noYoy': '{text}。{absent}',
+  's06b.settling': '月末から 1 週間ほどは、あとで増えることがあります',
   's06b.cell.unconfirmed': '{text}。月が終わると、去年の同じ月と比べた数字が出ます',
   's06b.cell.note': '{text}。{note}',
   // 数え始めた月は、月の途中からの数字（助言 2026-11-05 §8）。
   's06b.partial': '{month}は {day} 日からの数字です',
   's06b.partial.note':
-    '読まれた回数を数え始めたのが{date}なので、{month}は {day} 日からの数字です。この月と比べるときは、そのぶんを差し引いて見てください。',
+    '読まれた回数を数え始めたのが {date}なので、{month}は {day} 日からの数字です。この月と比べるときは、そのぶんを差し引いて見てください。',
   's06b.table.summary': '同じ数字を表で見る',
   's06b.table.caption': '月ごと、カテゴリごとの読まれた回数の表',
 } as const satisfies ScreenTexts<'s06' | 's06b'>;

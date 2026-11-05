@@ -179,7 +179,10 @@ const baseDictionary = {
   'period.last90': '直近 90 日',
   'period.month': '月',
   'period.month.select': '年月を選ぶ',
+  // 月の途中（基準日の属する月）。
   'period.month.unconfirmed': '{label}（途中まで）',
+  // 月は終わったが、月末から 7 日たつまでは数字を取り直している。
+  'period.month.settling': '{label}（集計中）',
   'compare.withRatio': '{diff}（{ratio}）',
   'compare.prevWindow': '前の {days} 日と比べて',
   'compare.prevMonth': '前の月と比べて',

@@ -8,6 +8,7 @@ import {
   formatDuration,
   formatMonthDay,
   formatNumber,
+  formatMonthWithProgress,
   formatPeriodLabel,
   formatRatio,
   formatShare,
@@ -99,6 +100,16 @@ describe('formatPeriodLabel', () => {
   it('形の違う ID は例外', () => {
     expect(() => formatPeriodLabel('m2026-13')).toThrow(RangeError);
     expect(() => formatPeriodLabel('prev28' as 'last28')).toThrow(RangeError);
+  });
+});
+
+describe('formatMonthWithProgress', () => {
+  it('月の途中は「途中まで」、月が終わって確定する前は「集計中」、確定した月はそのまま', () => {
+    expect(formatMonthWithProgress('2026 年 11 月', 'inProgress')).toBe(
+      '2026 年 11 月（途中まで）',
+    );
+    expect(formatMonthWithProgress('2026 年 10 月', 'settling')).toBe('2026 年 10 月（集計中）');
+    expect(formatMonthWithProgress('2026 年 9 月', 'confirmed')).toBe('2026 年 9 月');
   });
 });
 

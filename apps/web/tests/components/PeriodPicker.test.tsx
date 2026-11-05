@@ -72,6 +72,19 @@ describe('PeriodPicker と URL の状態', () => {
     ]);
   });
 
+  it('月が終わって確定する前は「集計中」、月の途中は「途中まで」と添える', () => {
+    const periods = PERIODS.map((period) =>
+      period.id === 'm2026-10' ? { ...period, isConfirmed: false } : period,
+    );
+    render(<PeriodPicker periods={periods} value="last28" onChange={() => undefined} />);
+    const select = screen.getByLabelText('月') as HTMLSelectElement;
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      '年月を選ぶ',
+      '2026 年 11 月（途中まで）',
+      '2026 年 10 月（集計中）',
+    ]);
+  });
+
   it('URL の値を、マウント後に読む', () => {
     window.history.replaceState(null, '', '/?p=last7');
     render(<PeriodScreen />);

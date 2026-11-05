@@ -10,9 +10,16 @@ import { cx } from '@/components/class-names';
 import { Details } from '@/components/Details';
 import { Notice, StateMessage } from '@/components/Notice';
 import { useQueryState } from '@/components/useQueryState';
-import { compare, splitYmd } from '@/lib/derive';
-import type { Comparison } from '@/lib/derive';
-import { formatDate, formatDiff, formatNumber, formatRatio, formatYearMonth } from '@/lib/format';
+import { compare, monthProgress, splitYmd } from '@/lib/derive';
+import type { Comparison, MonthProgress } from '@/lib/derive';
+import {
+  formatDate,
+  formatDiff,
+  formatMonthWithProgress,
+  formatNumber,
+  formatRatio,
+  formatYearMonth,
+} from '@/lib/format';
 import type { MonthId, SeasonalData } from '@/lib/page-data';
 import type { QueryAllow } from '@/lib/query';
 import { t } from '@/lib/ui-text';
@@ -90,12 +97,13 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   const wideMonths = data.months.slice(-WIDE_MONTHS);
   const narrowMonths = data.months.slice(-NARROW_MONTHS);
 
-  // 途中までの月（まだ終わっていない月）。
-  const unconfirmed = new Set<string>(
+  // 月の状態。途中の月（inProgress）と、月は終わったが数字を取り直している月（settling）を分ける。
+  const progressByMonth = new Map<string, MonthProgress>(
     data.periods
-      .filter((item) => item.kind === 'month' && !item.isConfirmed)
-      .map((item) => item.id),
+      .filter((item) => item.kind === 'month')
+      .map((item) => [item.id, monthProgress(item)]),
   );
+  const progressOf = (month: MonthId): MonthProgress => progressByMonth.get(month) ?? 'confirmed';
   // 数え始めた月。月の途中から数えているときだけ、注記を添える。
   const start = splitYmd(data.meta.measureStart);
   const startMonth: MonthId = `m${start.year}-${String(start.month).padStart(2, '0')}`;
@@ -113,15 +121,15 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   const describe = (category: Category | undefined, month: MonthId | undefined): string => {
     if (category === undefined || month === undefined) return '';
     const label = longLabel(month);
-    const isUnconfirmed = unconfirmed.has(month);
+    const progress = progressOf(month);
     const value = valueOf(category, month);
     const text = t('s06b.cell', {
-      month: isUnconfirmed ? t('period.month.unconfirmed', { label }) : label,
+      month: formatMonthWithProgress(label, progress),
       category: category.name,
       count: formatNumber(value),
     });
     // 途中までの月は、去年の 1 か月分と比べない（月が終わってから比べる）。
-    if (isUnconfirmed) return t('s06b.cell.unconfirmed', { text });
+    if (progress === 'inProgress') return t('s06b.cell.unconfirmed', { text });
     const yoyMonth = yoyOf(month);
     const withYoy = data.months.includes(yoyMonth)
       ? t('s06b.cell.yoy', {
@@ -131,14 +139,20 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
         })
       : t('s06b.cell.noYoy', { text, absent: t('absent.yoy') });
     const touchesStart = isPartialStart && (month === startMonth || yoyMonth === startMonth);
-    return touchesStart ? t('s06b.cell.note', { text: withYoy, note: partialText }) : withYoy;
+    const withStart = touchesStart
+      ? t('s06b.cell.note', { text: withYoy, note: partialText })
+      : withYoy;
+    // 月は終わったが、月末から 1 週間ほどは数字を取り直している。
+    return progress === 'settling'
+      ? t('s06b.cell.note', { text: withStart, note: t('s06b.settling') })
+      : withStart;
   };
 
   /** 最初に選んでおく月: 終わっている月のうち、いちばん新しい月。 */
   const defaultMonthIndex = (months: readonly MonthId[]): number => {
     for (let index = months.length - 1; index >= 0; index -= 1) {
       const month = months[index];
-      if (month !== undefined && !unconfirmed.has(month)) return index;
+      if (month !== undefined && progressOf(month) !== 'inProgress') return index;
     }
     return Math.max(0, months.length - 1);
   };
@@ -260,9 +274,7 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
                   {[...wideMonths].reverse().map((month) => (
                     <tr key={month}>
                       <th scope="row" className={cx(parts.cell, parts.nowrap)}>
-                        {unconfirmed.has(month)
-                          ? t('period.month.unconfirmed', { label: shortLabel(month) })
-                          : shortLabel(month)}
+                        {formatMonthWithProgress(shortLabel(month), progressOf(month))}
                       </th>
                       {categories.map((category) => (
                         <td key={category.id} className={cx(parts.cell, parts.numeric)}>

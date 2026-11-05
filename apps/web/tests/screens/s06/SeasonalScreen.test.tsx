@@ -110,11 +110,31 @@ describe('S-06b 月ごと × カテゴリ', () => {
     );
   });
 
+  it('月は終わったが集計中の月は、去年と比べたうえで、あとで増えることを添える', () => {
+    const data = built();
+    const settling: SeasonalData = {
+      ...data,
+      periods: data.periods.map((period) =>
+        period.id === 'm2026-10' ? { ...period, isConfirmed: false } : period,
+      ),
+    };
+    const { container } = render(<SeasonalScreen data={settling} />);
+    const wide = view(container, 'wide');
+
+    clickCell(wide, 1, 1);
+
+    const text = fixedRow(wide);
+    expect(text).toContain('2026 年 10 月（集計中） イベント:');
+    expect(text).toContain('去年の同じ月と比べて');
+    expect(text).toContain('月末から 1 週間ほどは、あとで増えることがあります');
+    expect(text).not.toContain('途中まで');
+  });
+
   it('数え始めた月が月の途中からなら、図の下に注記を出す', () => {
     const { container } = render(<SeasonalScreen data={built()} />);
 
     expect(container.textContent).toContain(
-      '読まれた回数を数え始めたのが2025 年 10 月 8 日なので、2025 年 10 月は 8 日からの数字です。',
+      '読まれた回数を数え始めたのが 2025 年 10 月 8 日なので、2025 年 10 月は 8 日からの数字です。',
     );
   });
 

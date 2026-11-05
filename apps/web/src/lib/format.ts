@@ -7,6 +7,7 @@
  * - 形の違う値は例外にする（「NaN」や壊れた日付を画面に出さない）。
  */
 import { splitYmd, todayJst } from '@/lib/derive/dates';
+import type { MonthProgress } from '@/lib/derive/periods';
 import type { SelectablePeriodId } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
@@ -111,6 +112,16 @@ function toInteger(value: number): number {
 /** 3 桁ごとに区切る。0 以上の整数を受け取る。 */
 function groupDigits(absolute: number): string {
   return String(absolute).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/**
+ * 月の名前に、状態を添える。月の途中は「（途中まで）」、月は終わったが数字を取り直している間は
+ * 「（集計中）」。確定した月はそのまま。
+ */
+export function formatMonthWithProgress(label: string, progress: MonthProgress): string {
+  if (progress === 'inProgress') return t('period.month.unconfirmed', { label });
+  if (progress === 'settling') return t('period.month.settling', { label });
+  return label;
 }
 
 /** 「4,210」。小数は四捨五入する。負の数は U+2212 を付ける。 */

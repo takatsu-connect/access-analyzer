@@ -16,4 +16,6 @@ export { fold6, HEATMAP_DAYS, HEATMAP_HOURS, HEATMAP_SLOTS } from './heatmap';
 export { safeExternalUrl } from './links';
 export { compare, share, shareOf, tenOf } from './numbers';
 export type { Comparison } from './numbers';
+export { monthProgress } from './periods';
+export type { MonthProgress } from './periods';
 export { isDelayed } from './status';

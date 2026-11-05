@@ -7,6 +7,7 @@ import {
   fold6,
   isDelayed,
   latestConfirmedDay,
+  monthProgress,
   monthStart,
   safeExternalUrl,
   share,
@@ -225,6 +226,26 @@ describe('日付の計算', () => {
     expect(unconfirmedFrom('2026-11-02')).toBe('2026-10-31');
     expect(latestConfirmedDay('2026-11-02')).toBe('2026-10-30');
     expect(diffDays(unconfirmedFrom('2026-11-02'), latestConfirmedDay('2026-11-02'))).toBe(1);
+  });
+});
+
+describe('monthProgress', () => {
+  it('確定した月は confirmed', () => {
+    expect(monthProgress({ end: '2026-09-30', isConfirmed: true })).toBe('confirmed');
+  });
+
+  it('月末まで日がそろっていて、まだ確定していない月は settling', () => {
+    expect(monthProgress({ end: '2026-10-31', isConfirmed: false })).toBe('settling');
+    // うるう年の 2 月の末日。
+    expect(monthProgress({ end: '2028-02-29', isConfirmed: false })).toBe('settling');
+    // 年をまたぐ月末。
+    expect(monthProgress({ end: '2026-12-31', isConfirmed: false })).toBe('settling');
+  });
+
+  it('end が月末より前（基準日の属する月）は inProgress', () => {
+    expect(monthProgress({ end: '2026-11-04', isConfirmed: false })).toBe('inProgress');
+    expect(monthProgress({ end: '2028-02-28', isConfirmed: false })).toBe('inProgress');
+    expect(monthProgress({ end: '2026-11-01', isConfirmed: false })).toBe('inProgress');
   });
 });
 

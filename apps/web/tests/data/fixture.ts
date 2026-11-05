@@ -165,7 +165,8 @@ export function makeCache(): PubCache {
       period('prev28', 'window', '2026-09-09', '2026-10-06'),
       period('m2025-10', 'month', '2025-10-01', '2025-10-31', true),
       period('m2026-10', 'month', '2026-10-01', '2026-10-31', true),
-      period('m2026-11', 'month', '2026-11-01', '2026-11-30'),
+      // 基準日の属する月の end_date は、基準日（バッチの period.py と同じ）。
+      period('m2026-11', 'month', '2026-11-01', '2026-11-03'),
     ],
     authors: [
       { author_slug: TANAKA, display_name: tanaka[1], author_url: `${SITE}/author/${TANAKA}/` },

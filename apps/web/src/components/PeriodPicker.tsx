@@ -1,6 +1,7 @@
 'use client';
 
-import { formatDateRange } from '@/lib/format';
+import { monthProgress } from '@/lib/derive';
+import { formatDateRange, formatMonthWithProgress } from '@/lib/format';
 import type { Period, SelectablePeriodId } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
@@ -59,9 +60,7 @@ export function PeriodPicker({ periods, value, onChange }: PeriodPickerProps) {
               </option>
               {months.map((period) => (
                 <option key={period.id} value={period.id}>
-                  {period.isConfirmed
-                    ? period.label
-                    : t('period.month.unconfirmed', { label: period.label })}
+                  {formatMonthWithProgress(period.label, monthProgress(period))}
                 </option>
               ))}
             </select>

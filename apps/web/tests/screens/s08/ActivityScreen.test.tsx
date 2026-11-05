@@ -89,6 +89,22 @@ describe('S-08 投稿活動', () => {
     expect(container.textContent).toContain('細い枠: 去年の同じ月の本数');
   });
 
+  it('終わった月には、確定の前でも「途中まで」を添えない（公開本数は月末で固まる）', () => {
+    const data = built();
+    const settling: ActivityData = {
+      ...data,
+      periods: data.periods.map((period) =>
+        period.id === 'm2026-10' ? { ...period, isConfirmed: false } : period,
+      ),
+    };
+    const { container } = render(<ActivityScreen data={settling} />);
+
+    const october = container.querySelector('li[data-month="2026-10"]');
+    expect(october?.textContent).toContain('2026 年 10 月');
+    expect(october?.textContent).not.toContain('途中まで');
+    expect(october?.textContent).not.toContain('集計中');
+  });
+
   it('月ごとの公開本数と同じ値の表がある', () => {
     render(<ActivityScreen data={built()} />);
 
