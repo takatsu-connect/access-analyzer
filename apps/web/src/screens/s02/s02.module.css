@@ -1,0 +1,111 @@
+/* S-02（記事一覧の 5 画面）で使う見た目。色は基調色の濃淡とグレーだけ（05 §2.4）。 */
+
+/* 件数の切り替え（S-02a、S-02c）。ボタンの見た目は PeriodPicker とそろえる。 */
+.count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+}
+
+.countLabel {
+  color: var(--color-text-muted);
+}
+
+.button {
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* 選んでいる印は、色だけでなく、太字と下の線でも伝える。 */
+.button[aria-pressed='true'] {
+  border-color: var(--shade-5);
+  background: var(--shade-1);
+  box-shadow: inset 0 -3px 0 var(--shade-5);
+  font-weight: 700;
+}
+
+.button:disabled {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* 絞り込み（S-02e）。狭い画面は 1 列、広い画面は 2 列。横にはみ出さない。 */
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+}
+
+@media (min-width: 600px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--font-size-sm);
+}
+
+.fieldLabel {
+  color: var(--color-text-muted);
+}
+
+/* 文字の大きさは 1rem（スマホで入力欄に触れたときに、画面が拡大されないように）。 */
+.input,
+.select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-md);
+}
+
+.clear {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* 件数と、並びの説明。 */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-size-sm);
+}
+
+.resultCount {
+  margin: 0;
+  font-weight: 700;
+}
+
+.sortFixed {
+  margin: 0;
+  color: var(--color-text-muted);
+}

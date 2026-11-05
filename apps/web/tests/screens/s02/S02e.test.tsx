@@ -1,0 +1,310 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import { sortArticleRows } from '@/components/ArticleTable';
+import { S02eScreen } from '@/screens/s02/S02eScreen';
+
+import { makePost } from '../../components/fixtures';
+import { SATO, TANAKA } from '../../data/fixture';
+
+import { cellText, headers, listData, makeListData, rowTitles, setUrl } from './helpers';
+
+/** 公開日の新しい順（フィクスチャの 6 本。広告の記事 105 を含む）。 */
+const BY_PUBLISHED = ['記事 104', '記事 103', '記事 105', '記事 106', '記事 102', '記事 101'];
+
+function sortGroup(): HTMLElement | null {
+  return screen.queryByRole('group', { name: '並び' });
+}
+
+function queryParam(name: string): string | null {
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+/** 検索の確かめ用。タイトルの英字と仮名に、全角と半角、大文字と小文字を混ぜてある。 */
+function searchData() {
+  return makeListData({
+    posts: [
+      makePost({ id: 401, title: 'Cafe めぐり', publishedOn: '2026-10-04' }),
+      makePost({ id: 402, title: 'ＣＡＦＥ 特集', publishedOn: '2026-10-03' }),
+      makePost({ id: 403, title: 'カフェの朝', publishedOn: '2026-10-02' }),
+      makePost({ id: 404, title: '溝の口の朝市', publishedOn: '2026-10-01' }),
+    ],
+    pvByPeriod: { last28: [40, 30, 20, 10] },
+  });
+}
+
+beforeEach(() => {
+  setUrl('/articles');
+});
+
+describe('S-02e 記事を探す', () => {
+  it('見出し、期間、絞り込み、件数、7 つの列を描く', () => {
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('記事を探す');
+    expect(screen.getByRole('group', { name: '期間' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: '絞り込み' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('6 件');
+    expect(headers(container)).toEqual([
+      '記事',
+      'ライター',
+      '公開日',
+      '読まれた回数（この期間）',
+      '最初の 1 週間',
+      '最初の 1 か月',
+      'カテゴリ',
+    ]);
+    expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+    expect(cellText(container, '記事 101', 'カテゴリ')).toBe('記事 > グルメ');
+    expect(cellText(container, '記事 106', '読まれた回数（この期間）')).toBe('200');
+  });
+
+  it('絞り込みの選択肢は、埋め込んだ一覧にあるものだけ', () => {
+    render(<S02eScreen data={listData('search')} />);
+    const options = (label: string): string[] =>
+      [...screen.getByLabelText(label).querySelectorAll('option')].map(
+        (option) => option.textContent ?? '',
+      );
+    expect(options('カテゴリ')).toEqual([
+      'すべて',
+      ...listData('search').categories.map((category) => category.path),
+    ]);
+    expect(options('カテゴリ')).toContain('記事 > グルメ');
+    // 著者ページのある著者だけ。名前の順。
+    expect(options('ライター')).toEqual(['すべて', 'さとう はなこ', 'たなか たろう']);
+    expect(options('公開年月')).toEqual([
+      'すべて',
+      '2026 年 11 月',
+      '2026 年 10 月',
+      '2026 年 9 月',
+      '2026 年 3 月',
+      '2026 年 1 月',
+      '2025 年 6 月',
+    ]);
+  });
+
+  describe('並び', () => {
+    it('絞り込みなしのときは並びの UI がなく、URL に sort=pv を付けても公開日の新しい順', () => {
+      setUrl('/articles?sort=pv');
+      const { container } = render(<S02eScreen data={listData('search')} />);
+      expect(sortGroup()).toBeNull();
+      expect(screen.queryByRole('button', { name: /多い順|新しい順/ })).toBeNull();
+      expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+    });
+
+    it('親カテゴリだけのときも並びの UI がなく、sort=pv が効かない。子に属する記事も出す', () => {
+      setUrl('/articles?cat=1&sort=pv');
+      const { container } = render(<S02eScreen data={listData('search')} />);
+      expect(sortGroup()).toBeNull();
+      // 親「記事」の配下の「記事 > グルメ」に属する 3 本。読まれた回数の順なら 101 が先頭になる。
+      expect(rowTitles(container)).toEqual(['記事 104', '記事 102', '記事 101']);
+      expect(screen.getByRole('status').textContent).toBe('3 件');
+    });
+
+    it('検索語だけのときも並びの UI がない', () => {
+      setUrl('/articles?q=記事&sort=pv');
+      const { container } = render(<S02eScreen data={listData('search')} />);
+      expect(sortGroup()).toBeNull();
+      expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+    });
+
+    it('子カテゴリで絞ると、多い順の UI が出て、sort が効く', () => {
+      setUrl('/articles?cat=3&sort=pv');
+      const { container } = render(<S02eScreen data={listData('search')} />);
+      expect(sortGroup()).not.toBeNull();
+      expect(
+        screen.getByRole('button', { name: '読まれた回数の多い順' }).getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(rowTitles(container)).toEqual(['記事 101', '記事 102', '記事 104']);
+    });
+
+    it('著者で絞ると、多い順の UI が出る。選ぶと並びが変わり、URL に書き戻す', () => {
+      const { container } = render(<S02eScreen data={listData('search')} />);
+      expect(sortGroup()).toBeNull();
+      fireEvent.change(screen.getByLabelText('ライター'), { target: { value: TANAKA } });
+      expect(sortGroup()).not.toBeNull();
+      expect(rowTitles(container)).toEqual(['記事 104', '記事 103', '記事 106']);
+
+      fireEvent.click(screen.getByRole('button', { name: '読まれた回数の多い順' }));
+      expect(rowTitles(container)).toEqual(['記事 106', '記事 103', '記事 104']);
+      expect(queryParam('author')).toBe(TANAKA);
+      expect(queryParam('sort')).toBe('pv');
+
+      // 絞り込みを外すと、並びの UI が消えて、公開日の新しい順に戻る。
+      fireEvent.change(screen.getByLabelText('ライター'), { target: { value: '' } });
+      expect(sortGroup()).toBeNull();
+      expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+      expect(window.location.search).toBe('');
+    });
+
+    it('公開年月で絞ると、多い順の UI が出る', () => {
+      setUrl('/articles?ym=2026-10');
+      const { container } = render(<S02eScreen data={listData('search')} />);
+      expect(sortGroup()).not.toBeNull();
+      expect(rowTitles(container)).toEqual(['記事 103']);
+    });
+
+    it('並びの選択肢は、公開日の新しい順と多い順の 3 つだけ（少ない順はない）', () => {
+      for (const query of [`author=${SATO}`, 'cat=3', 'ym=2026-10']) {
+        setUrl(`/articles?${query}`);
+        const { container, unmount } = render(<S02eScreen data={listData('search')} />);
+        const names = [...(sortGroup()?.querySelectorAll('button') ?? [])].map(
+          (button) => button.textContent,
+        );
+        expect(names).toEqual([
+          '公開日の新しい順',
+          '読まれた回数の多い順',
+          '最初の 1 週間の多い順',
+          '最初の 1 か月の多い順',
+        ]);
+        expect(container.textContent).not.toContain('少ない');
+        expect(container.textContent).not.toMatch(/昇順|古い順/);
+        unmount();
+      }
+    });
+
+    it('最初の 1 週間 / 1 か月の多い順では、値のない記事を 0 として扱わず末尾にまとめる', () => {
+      setUrl(`/articles?author=${SATO}&sort=pv7`);
+      const first = render(<S02eScreen data={listData('search')} />);
+      // 記事 101 は数え始める前（値なし）。記事 105 は 30 回、記事 102 は 120 回。
+      expect(rowTitles(first.container)).toEqual(['記事 102', '記事 105', '記事 101']);
+      expect(cellText(first.container, '記事 101', '最初の 1 週間')).toBe('数え始める前');
+      first.unmount();
+
+      setUrl('/articles?cat=3&sort=pv30');
+      const second = render(<S02eScreen data={listData('search')} />);
+      // 値のない 2 本（まだ 30 日たっていない 104、数え始める前の 101）は、公開日の新しい順で末尾。
+      expect(rowTitles(second.container)).toEqual(['記事 102', '記事 104', '記事 101']);
+    });
+
+    it('sortArticleRows は、値のない行を 0 より後ろに置く', () => {
+      const rows = [
+        { post: makePost({ id: 1, title: 'なし', pv7: null, isPreMeasure: true }) },
+        { post: makePost({ id: 2, title: 'ゼロ', pv7: 0 }) },
+        { post: makePost({ id: 3, title: '多い', pv7: 9 }) },
+      ];
+      expect(sortArticleRows(rows, 'pv7').map((row) => row.post.title)).toEqual([
+        '多い',
+        'ゼロ',
+        'なし',
+      ]);
+    });
+  });
+
+  describe('検索語', () => {
+    it('入力のたびに絞り込み、URL の q に書き戻す', () => {
+      const { container } = render(<S02eScreen data={searchData()} />);
+      const input = screen.getByLabelText('タイトルに含む語');
+      fireEvent.change(input, { target: { value: '朝' } });
+      expect(rowTitles(container)).toEqual(['カフェの朝', '溝の口の朝市']);
+      expect(queryParam('q')).toBe('朝');
+      expect(screen.getByRole('status').textContent).toBe('2 件');
+
+      fireEvent.change(input, { target: { value: '朝市' } });
+      expect(rowTitles(container)).toEqual(['溝の口の朝市']);
+      expect(queryParam('q')).toBe('朝市');
+
+      fireEvent.change(input, { target: { value: '' } });
+      expect(rowTitles(container)).toHaveLength(4);
+      expect(window.location.search).toBe('');
+    });
+
+    it('大文字と小文字、全角と半角を区別しない', () => {
+      const { container } = render(<S02eScreen data={searchData()} />);
+      const input = screen.getByLabelText('タイトルに含む語');
+      for (const text of ['cafe', 'CAFE', 'ｃａｆｅ', 'Ｃafe']) {
+        fireEvent.change(input, { target: { value: text } });
+        expect(rowTitles(container)).toEqual(['Cafe めぐり', 'ＣＡＦＥ 特集']);
+      }
+      fireEvent.change(input, { target: { value: 'ｶﾌｪ' } });
+      expect(rowTitles(container)).toEqual(['カフェの朝']);
+    });
+
+    it('URL の q を読んで、入力欄に入れる。打った文字の末尾の空白は消さない', () => {
+      setUrl('/articles?q=CAFE');
+      const { container } = render(<S02eScreen data={searchData()} />);
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      expect(input.value).toBe('CAFE');
+      expect(rowTitles(container)).toEqual(['Cafe めぐり', 'ＣＡＦＥ 特集']);
+
+      fireEvent.change(input, { target: { value: 'cafe ' } });
+      expect(input.value).toBe('cafe ');
+      expect(queryParam('q')).toBe('cafe');
+      fireEvent.change(input, { target: { value: 'cafe め' } });
+      expect(rowTitles(container)).toEqual(['Cafe めぐり']);
+    });
+
+    it('条件に合う記事がなければ、その旨の文を出す', () => {
+      const { container } = render(<S02eScreen data={searchData()} />);
+      fireEvent.change(screen.getByLabelText('タイトルに含む語'), { target: { value: '温泉' } });
+      expect(screen.getByRole('status').textContent).toBe('0 件');
+      expect(screen.getByText(/^条件に合う記事はありません。/)).toBeTruthy();
+      expect(container.querySelector('table')).toBeNull();
+    });
+  });
+
+  it('許可リストにない cat、author、ym は無視する', () => {
+    setUrl('/articles?cat=999&author=nobody&ym=1999-01');
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+    expect(screen.getByLabelText<HTMLSelectElement>('カテゴリ').value).toBe('');
+    expect(screen.getByLabelText<HTMLSelectElement>('ライター').value).toBe('');
+    expect(screen.getByLabelText<HTMLSelectElement>('公開年月').value).toBe('');
+    expect(sortGroup()).toBeNull();
+  });
+
+  it('形式に合わない値と、著者ページのない著者も無視する', () => {
+    setUrl('/articles?cat=3%20or%201&author=suzuki_jiro&ym=2026-13');
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+    expect(sortGroup()).toBeNull();
+  });
+
+  it('カテゴリ、著者、公開年月を重ねて絞れる。親カテゴリは配下の子の記事を含む', () => {
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    const adParent = listData('search').categories.find((category) => category.path === '広告');
+    fireEvent.change(screen.getByLabelText('カテゴリ'), {
+      target: { value: String(adParent?.id) },
+    });
+    expect(rowTitles(container)).toEqual(['記事 105']);
+
+    fireEvent.change(screen.getByLabelText('カテゴリ'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('ライター'), { target: { value: SATO } });
+    expect(rowTitles(container)).toEqual(['記事 102', '記事 101']);
+    fireEvent.change(screen.getByLabelText('公開年月'), { target: { value: '2026-01' } });
+    expect(rowTitles(container)).toEqual(['記事 102']);
+    expect(screen.getByRole('status').textContent).toBe('1 件');
+    expect(window.location.search).toBe(`?cat=3&author=${SATO}&ym=2026-01`);
+  });
+
+  it('「条件を消す」で絞り込みと並びを戻す。期間は残す', () => {
+    setUrl(`/articles?p=last7&cat=3&author=${SATO}&q=101&sort=pv`);
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    expect(rowTitles(container)).toEqual(['記事 101']);
+
+    fireEvent.click(screen.getByRole('button', { name: '条件を消す' }));
+    expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+    expect(window.location.search).toBe('?p=last7');
+    expect(screen.getByLabelText<HTMLInputElement>('タイトルに含む語').value).toBe('');
+    expect(screen.getByLabelText<HTMLSelectElement>('カテゴリ').value).toBe('');
+    expect(sortGroup()).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('6 件');
+  });
+
+  it('期間を変えると、読まれた回数（この期間）の値が変わる。並びは変わらない', () => {
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    fireEvent.click(screen.getByRole('button', { name: '直近 7 日' }));
+    expect(cellText(container, '記事 106', '読まれた回数（この期間）')).toBe('90');
+    expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+  });
+
+  it('100 件を超えるときは 50 件ずつ表示する', () => {
+    const posts = [...Array(120).keys()].map((index) =>
+      makePost({ id: 700 + index, title: `まち歩きの記事 ${index + 1}` }),
+    );
+    const { container } = render(<S02eScreen data={makeListData({ posts })} />);
+    expect(screen.getByRole('status').textContent).toBe('120 件');
+    expect(rowTitles(container)).toHaveLength(50);
+    fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
+    expect(rowTitles(container)).toHaveLength(100);
+  });
+});
