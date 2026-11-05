@@ -14,6 +14,16 @@ const CONTRACTS_PATH = path.resolve(
 const contracts = JSON.parse(readFileSync(CONTRACTS_PATH, 'utf8')) as Record<string, unknown>;
 const exported = config as Record<string, unknown>;
 
+// BI だけの設定値（バッチは使わないので JSON にはない）。値は 05 §2.3〜§2.7 と 04 §3.1。
+// config.ts に定数を足すときは、JSON かこの一覧のどちらかに足す。どちらにもない定数は下の検査で落ちる。
+const BI_ONLY_CONSTANTS: Record<string, unknown> = {
+  RATIO_MIN_DENOMINATOR: 20,
+  UNCONFIRMED_DAYS: 3,
+  STALE_AFTER_DAYS: 3,
+  DEFAULT_PERIOD_ID: 'last28',
+  MAX_MONTHS: 36,
+};
+
 describe('contracts/constants.json と src/lib/config.ts', () => {
   it('JSON に定数がある', () => {
     expect(Object.keys(contracts).length).toBeGreaterThan(0);
@@ -38,8 +48,21 @@ describe('contracts/constants.json と src/lib/config.ts', () => {
     );
   });
 
-  it('config.ts に JSON にない定数がない', () => {
+  it('config.ts の定数は、JSON にあるものと、BI だけの設定値の一覧にあるものだけ', () => {
     const constantNames = Object.keys(exported).filter((name) => /^[A-Z0-9_]+$/.test(name));
-    expect(constantNames.sort()).toEqual(Object.keys(contracts).sort());
+    expect(constantNames.sort()).toEqual(
+      [...Object.keys(contracts), ...Object.keys(BI_ONLY_CONSTANTS)].sort(),
+    );
   });
+
+  it('BI だけの設定値は、JSON の定数と名前が重ならない', () => {
+    expect(Object.keys(BI_ONLY_CONSTANTS).filter((name) => name in contracts)).toEqual([]);
+  });
+
+  it.each(Object.entries(BI_ONLY_CONSTANTS))(
+    'BI だけの設定値 %s が設計の値と同じ',
+    (key, value) => {
+      expect(exported[key]).toBe(value);
+    },
+  );
 });

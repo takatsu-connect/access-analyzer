@@ -55,6 +55,25 @@ export const WINDOW_PERIOD_IDS = [
   'prev90',
 ] as const;
 
+// --- BI だけの設定値 ---
+// contracts/constants.json にはない（バッチは使わない）。名前を足すときは、
+// tests/lib/contracts.test.ts の BI_ONLY_CONSTANTS にも足す。
+
+/** 比率（%）、変化率、「10 人中 ◯人」を出す分母の下限（05 §2.3、NFR-96）。 */
+export const RATIO_MIN_DENOMINATOR = 20;
+
+/** あとで増えることがある日数。基準日から 2 日前までの 3 日分（05 §2.4）。 */
+export const UNCONFIRMED_DAYS = 3;
+
+/** 今日 − 基準日 がこの日数以上なら「更新が遅れています」を出す（05 §2.7、U-25）。 */
+export const STALE_AFTER_DAYS = 3;
+
+/** 既定の期間（05 §2.5）。 */
+export const DEFAULT_PERIOD_ID = 'last28';
+
+/** 選べる月の上限（04 §3.1）。 */
+export const MAX_MONTHS = 36;
+
 export type ChannelBucket = (typeof CHANNEL_BUCKETS)[number];
 export type SnsBucket = (typeof SNS_BUCKETS)[number];
 export type DeviceBucket = (typeof DEVICE_BUCKETS)[number];
