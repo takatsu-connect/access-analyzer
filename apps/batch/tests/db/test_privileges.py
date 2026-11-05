@@ -1,7 +1,6 @@
 """I-DB-01、02、03、15、16 の一部、18: 権限、RLS、_mask 列（07 §4）。"""
 
 import json
-import os
 import re
 from pathlib import Path
 
@@ -9,6 +8,8 @@ import httpx
 import psycopg
 import pytest
 from psycopg import errors, sql
+
+from support.localenv import local_setting
 
 pytestmark = pytest.mark.db
 
@@ -553,9 +554,7 @@ def test_i_db_18_8_9_routines_sequences_membership(admin: Admin) -> None:
         where grantee = 'batch_writer'
         """,
     )
-    assert not _rows(
-        admin, "select 1 from pg_auth_members where member = 'batch_writer'::regrole"
-    )
+    assert not _rows(admin, "select 1 from pg_auth_members where member = 'batch_writer'::regrole")
 
 
 def test_i_db_18_as_batch_writer(batch_writer_url: str, admin_url: str) -> None:
@@ -612,8 +611,8 @@ def test_i_db_18_as_batch_writer(batch_writer_url: str, admin_url: str) -> None:
 
 def test_i_db_01_postgrest_layer() -> None:
     """anon キーで PostgREST から読む。pub_ だけが見え、internal には届かない。"""
-    url = os.environ.get("SUPABASE_LOCAL_API_URL")
-    key = os.environ.get("SUPABASE_LOCAL_ANON_KEY")
+    url = local_setting("SUPABASE_LOCAL_API_URL")
+    key = local_setting("SUPABASE_LOCAL_ANON_KEY")
     if not url or not key:
         pytest.skip("SUPABASE_LOCAL_API_URL / SUPABASE_LOCAL_ANON_KEY がない")
     assert httpx.URL(url).host in {"localhost", "127.0.0.1"}
