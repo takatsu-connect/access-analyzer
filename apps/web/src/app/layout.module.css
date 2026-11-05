@@ -8,3 +8,22 @@
 .main:focus {
   outline: none;
 }
+
+/*
+ * main の外に置く共通の部品（前に DataStatus、後に CommonNotes）。
+ * 幅と左右の余白を main とそろえ、本文と同じ列に並べる。
+ */
+.beforeMain,
+.afterMain {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+.beforeMain {
+  padding-top: var(--space-4);
+}
+
+.afterMain {
+  padding-bottom: var(--space-4);
+}

@@ -8,6 +8,9 @@
  *   scripts/check-forbidden-words.mjs がコメントも見る）。GA4 の API 名は括弧の中にだけ書く。
  *   語の一覧と検査は tests/lib/ui-text.test.ts（U-19）にある。
  * - 文言は仮の初期値を含む（Q-29 の文言確認、計測開始前の記事の助言 §9 の採否で差し替える）。
+ * - 画面ごとの文言は src/lib/ui-text/screens/ のファイル（s01.ts など）に足す。このファイルの
+ *   辞書にまとめて入るので、t() の型と U-19 の検査は、どちらのキーにも同じように効く。
+ *   このファイルに置くのは、複数の画面と共通の部品が使う文言。
  */
 import type {
   Band,
@@ -19,6 +22,14 @@ import type {
   SnsBucket,
   WindowId,
 } from '@/lib/page-data';
+
+import { S01_TEXT } from './ui-text/screens/s01';
+import { S02_TEXT } from './ui-text/screens/s02';
+import { S03_TEXT } from './ui-text/screens/s03';
+import { S05_TEXT } from './ui-text/screens/s05';
+import { S06_TEXT } from './ui-text/screens/s06';
+import { S07_TEXT } from './ui-text/screens/s07';
+import { S08_TEXT } from './ui-text/screens/s08';
 
 /** 辞書に名称と注記を持つ指標（M-01〜M-27、M-30〜M-34、M-41）。 */
 export const METRIC_IDS = [
@@ -89,7 +100,8 @@ type RequiredKey =
   | `freshness.${Freshness}`
   | `period.${WindowId}`;
 
-export const dictionary = {
+/** 辞書の本体。複数の画面と共通の部品が使う文言（画面ごとの文言は screens/ のファイル）。 */
+const baseDictionary = {
   // --- サイト、ナビゲーション、フッタ（05 §1、§2.7） ---
   // 名称は Q-23 で未確定。05 §2.7 の仮の名称を使う。
   'site.title': '高津コネクト アクセス BI',
@@ -253,12 +265,29 @@ export const dictionary = {
   'chart.tap.hint': 'グラフの日付をタップすると、その日の数字に変わります',
   'chart.fixedRow': '{date}: {label} {value}（前の期間の同じ日: {prev}）',
   'chart.fixedRow.single': '{date}: {label} {value}',
+  // ここから、グラフ部品が props で受ける文言（05 §2.8。仮の初期値）。
+  // LineChart: 公開本数の添え書き（publishedText）と、週別の固定行（fixedRowText）。
+  'chart.fixedRow.published': '。この日に {n} 本公開',
+  'chart.fixedRow.week': '{range}: {label} {value}（前の期間の同じ週: {prev}）',
+  'chart.fixedRow.week.single': '{range}: {label} {value}',
+  // HBar: 数と構成比（valueWithShare）、比較相手の添え書き（compare.text）。
+  'hbar.valueWithShare': '{n}（{share}）',
+  'hbar.compare.prev': '前: {share}',
   'legend.current': 'この期間',
   'legend.prev': '前の期間',
   'legend.unconfirmed': '薄い色の日はあとで増えることがあります',
   'legend.masked': '— 伏せ値',
   'legend.heatmap': '読まれた回数が多い時間ほど濃い色',
   'legend.published': '公開した日',
+  // HBar の比較相手の凡例。サイト全体との比較は s05.referrer.legend を使う。
+  'legend.compare.prev': '細い枠: 前の期間',
+  // Curve の凡例の「この記事」。帯は metric.M19.label、点線は metric.M27.label、
+  // 横軸の「n 日目」は absent.dayN を使う（同じ意味のキーを 2 つ持たない）。
+  'legend.curve.post': 'この記事',
+  // Heatmap: 固定行の上の案内（hint）と、固定行の文（cellText）。
+  'heatmap.tap.hint': 'マスをタップすると、その時間の数字に変わります',
+  'heatmap.fixedRow': '{row} {col}: {label} {value}',
+  'heatmap.fixedRow.masked': '{row} {col}: {label} —（伏せ値）',
   'heatmap.slots':
     '深夜 0〜3 時 / 早朝 4〜7 時 / 朝 8〜11 時 / 昼 12〜15 時 / 夕方 16〜19 時 / 夜 20〜23 時',
   'heat.avg': '1 日あたりの平均',
@@ -475,6 +504,53 @@ export const dictionary = {
   'scaffold.probeToggled': '切り替え後の表示です。',
   'scaffold.probeButton': '表示を切り替える',
 } as const satisfies Readonly<Record<string, string>> & Readonly<Record<RequiredKey, string>>;
+
+/**
+ * 辞書の部品。本体（このファイル）と、画面ごとのファイル（src/lib/ui-text/screens/）。
+ * 画面ごとのファイルを足すときは、ここと、下の dictionary の両方に足す
+ * （片方だけだと tests/lib/ui-text.test.ts が落ちる）。
+ */
+export const dictionaryParts = {
+  base: baseDictionary,
+  s01: S01_TEXT,
+  s02: S02_TEXT,
+  s03: S03_TEXT,
+  s05: S05_TEXT,
+  s06: S06_TEXT,
+  s07: S07_TEXT,
+  s08: S08_TEXT,
+} as const;
+
+type DictionaryParts = typeof dictionaryParts;
+
+/** 部品のどれかにあるキー（部品ごとに分けて集める）。 */
+type KeysOfAny<Part> = Part extends unknown ? keyof Part : never;
+
+/** 2 つ以上の部品にあるキー。なければ never。 */
+type DuplicateKey = {
+  [Name in keyof DictionaryParts]: keyof DictionaryParts[Name] &
+    KeysOfAny<DictionaryParts[Exclude<keyof DictionaryParts, Name>]>;
+}[keyof DictionaryParts];
+
+type MustBeNever<Key extends never> = Key;
+
+/**
+ * 同じキーが 2 か所にあると、ここがコンパイルエラーになる（エラーの文に、重なったキーが出る）。
+ * 後ろの部品が前の文言を黙って上書きするのを防ぐ。
+ */
+export type NoDuplicateUiTextKey = MustBeNever<DuplicateKey>;
+
+/** 画面に出す文言のすべて。部品を 1 つにまとめたもの。 */
+export const dictionary = {
+  ...dictionaryParts.base,
+  ...dictionaryParts.s01,
+  ...dictionaryParts.s02,
+  ...dictionaryParts.s03,
+  ...dictionaryParts.s05,
+  ...dictionaryParts.s06,
+  ...dictionaryParts.s07,
+  ...dictionaryParts.s08,
+} as const;
 
 type Dictionary = typeof dictionary;
 

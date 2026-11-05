@@ -39,6 +39,16 @@ export function formatMonthDay(ymd: string): string {
   return t('format.monthDay', { month, day });
 }
 
+/**
+ * 「2026/10/20」。表の公開日のように、幅の狭い列に使う短い形。年を省かない。
+ * 月と日は 2 桁にそろえる（行ごとに幅が変わらず、狭い画面で 2 行に折れない）。
+ */
+export function formatDateShort(ymd: string): string {
+  const { year, month, day } = splitYmd(ymd);
+  const twoDigits = (value: number): string => String(value).padStart(2, '0');
+  return `${year}/${twoDigits(month)}/${twoDigits(day)}`;
+}
+
 /** 「10 月 6 日〜11 月 2 日」。年をまたぐときは、両方に年を付ける。 */
 export function formatDateRange(start: string, end: string): string {
   const sameYear = splitYmd(start).year === splitYmd(end).year;

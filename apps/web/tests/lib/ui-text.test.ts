@@ -12,6 +12,7 @@ import {
   DEFERRED_MARK,
   DEFERRED_METRIC_IDS,
   dictionary,
+  dictionaryParts,
   heatmapSlotLabels,
   METRIC_IDS,
   metricLabel,
@@ -112,6 +113,51 @@ const PRE_MEASURE_KEYS = [
   's05.summary.b.preMeasure',
   'notes.band.detail',
 ];
+
+// グラフ部品が props で受ける文言（05 §2.8）。帯と真ん中の記事の凡例は metric.M19.label と
+// metric.M27.label、横軸の「n 日目」は absent.dayN を使う。
+const CHART_KEYS = [
+  'chart.fixedRow.published',
+  'chart.fixedRow.week',
+  'chart.fixedRow.week.single',
+  'hbar.valueWithShare',
+  'hbar.compare.prev',
+  'legend.compare.prev',
+  's05.referrer.legend',
+  'legend.curve.post',
+  'metric.M19.label',
+  'metric.M27.label',
+  'absent.dayN',
+  'heatmap.tap.hint',
+  'heatmap.fixedRow',
+  'heatmap.fixedRow.masked',
+];
+
+// 画面ごとのファイル（src/lib/ui-text/screens/）と、そのキーが始まる接頭辞。
+const SCREEN_FILE_PREFIXES: Record<string, readonly string[]> = {
+  s01: ['s01.'],
+  s02: ['s02.', 's02a.', 's02b.', 's02c.', 's02d.', 's02e.'],
+  s03: ['s03.'],
+  s05: ['s04.', 's05.'],
+  s06: ['s06.', 's06b.'],
+  s07: ['s07.', 's07b.'],
+  s08: ['s08.'],
+};
+
+const parts = dictionaryParts as Record<string, Record<string, string>>;
+
+/** 2 つ以上の部品にあるキー。 */
+function duplicateKeys(dictionaries: readonly Record<string, string>[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const part of dictionaries) {
+    for (const key of Object.keys(part)) {
+      if (seen.has(key)) duplicates.add(key);
+      seen.add(key);
+    }
+  }
+  return [...duplicates];
+}
 
 // 05 §1 の画面（S-09 は初回対象外）。
 const SCREEN_IDS = [
@@ -224,6 +270,10 @@ describe('辞書の完全性（U-19）', () => {
     expect(keys).toContain(key);
   });
 
+  it.each(CHART_KEYS)('グラフ部品に渡す文言のキー %s がある', (key) => {
+    expect(keys).toContain(key);
+  });
+
   it.each(SCREEN_IDS)('画面 %s に名前と h1 がある', (screen) => {
     expect(keys).toContain(`${screen}.name`);
     expect(keys).toContain(`${screen}.h1`);
@@ -255,6 +305,36 @@ describe('辞書の完全性（U-19）', () => {
   it('空の文言がない', () => {
     expect(entries.filter(([, text]) => text.trim() === '').map(([key]) => key)).toEqual([]);
   });
+});
+
+describe('辞書の部品（本体と、画面ごとのファイル。U-19）', () => {
+  it('部品は、本体と画面ごとの 7 ファイル', () => {
+    expect(Object.keys(parts)).toEqual(['base', ...Object.keys(SCREEN_FILE_PREFIXES)]);
+  });
+
+  it('同じキーが 2 か所にない（後ろの部品が前の文言を上書きしない）', () => {
+    expect(duplicateKeys(Object.values(parts))).toEqual([]);
+  });
+
+  it('重なりの検査が空振りしていない', () => {
+    expect(duplicateKeys([{ 'a.b': 'x' }, {}, { 'a.b': 'y', 'a.c': 'z' }])).toEqual(['a.b']);
+  });
+
+  it('部品のキーと文言がすべて辞書に入っている（上の U-19 の検査が、画面ごとのファイルにも当たる）', () => {
+    const merged = Object.values(parts).flatMap((part) => Object.entries(part));
+    expect(merged).toHaveLength(entries.length);
+    expect(Object.fromEntries(merged)).toEqual(dictionary);
+  });
+
+  it.each(Object.entries(SCREEN_FILE_PREFIXES))(
+    'screens/%s.ts のキーは、その画面の接頭辞で始まる',
+    (file, prefixes) => {
+      const outside = Object.keys(parts[file] ?? {}).filter(
+        (key) => !prefixes.some((prefix) => key.startsWith(prefix)),
+      );
+      expect(outside).toEqual([]);
+    },
+  );
 });
 
 describe('辞書の言葉の規則（U-19）', () => {

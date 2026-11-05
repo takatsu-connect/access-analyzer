@@ -51,8 +51,12 @@
   stroke-linecap: butt;
 }
 
+/*
+ * あとで増えることがある日の線。背景の帯（--shade-1）の上で読めるよう、帯より 2 段濃くする。
+ * 前期間の線と同じ濃さになるが、前期間は点線なので線種で区別できる。
+ */
 .unconfirmedLine {
-  stroke: var(--shade-2);
+  stroke: var(--shade-3);
 }
 
 .axisLabel,

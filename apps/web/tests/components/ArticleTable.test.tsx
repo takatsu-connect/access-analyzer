@@ -106,6 +106,23 @@ describe('ArticleTable（U-24）', () => {
     });
   });
 
+  it('公開日は「2026/10/20」の短い形（年を省かない）で、time 要素が元の日付を持つ', () => {
+    const { container } = render(<ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} />);
+    const times = bodyRows(container).map((row) => row.querySelector('time'));
+    expect(times.map((item) => item?.textContent)).toEqual([
+      '2026/10/20',
+      '2026/10/30',
+      '2025/09/01',
+      '2026/08/15',
+    ]);
+    expect(times.map((item) => item?.getAttribute('datetime'))).toEqual([
+      '2026-10-20',
+      '2026-10-30',
+      '2025-09-01',
+      '2026-08-15',
+    ]);
+  });
+
   it('sortable が false のとき、並びの UI がなく、渡した順のまま描く（sort を無視する）', () => {
     const { container } = render(
       <ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} sort="pv" />,

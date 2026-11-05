@@ -1,12 +1,11 @@
 import Link from 'next/link';
 
-import { CommonNotes } from '@/components/CommonNotes';
 import { t } from '@/lib/ui-text';
 
 import styles from './not-found.module.css';
 
 // 404 は固定文だけを出す（05 §10、06 §7、NFR-91）。内部の情報を出さない。
-// 共通の説明（CommonNotes）を、ほかのページと同じ位置に置く。
+// 共通の説明（CommonNotes）と更新の状況（DataStatus）は、レイアウトがほかのページと同じ位置に出す。
 export default function NotFound() {
   return (
     <>
@@ -35,7 +34,6 @@ export default function NotFound() {
           </Link>
         </li>
       </ul>
-      <CommonNotes />
     </>
   );
 }

@@ -4,7 +4,7 @@ import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { safeExternalUrl } from '@/lib/derive';
-import { formatDate, formatNumber } from '@/lib/format';
+import { formatDateShort, formatNumber } from '@/lib/format';
 import type { Channel, Masked, PostRow } from '@/lib/page-data';
 import type { SortKey } from '@/lib/query';
 import { t } from '@/lib/ui-text';
@@ -262,7 +262,8 @@ export function ArticleTable({
           </AuthorLink>
         );
       case 'publishedOn':
-        return <time dateTime={post.publishedOn}>{formatDate(post.publishedOn)}</time>;
+        // 狭い画面で 2 行に折れないよう、短い形（2026/10/20）で出す。
+        return <time dateTime={post.publishedOn}>{formatDateShort(post.publishedOn)}</time>;
       case 'pageviews':
         return row.pageviews === undefined ? t('absent.na') : <MaskedCell value={row.pageviews} />;
       case 'recent7':

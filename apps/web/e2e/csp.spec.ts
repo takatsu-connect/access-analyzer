@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
 
-import { uiText } from '../src/lib/ui-text';
+import { dictionary, t, uiText } from '../src/lib/ui-text';
 
 /**
  * CSP の検証（D-17、07 §6 E-01）。
@@ -187,6 +187,40 @@ test('一覧にないパスは 404 の固定文で、同じヘッダが付く（
   }
 
   expect.soft(await response.text()).toContain(uiText.notFound.heading);
+});
+
+test('更新の状況と共通の説明文は、レイアウトが全ページに 1 つずつ出す（404 を含む）', async ({
+  page,
+}) => {
+  // DataStatus の文の、日付を差し込んだあとに続く部分。
+  const statusTail = dictionary['status.asOf'].split(/\{[A-Za-z]+\}/).at(-1) ?? '';
+  expect(statusTail.length).toBeGreaterThan(0);
+
+  for (const url of ['/', '/no-such-page']) {
+    await page.goto(url);
+    const main = page.locator('main');
+    const notes = page.getByRole('heading', { name: t('notes.h2') });
+    const status = page.getByText(statusTail);
+
+    // main は 1 つ（ページが main を重ねていない）。
+    await expect.soft(main, `${url} の main`).toHaveCount(1);
+    // どちらも 1 つずつあり、main の外（前と後）にある。
+    await expect.soft(notes, `${url} の CommonNotes`).toHaveCount(1);
+    await expect.soft(status, `${url} の DataStatus`).toHaveCount(1);
+    await expect.soft(main.getByRole('heading', { name: t('notes.h2') })).toHaveCount(0);
+    await expect.soft(main.getByText(statusTail)).toHaveCount(0);
+
+    // 上から、DataStatus、main、CommonNotes の順。
+    const statusBox = await status.boundingBox();
+    const mainBox = await main.boundingBox();
+    const notesBox = await notes.boundingBox();
+    const mainTop = mainBox?.y ?? Number.NaN;
+    const mainBottom = mainTop + (mainBox?.height ?? Number.NaN);
+    expect.soft(statusBox?.y, `${url} の DataStatus は main の前`).toBeLessThan(mainTop);
+    expect
+      .soft(notesBox?.y, `${url} の CommonNotes は main の後`)
+      .toBeGreaterThanOrEqual(mainBottom);
+  }
 });
 
 test('robots.txt と meta robots が noindex（E-02）', async ({ page, request }) => {

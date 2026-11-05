@@ -13,8 +13,8 @@ export type CommonNotesProps = {
 };
 
 /**
- * 全画面共通の説明文（05 §2.7）。各画面の末尾（フッタの直上）に、折りたたまずに置く。
- * 404 にも同じものを置く。
+ * 全画面共通の説明文（05 §2.7）。本文の後（フッタの直上）に、折りたたまずに出す。
+ * レイアウト（src/app/layout.tsx）が全ページ（404 を含む）に 1 つ置く。ページの側には置かない。
  */
 export function CommonNotes({ measureStart = MEASURE_START }: CommonNotesProps) {
   const start = formatDate(measureStart);

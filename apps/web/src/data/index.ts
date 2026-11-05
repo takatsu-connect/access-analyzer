@@ -13,6 +13,7 @@ import type {
   AuthorPageData,
   CategoryData,
   DashboardData,
+  PageMeta,
   SeasonalData,
   TagIndexData,
   TagPageData,
@@ -25,6 +26,7 @@ import {
   buildAuthorIndex,
   buildAuthorPage,
   buildCategories,
+  buildCommon,
   buildDashboard,
   buildSeasonal,
   buildTagIndex,
@@ -37,6 +39,14 @@ import { loadAll } from './pub';
 
 /** ビルドの時刻。プロセスの中で 1 つに固定する（meta.builtAt）。 */
 const BUILT_AT = new Date();
+
+/**
+ * 全ページ共通の meta だけを返す（各ページの埋め込み JSON の meta と同じ値）。
+ * レイアウト（src/app/layout.tsx）が DataStatus と CommonNotes に渡す。
+ */
+export async function getPageMeta(): Promise<PageMeta> {
+  return buildCommon(await loadAll(), BUILT_AT).meta;
+}
 
 export async function getDashboardData(): Promise<DashboardData> {
   return buildDashboard(await loadAll(), BUILT_AT);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatDate,
   formatDateRange,
+  formatDateShort,
   formatDiff,
   formatDuration,
   formatMonthDay,
@@ -23,6 +24,14 @@ describe('日付と時刻', () => {
     expect(formatDate('2026-10-05')).toBe('2026 年 10 月 5 日');
     expect(formatMonthDay('2026-10-05')).toBe('10 月 5 日');
     expect(formatDate('2026-01-31')).toBe('2026 年 1 月 31 日');
+  });
+
+  it('短い日付は「2026/10/20」。年を省かず、月と日は 2 桁にそろえる', () => {
+    expect(formatDateShort('2026-10-20')).toBe('2026/10/20');
+    expect(formatDateShort('2026-01-05')).toBe('2026/01/05');
+    expect(formatDateShort('2025-12-31')).toBe('2025/12/31');
+    expect(() => formatDateShort('2026-02-30')).toThrow(RangeError);
+    expect(() => formatDateShort('2026/10/20')).toThrow(RangeError);
   });
 
   it('期間は「10 月 6 日〜11 月 2 日」（月またぎ）', () => {

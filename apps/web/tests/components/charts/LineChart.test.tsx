@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -43,6 +46,31 @@ describe('LineChart（U-24）', () => {
     expect(unconfirmed?.getAttribute('class')).not.toBe(current?.getAttribute('class'));
     // 未確定の日の背景に帯がある。
     expect(parts(container, 'unconfirmed-band')).toHaveLength(1);
+  });
+
+  it('未確定の日の線は --shade-3、背景の帯は --shade-1（帯の上で線が読める濃さ）', () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'src/components/charts/LineChart.module.css'),
+      'utf8',
+    );
+    const ruleOf = (className: string): string =>
+      new RegExp(`\\.${className}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    expect(ruleOf('unconfirmedLine')).toContain('stroke: var(--shade-3)');
+    expect(ruleOf('unconfirmedBand')).toContain('fill: var(--shade-1)');
+    // 当期間の確定の線は、いちばん濃い色のまま。
+    expect(ruleOf('currentLine')).toContain('stroke: var(--shade-5)');
+  });
+
+  it('凡例の未確定の見本は、図と同じ線と帯のクラスで描く', () => {
+    const { container } = render(<LineChart {...sevenDays()} />);
+    const lineClass = series(container, 'unconfirmed')?.getAttribute('class');
+    const bandClass = parts(container, 'unconfirmed-band')[0]?.getAttribute('class');
+    const swatches = [...container.querySelectorAll('li svg')];
+    const swatch = swatches[swatches.length - 1];
+    expect(lineClass).toBeTruthy();
+    expect(bandClass).toBeTruthy();
+    expect(swatch?.querySelector('line')?.getAttribute('class')).toBe(lineClass);
+    expect(swatch?.querySelector('rect')?.getAttribute('class')).toBe(bandClass);
   });
 
   it('前期間を渡さなければ、前期間の線も凡例も出ない（S-03）', () => {

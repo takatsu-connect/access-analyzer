@@ -2,7 +2,8 @@
  * グラフ部品の props の型（05 §2.8、ADR 0008）。
  *
  * - 部品は表を描かない。同じ値の表は、呼び出し側が並べる（NFR-99）。
- * - 辞書（src/lib/ui-text.ts）にキーがない文言は、props で受ける。
+ * - 図ごとに変わる文言は props で受ける。呼び出し側が、辞書（src/lib/ui-text.ts）のキーから作る
+ *   （使うキーは、各 props のコメントに書いた）。
  * - 関数の props を持つ LineChart と Heatmap は Client Component なので、
  *   Server Component から直接は関数を渡せない。画面の Client Component から使う。
  */
@@ -53,12 +54,12 @@ export type LineChartProps = {
   weekly?: boolean;
   /**
    * 固定行の文を差し替える。渡さなければ辞書の chart.fixedRow / chart.fixedRow.single を使う。
-   * 週別のときは「前の期間の同じ週」の文言が辞書にないので、これを渡す。
+   * 週別のときは、辞書の chart.fixedRow.week / chart.fixedRow.week.single から作って渡す。
    */
   fixedRowText?: (point: LineChartPoint) => string;
   /**
    * 公開本数の添え書き（例: 「。この日に 2 本公開」）。本数が 1 以上の点で、固定行の文の後ろに足す。
-   * fixedRowText を渡したときは使わない。
+   * 辞書の chart.fixedRow.published から作る。fixedRowText を渡したときは使わない。
    */
   publishedText?: (count: number) => string;
 };
@@ -80,16 +81,16 @@ export type CurveProps = {
   benchmark?: CurveBenchmark | null;
   /** 横軸の長さ（公開 30 日以内の記事は 30、それ以降は 90）。 */
   days: 30 | 90;
-  /** 凡例の文言（辞書にキーがないので props で受ける）。 */
+  /** 凡例の文言。 */
   labels: {
-    /** この記事（実線）。 */
+    /** この記事（実線）。辞書の legend.curve.post。 */
     post: string;
-    /** 多くの記事はこの範囲（面）。 */
+    /** 多くの記事はこの範囲（面）。辞書の metric.M19.label。 */
     band: string;
-    /** 真ん中の記事（点線）。 */
+    /** 真ん中の記事（点線）。辞書の metric.M27.label。 */
     median: string;
   };
-  /** 横軸の目盛りの文言（例: 30 → 「30 日目」）。 */
+  /** 横軸の目盛りの文言（例: 30 → 「30 日目」）。辞書の absent.dayN から作る。 */
   dayLabel: (day: number) => string;
 };
 
@@ -106,9 +107,15 @@ export type HBarItem = {
 export type HBarCompare = {
   /** 比較相手の構成比（0〜1。items と同じ順。出せない区分は null）。 */
   shares: readonly (number | null)[];
-  /** 凡例の文言（例: 「細い枠: 前の期間」「細い枠: サイト全体」）。 */
+  /**
+   * 凡例の文言。前の期間は辞書の legend.compare.prev（「細い枠: 前の期間」）、
+   * サイト全体は s05.referrer.legend（「細い枠: サイト全体」）。
+   */
   legend: string;
-  /** 区分ごとの添え書き（例: 「61%」→「前: 61%」）。省略すると数字は添えない。 */
+  /**
+   * 区分ごとの添え書き（例: 「61%」→「前: 61%」。辞書の hbar.compare.prev から作る）。
+   * 省略すると数字は添えない。
+   */
   text?: (share: string) => string;
 };
 
@@ -118,7 +125,7 @@ export type HBarProps = {
   items: readonly HBarItem[];
   /** 構成比の分母（その指標の合計の列）。20 未満か伏せ値なら、比率も棒も出さない。 */
   total: Masked;
-  /** 「1,218（42%）」の形を作る（辞書にキーがないので props で受ける）。 */
+  /** 「1,218（42%）」の形を作る。辞書の hbar.valueWithShare から作る。 */
   valueWithShare: (count: string, share: string) => string;
   /** 比較相手（前の期間、またはサイト全体）。 */
   compare?: HBarCompare;
@@ -160,9 +167,12 @@ export type HeatmapProps = {
   colLabels: readonly string[];
   /** values[行][列]。null は伏せ値。 */
   values: readonly (readonly Masked[])[];
-  /** 固定行の文（選んだセル）。伏せ値のセルの文も、この関数が作る。 */
+  /**
+   * 固定行の文（選んだセル）。伏せ値のセルの文も、この関数が作る。
+   * 辞書の heatmap.fixedRow / heatmap.fixedRow.masked から作る。
+   */
   cellText: (cell: HeatmapCell) => string;
-  /** 固定行の上の案内（例: 「マスをタップすると、その時間の数字に変わります」）。 */
+  /** 固定行の上の案内（例: 「マスをタップすると、その時間の数字に変わります」。辞書の heatmap.tap.hint）。 */
   hint: string;
   /** 濃淡の凡例の文言（例: legend.heatmap）。 */
   legend: string;
