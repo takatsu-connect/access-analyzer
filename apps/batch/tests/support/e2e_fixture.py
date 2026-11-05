@@ -68,6 +68,20 @@
 
 曜日 × 時間帯は、どの期間も 3 時台が 0（0 のまま出る）。確定月の参照元ドメインと市別は、
 しきい値以上の行が 4 つと、しきい値未満の行（格納されない）が 1 つある。
+
+## HTML として解釈されうる文字列（ADR 0010 の 5）
+
+題名と名前を HTML として描く不具合があれば、E2E（apps/web/e2e/inline-script.spec.ts）が
+見つけられるように、次の 4 つに、タグや URL の形の文字列を入れてある。画面には文字として出る。
+
+| 対象 | 入っている形（バッチが格納する文字列） |
+| --- | --- |
+| 記事 102 の題名 | `<img src=x onerror=alert(1)>`（タグの形） |
+| author-d の表示名 | `"><script>alert(document.domain)</script>`（属性を閉じて script を足す形） |
+| カテゴリ 12 の名前 | `&lt;img src=x onerror=alert(3)&gt;`（エンティティの形。注 3） |
+| タグ 52 の名前 | `javascript:alert(4)` で始まる |
+
+- 注 3: WP の応答には `&amp;lt;` と書く。バッチが 1 回だけ戻すので、格納されるのは `&lt;` の形。
 """
 
 import calendar
@@ -87,7 +101,9 @@ AUTHORS: Final[dict[int, tuple[str, str]]] = {
     7: ("author-a", "架空 一郎"),
     8: ("author-b", "架空 二子"),
     9: ("author-c", "架空 三太"),
-    10: ("author-d", "架空 四葉"),
+    # 表示名に、属性を閉じて script を足す形の文字列を入れてある（冒頭の「HTML として…」の表）
+    # 数字は入れない（著者一覧に数字が出ないことを E-15 が確かめる）
+    10: ("author-d", '架空 四葉"><script>alert(document.domain)</script>'),
 }
 AUTHOR_A, AUTHOR_B, AUTHOR_C, AUTHOR_D = 7, 8, 9, 10
 
@@ -113,7 +129,8 @@ _WINDOW_SCALE: Final = {
 _WHOLE_LIFE_WINDOWS: Final = ("last7", "last28", "last90")
 _NAMED_TITLES: Final = {
     101: "商店街の朝市だより",
-    102: "川沿いの散歩道",
+    # タグの形の文字列を入れてある（冒頭の「HTML として…」の表）
+    102: "川沿いの散歩道 <img src=x onerror=alert(1)>",
     103: "公園の花壇づくり",
     104: "図書館の読み聞かせ会",
     105: "町内の夏まつり",
@@ -204,13 +221,19 @@ def build_wp(base: date) -> FakeWp:
             {"id": CATEGORY_MAP, "name": "マップ", "parent": 0},
             {"id": AD_CATEGORY_ID, "name": "広告", "parent": 0},
             {"id": CHILD_TOPIC, "name": "まちの話題", "parent": CATEGORY_ARTICLE},
-            {"id": CHILD_SHOP, "name": "お店の紹介", "parent": CATEGORY_ARTICLE},
+            # エンティティの形（バッチが 1 回戻して `&lt;img …&gt;` を格納する）
+            {
+                "id": CHILD_SHOP,
+                "name": "お店の紹介 &amp;lt;img src=x onerror=alert(3)&amp;gt;",
+                "parent": CATEGORY_ARTICLE,
+            },
             {"id": CHILD_SEASON, "name": "季節の催し", "parent": CATEGORY_EVENT},
             {"id": CHILD_EMPTY, "name": "これからの催し", "parent": CATEGORY_EVENT},
         ],
         tags=[
             {"id": TAG_WALK, "name": "散歩"},
-            {"id": TAG_FAMILY, "name": "親子"},
+            # `javascript:` で始まる名前
+            {"id": TAG_FAMILY, "name": "javascript:alert(4) 親子"},
             {"id": TAG_EMPTY, "name": "準備中"},
         ],
         users={user_id: wp_user(slug, name) for user_id, (slug, name) in AUTHORS.items()},

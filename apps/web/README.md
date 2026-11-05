@@ -9,12 +9,23 @@ Next.js（App Router）で全ページを静的生成する。ビルド時に Su
 
 前提: Node 24、pnpm。データはローカルの Supabase から読む（Docker を起動し、リポジトリ直下で `npx supabase start`）。フィクスチャは `apps/batch` で `PYTHONPATH="src;tests" .venv/Scripts/python.exe -m support.load_e2e_fixture` を実行して入れる。接続先は `apps/web/.env.local`（git に入れない）に `SUPABASE_URL` と `SUPABASE_ANON_KEY` を書く。`NEXT_PUBLIC_` で始まる変数は作らない。
 
-| コマンド         | 内容                                                                              |
-| ---------------- | --------------------------------------------------------------------------------- |
-| `pnpm run check` | lint、書式、型、単体テスト、文字列の検査（07 §7 の S-01〜S-05、S-07、S-12、S-16） |
-| `pnpm run build` | 静的生成。Supabase を読む                                                         |
-| `pnpm run e2e`   | Playwright。先に `pnpm run build` が要る                                          |
-| `pnpm run dev`   | 開発サーバー                                                                      |
+| コマンド                 | 内容                                                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm run check`         | lint、書式、型、単体テスト、文字列の検査（07 §7 の S-01〜S-05、S-07、S-12、S-16）                                                                                                 |
+| `pnpm run build`         | 静的生成。Supabase を読む                                                                                                                                                         |
+| `pnpm run check:build`   | ビルド出力の検査（07 の E-04、E-17、S-14）。配信されるファイルに Supabase の URL・キー・`NEXT_PUBLIC_` がないこと、イベント属性、データの時点、HTML の大きさ。先に `build` が要る |
+| `pnpm run check:headers` | 応答ヘッダの検査（07 の S-11）。`next start` をポート 3101 で立て、全ルートと 404 の CSP などを確かめる。先に `build` が要る                                                      |
+| `pnpm run e2e`           | Playwright（Chromium）。07 §6 の E-01〜E-16、E-19、E-20、E-22 と ADR 0010 の歯止め。先に `build` が要る。ポート 3100                                                              |
+| `pnpm run e2e:browsers`  | E-05〜E-09 を WebKit と Firefox で流す（E-21）。先に `pnpm exec playwright install webkit firefox`                                                                                |
+| `pnpm run e2e:stale`     | 更新の遅れ（E-18）だけを流す。下の手順で、遅れたデータでビルドしてから使う                                                                                                        |
+| `pnpm run dev`           | 開発サーバー                                                                                                                                                                      |
+
+E2E のデータと手順:
+
+- フィクスチャの基準日は「読み込んだ日の前日」。日付をまたぐと `pub_meta.is_stale` が true になり、全ページに「更新が遅れています」が出て E2E が落ちる。その日のうちに読み込み直して、ビルドし直す。
+- `.next/cache/fetch-cache` に前のビルドの Supabase の応答が残っていると、ページによって古いデータで作られる。フィクスチャを読み込み直したあとは、このディレクトリを消してから `pnpm run build` をする（`check:build` が、ページごとのデータの時点の食い違いを見つける）。
+- E-18 の手順: `apps/batch` で `PYTHONPATH="src;tests" .venv/Scripts/python.exe -m support.load_e2e_fixture --stale` → `.next/cache/fetch-cache` を消す → `pnpm run build` → `pnpm run e2e:stale` → 同じ読み込みを `--stale` なしで流す → `.next/cache/fetch-cache` を消す → `pnpm run build`（元に戻す）。
+- 全画面の一覧と、フィクスチャに入れてある HTML の形の文字列は `e2e/support/screens.ts` にある。07 §6 の ID と spec の対応は `e2e/README.md`。
 
 ## ファイルの置き方
 

@@ -19,7 +19,11 @@
     "check:env-names": "node scripts/check-public-env-names.mjs",
     "check:words": "node scripts/check-forbidden-words.mjs",
     "check": "pnpm run lint && pnpm run format:check && pnpm run typecheck && pnpm run test && pnpm run check:env-names && pnpm run check:words",
-    "e2e": "playwright test"
+    "check:build": "node scripts/check-build-output.mjs",
+    "check:headers": "node scripts/check-headers.mjs",
+    "e2e": "playwright test --project=chromium",
+    "e2e:browsers": "playwright test --project=webkit --project=firefox",
+    "e2e:stale": "node scripts/e2e-stale.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.119.0",

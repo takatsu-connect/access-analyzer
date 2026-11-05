@@ -13,8 +13,9 @@ import { dictionary, t } from '../src/lib/ui-text';
  * - HTML に含まれるインラインの script タグ、style タグ、style 属性の数
  * 記録は test-results の csp-report.json に残す。
  *
- * script-src の値は D-17 の決定待ちなので、ここでは値を固定していない。
- * 決定後に、script-src の期待値とインライン script の数の期待値を足す。
+ * ここは S-01（全体ダッシュボード）1 画面での詳しい記録。全画面の検査は次にある。
+ * - headers.spec.ts: CSP の指示の集合が next.config.ts の定義と完全に一致すること（E-01）
+ * - inline-script.spec.ts: インラインの script の形、イベント属性、値の描き方（ADR 0010）
  */
 
 type Violation = { directive: string; blockedUri: string; sourceFile: string; line: number };
@@ -45,7 +46,10 @@ function scriptTags(html: string): string[] {
   return html.match(/<script\b[^>]*>/gi) ?? [];
 }
 
-test('CSP の下で仮の画面が動き、スタイルが当たる', async ({ page, request }, testInfo) => {
+test('CSP の下で全体ダッシュボード（S-01）が動き、スタイルが当たる（E-01）', async ({
+  page,
+  request,
+}, testInfo) => {
   const consoleMessages: string[] = [];
   const pageErrors: string[] = [];
   page.on('console', (message) => {
