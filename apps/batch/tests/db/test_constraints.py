@@ -103,6 +103,23 @@ def _insert_post(admin: Admin) -> None:
     )
 
 
+@pytest.mark.parametrize(("age_days", "accepted"), [(1, True), (0, False), (-1, False)])
+def test_age_days_starts_at_one(admin: Admin, age_days: int, accepted: bool) -> None:
+    # 公開日が 1 日目。基準日より後に公開された記事の行は作らない（03 §6.2）
+    _insert_post(admin)
+    statement = """
+        insert into internal.article_summary (
+          post_id, base_date, age_days, freshness, pv_total,
+          is_recent_hot, is_revival, is_evergreen_365
+        ) values (1, %s, %s, 'new', 0, false, false, false)
+        """
+    if accepted:
+        admin.execute(statement, (DAY, age_days))
+        return
+    with pytest.raises(errors.CheckViolation), admin.transaction():
+        admin.execute(statement, (DAY, age_days))
+
+
 def _insert_month(admin: Admin) -> None:
     admin.execute(
         """

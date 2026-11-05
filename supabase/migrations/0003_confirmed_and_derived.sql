@@ -46,7 +46,8 @@ create policy batch_writer_all on internal.article_referrer_30d for all to batch
 create table internal.article_summary (
   post_id integer primary key references internal.wp_post (post_id) on delete cascade,
   base_date date not null,
-  age_days integer not null,
+  -- 公開日を 1 日目とする。基準日より後に公開された記事の行は作らない（03 §6.2）
+  age_days integer not null check (age_days >= 1),
   freshness text not null check (freshness in ('new', 'mid', 'long')),
   pv_7d integer,
   pv_30d integer,

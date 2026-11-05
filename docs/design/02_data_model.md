@@ -11,6 +11,7 @@
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。`excluded_author`、ビューの `not exists` と §4 の除外の列、除外後と除外込みの区別を外した。分布と帯のビューでの計算は保ち、理由を直した。伏せ値、二次伏せ、階層差分、`internal`、`batch_writer` は変えない
   - 2026-11-05: 構築 1 の実機確認を反映（依頼者の決定）。§6: `pub_*` と public の既定権限から service_role を外した（自動更新可能なビューを通じて内部表へ書けたため）。末尾の検査の範囲を Supabase 管理スキーマを除く形に直した。§3.6: `failed_step` に `preflight` と `period` を足した。§4: ビューの解釈（`post_count` の定義、広告記事の扱い）を定義として書いた。§4、§9: 広告記事はカテゴリのビューでは広告の軸の行だけで数えることにした（FR-40）
   - 2026-11-05: 構築 1 のコードレビューと監査（audits/2026-11-05-build1-review.md）を反映（依頼者の決定）。§2.3、§3.3、§3.4: mask と値の整合、上位 N の下限を check 制約に（M-2）。§3.6: `failed_step` を check 制約に（M-3）。§3.1: `is_ad` は広告カテゴリと配下の子。§3.5: `age_days` を累積の n だけに使い、M-21〜M-23 は「基準日 − 公開日」で判定。`own_median_30d` を numeric に。§4.1: `BACKFILL_START` より前に公開した記事を分布から除き、7 日と 30 日の値と帯を null に。§6: 権限の検査を拡張（L-1）
+  - 2026-11-05: 構築 2 を反映。§4、§4.1: `pub_article_cumulative` は `BACKFILL_START` より前に公開した記事の行を出さない（累積の曲線を出さない）。§3.5: `pv_total` は、それらの記事では計測開始以降の合計になる。`age_days` に check（1 以上）を足した。§4.1: 統計が 0 行のときの実行計画の固定を追加（`internal.article_cumulative` の `child_category_ids`）
 
 ## 1. 方針
 
@@ -273,11 +274,11 @@
 | --- | --- | --- |
 | post_id | integer | PK、FK → wp_post on delete cascade |
 | base_date | date | not null |
-| age_days | integer | not null。基準日 − published_on + 1（公開日を 1 日目）。累積の n（M-18、M-20、帯）にだけ使う。M-21、M-22、M-23 の判定には使わない |
+| age_days | integer | not null、check（1 以上）。基準日 − published_on + 1（公開日を 1 日目）。累積の n（M-18、M-20、帯）にだけ使う。M-21、M-22、M-23 の判定には使わない。基準日より後に公開された記事の行は作らない（03 §6.2） |
 | freshness | text | not null。「基準日 − published_on」で `new`（30 日以内）/ `mid`（31〜90 日）/ `long`（91 日以上）（M-21） |
 | pv_7d | integer | null。公開後 7 日間の累積（age_days ≥ 7 のときだけ。`BACKFILL_START` より前に公開した記事は null。§4.1）（M-20） |
 | pv_30d | integer | null。公開後 30 日間の累積（age_days ≥ 30 のときだけ。`BACKFILL_START` より前に公開した記事は null。§4.1） |
-| pv_total | integer | not null。公開以降の累積 |
+| pv_total | integer | not null。公開以降の累積。`BACKFILL_START` より前に公開した記事では、計測開始以降の合計になる（§4.1） |
 | （band_7d、band_30d） | ― | 内部表には置かない。公開ビュー `pub_article_summary` が `internal.benchmark_curve`（ビュー）から計算する（§4.1。N-1） |
 | is_recent_hot | boolean | not null。M-22「最近読まれている」。経過は「基準日 − published_on」で判定 |
 | is_revival | boolean | not null。M-22「久しぶりに読まれた」。経過は「基準日 − published_on」で判定 |
@@ -350,7 +351,7 @@
 | pub_site_month_referrer | site_month_referrer | period_id、rank、source_domain、sessions | 行 5。FR-13 |
 | pub_site_month_city | site_month_city | period_id、rank、region、city、sessions | 行 5。FR-15 |
 | pub_article_daily | article_daily | post_id、day、pageviews | 行 7。FR-23 (2) |
-| pub_article_cumulative | article_daily + wp_post | post_id、n（1〜90）、cumulative_pv（窓関数で累積） | M-18。FR-23 (3) |
+| pub_article_cumulative | article_daily + wp_post | post_id、n（1〜90）、cumulative_pv（窓関数で累積）。`BACKFILL_START` より前に公開した記事の行は出さない（§4.1） | M-18。FR-23 (3) |
 | pub_article_period | article_period | post_id、period_id、pageviews、landing_sessions、scroll_count、engagement_seconds | 行 8。FR-20〜FR-24、FR-32 |
 | pub_article_period_breakdown | article_period_breakdown | post_id、period_id、axis、bucket、sessions | 行 9。FR-23 (6)(7)、FR-32 の主な経路 |
 | pub_article_referrer_30d | article_referrer_30d | post_id、rank、source_domain、sessions | 行 10。FR-23 (6) |
@@ -383,9 +384,10 @@
 - `pub_benchmark_curve` = `select scope, n, p25, p50, p75, population_size, population_window from internal.benchmark_curve`。
 - `pub_article_summary` の `band_7d` / `band_30d`: `article_summary` に `internal.article_cumulative`（n = 7 と n = least(age_days, 30) の累積）と `internal.benchmark_curve`（scope = all、同じ n）を left join し、`case when 値 > p75 then 'upper' when 値 < p25 then 'lower' else 'middle' end`。`age_days < 3`、曲線の行がない、累積が null のときは null。`band_7d` は `age_days ≥ 7` のときだけ（pv_7d と曲線 (all, 7) の比較）。
 - `pub_author_summary` の `band_30d`: `author_summary.own_median_30d` と `internal.benchmark_curve`（all, 30）の同じ `case`。own_median_30d が null、曲線の行がないときは null。
-- 計測開始より前に公開した記事（2026-11-05、コードレビュー）: `published_on` が設定値 `BACKFILL_START`（2025-10-08）より前の記事は、初日からの日別がそろわず累積が小さく出る。そこで、分布の母集団（`internal.benchmark_curve` の全 scope。12 か月と全期間の両方）から除き、`pub_article_summary` の `pv_7d`、`pv_30d`、`band_7d`、`band_30d` を null にし、`pub_category_period` の `median_30d_pv` と `published_post_count_30d` から除く。`BACKFILL_START` の当日に公開した記事は含める。バッチも `article_summary` の `pv_7d`、`pv_30d` を null で書くので、M-24 の `own_median_30d` からも外れる（構築 2）。SQL の日付と設定値の一致はテストで確かめる（07 I-DB-17）。`pv_total` と `pub_article_cumulative` は変えない。
+- 計測開始より前に公開した記事（2026-11-05、コードレビュー）: `published_on` が設定値 `BACKFILL_START`（2025-10-08）より前の記事は、初日からの日別がそろわず累積が小さく出る。そこで、分布の母集団（`internal.benchmark_curve` の全 scope。12 か月と全期間の両方）から除き、`pub_article_summary` の `pv_7d`、`pv_30d`、`band_7d`、`band_30d` を null にし、`pub_category_period` の `median_30d_pv` と `published_post_count_30d` から除く。`BACKFILL_START` の当日に公開した記事は含める。バッチも `article_summary` の `pv_7d`、`pv_30d` を null で書くので、M-24 の `own_median_30d` からも外れる（構築 2）。SQL の日付と設定値の一致はテストで確かめる（07 I-DB-17）。`pub_article_cumulative` もこれらの記事の行を出さない（0 が続く曲線を「公開からの読まれ方」として見せないため。構築 2）。`pv_total` は変えない。これらの記事では計測開始以降の合計になるので、画面の文言で区別する（05 S-03。文言は構築 3 で決める）。
 - 関数は作らない（`case` 式をビュー内に書く。06 §2.3、L-4 の方針）。
-- 実行計画の固定（2026-11-05）: `internal.benchmark_curve` と `pub_article_summary` は、累積と曲線を `with ... as materialized` で 1 回だけ計算する。`internal.article_cumulative` は `age_days`、`base_date`、`published_on`、`is_ad` も出し（公開ビューには出さない）、窓関数の結果へ join し直さない。子カテゴリの母集団は `lateral` と `offset 0` で累積を外側に固定する。統計が古いと窓関数を行ごとに計算し直す実行計画になることがあり、1,000 本で 520 ms が 41 秒になった例をローカルで確認したため。
+- 実行計画の固定（2026-11-05）: `internal.benchmark_curve` と `pub_article_summary` は、累積と曲線を `with ... as materialized` で 1 回だけ計算する。`internal.article_cumulative` は `age_days`、`base_date`、`published_on`、`is_ad` も出し（公開ビューには出さない）、窓関数の結果へ join し直さない。統計が古いと窓関数を行ごとに計算し直す実行計画になることがあり、1,000 本で 520 ms が 41 秒になった例をローカルで確認したため。
+- 実行計画の固定の追加（2026-11-05、構築 2）: 統計が「ページはあるが 0 行」のとき（ロールバックした書き込みのあとの analyze など）にも、1,000 本で 11 秒かかる実行計画になった。記事の数だけ `generate_series` を総当たりする計画と、累積の 1 行ごとにカテゴリの表を引く計画の 2 つが原因だった。そこで `internal.article_cumulative` は、記事と要約の結合と、その記事の子カテゴリの ID の配列（`child_category_ids`。公開ビューには出さない）を、`offset 0` を付けた記事の単位の副問い合わせで先に確定させる。`internal.benchmark_curve` の子カテゴリの母集団は、その配列を `unnest` で開くだけにし、累積の側では表を引かない。値の定義は変えていない（07 I-DB-17 が、統計が 0 行の状態でも 2 秒以内であることと、値が参照実装と一致することを確かめる）。
 - 性能: 記事 225 本 × n 90 ≒ 2 万行の累積に対する分位計算 + 子カテゴリ分で、ビルド時に各ビューを 1 回読むだけ。実装時に `explain analyze` で確認する（07 I-DB-17。ローカルの 1,000 本のフィクスチャで 2 秒以内を目安）。重ければ ADR 0003 判断 4 追記の (c)（`internal` のマテリアライズドビューをバッチが refresh）に切り替えるが、母集団の定義は変えない。
 
 ## 5. 05 §4.1 の表との対応

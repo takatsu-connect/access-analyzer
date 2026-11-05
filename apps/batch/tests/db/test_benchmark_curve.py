@@ -125,9 +125,7 @@ def _fixture_posts() -> list[Post]:
 
 def _population(posts: Sequence[Post], n: int) -> list[Post]:
     return [
-        p
-        for p in posts
-        if not p.is_ad and p.age_days >= n and p.published_on >= MEASUREMENT_START
+        p for p in posts if not p.is_ad and p.age_days >= n and p.published_on >= MEASUREMENT_START
     ]
 
 
@@ -193,9 +191,9 @@ def test_curve_matches_reference(admin: Admin) -> None:
 
 def test_curve_widens_to_all_window(admin: Admin) -> None:
     # 12 か月の内側 10 本 + 外側 25 本 → 全期間 35 本
-    posts = [
-        Post(2000 + i, BASE - timedelta(days=100), 1 + i) for i in range(10)
-    ] + [Post(3000 + i, BASE - timedelta(days=380), 2 + i) for i in range(25)]
+    posts = [Post(2000 + i, BASE - timedelta(days=100), 1 + i) for i in range(10)] + [
+        Post(3000 + i, BASE - timedelta(days=380), 2 + i) for i in range(25)
+    ]
     _insert_posts(admin, posts)
     actual = _curve_rows(admin)
     for n in (1, 30, 90):
@@ -279,9 +277,27 @@ def test_incomplete_posts_are_excluded_from_category_median(admin: Admin) -> Non
     assert row == (2, float(measured.cumulative(30)), 1)
 
 
+def test_incomplete_posts_have_no_cumulative_rows(admin: Admin) -> None:
+    # 計測開始より前に公開した記事は累積の曲線を出さない。当日に公開した記事は出す
+    measured, before, first_day_post = _incomplete_fixture()
+    _insert_posts(admin, [*measured, *before])
+    rows = admin.execute(
+        "select post_id, count(*) from public.pub_article_cumulative group by post_id"
+    ).fetchall()
+    counts = {int(str(post_id)): count for post_id, count in rows}
+    assert not counts.keys() & {post.post_id for post in before}
+    assert counts[first_day_post.post_id] == 90
+    assert counts.keys() == {post.post_id for post in measured}
+
+
 @pytest.mark.parametrize(
     "view",
-    ["internal.benchmark_curve", "public.pub_article_summary", "public.pub_category_period"],
+    [
+        "internal.benchmark_curve",
+        "public.pub_article_summary",
+        "public.pub_category_period",
+        "public.pub_article_cumulative",
+    ],
 )
 def test_measurement_start_matches_config(admin: Admin, view: str) -> None:
     row = admin.execute("select pg_get_viewdef(%s::regclass)", (view,)).fetchone()
@@ -390,33 +406,42 @@ def test_cumulative_excludes_days_before_publication_and_fills_gaps(admin: Admin
     assert rows == [(1, 5), (2, 5), (3, 12)]
 
 
+@pytest.mark.parametrize("empty_stats", [False, True])
+@pytest.mark.parametrize("force_nested_loop", [False, True])
 @pytest.mark.parametrize(
-    ("view", "force_nested_loop"),
-    [
-        ("pub_benchmark_curve", False),
-        ("pub_benchmark_curve", True),
-        ("pub_article_summary", False),
-        ("pub_article_summary", True),
-    ],
+    "view", ["pub_benchmark_curve", "pub_article_summary", "pub_article_cumulative"]
 )
 def test_curve_performance_with_1000_posts(
-    admin: Admin, view: str, force_nested_loop: bool
+    admin: Admin, view: str, force_nested_loop: bool, empty_stats: bool
 ) -> None:
     # 07 I-DB-17: 1,000 本で全行 select が 2 秒以内の目安。
-    # pub_article_summary は同じ曲線を読むので併せて見る。
-    # 統計が古いときの実行計画でも遅くならないことを、nested loop を強制して確かめる。
+    # pub_article_summary と pub_article_cumulative は同じ累積を読むので併せて見る。
+    # 統計が古いときの実行計画でも遅くならないことを、2 通りで確かめる:
+    # nested loop の強制と、統計が「0 行」の状態（empty_stats）。
     posts = [
         Post(10_000 + i, BASE - timedelta(days=100 + i % 200), 1 + i % 50, category=LARGE_CATEGORY)
         for i in range(1000)
     ]
+    if empty_stats:
+        # 入れてから取り消した行の残骸がある表を analyze すると、統計は「ページはあるが 0 行」に
+        # なる。ロールバックした実行のあとや、テストの合間の自動 analyze で起こる。
+        # この状態で 1,000 本が 11 秒かかった（2026-11-05）。analyze の結果は取り消しても残る
+        admin.execute("savepoint before_fixture")
+        _insert_posts(admin, posts)
+        admin.execute("rollback to savepoint before_fixture")
+        for table in ("wp_post", "article_summary", "wp_category", "wp_post_category"):
+            admin.execute(sql.SQL("analyze {}").format(sql.Identifier("internal", table)))
     _insert_posts(admin, posts)
     admin.execute("analyze internal.article_daily")
     if force_nested_loop:
         admin.execute("set local enable_hashjoin = off")
         admin.execute("set local enable_mergejoin = off")
-    query = sql.SQL("explain (analyze, format json) select * from public.{}")
+    query = sql.SQL("explain (analyze, timing off, format json) select * from public.{}")
     plan = admin.execute(query.format(sql.Identifier(view))).fetchone()
     assert plan is not None
     execution_ms = plan[0][0]["Execution Time"]  # type: ignore[index]
-    print(f"{view} force_nested_loop={force_nested_loop}: {execution_ms:.0f} ms")
+    print(
+        f"{view} force_nested_loop={force_nested_loop} empty_stats={empty_stats}: "
+        f"{execution_ms:.0f} ms"
+    )
     assert execution_ms < 2000, execution_ms

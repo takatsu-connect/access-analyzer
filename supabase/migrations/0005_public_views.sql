@@ -4,20 +4,39 @@
 -- n 日目の累積（M-18）。公開日を 1 日目とし、公開前の日は含めない。欠けた日は 0。n は 1〜90。
 create view internal.article_cumulative as
 select
-  p.post_id,
+  ps.post_id,
   g.n,
-  (sum(coalesce(d.pageviews, 0)) over (partition by p.post_id order by g.n))::integer as cumulative_pv,
+  (sum(coalesce(d.pageviews, 0)) over (partition by ps.post_id order by g.n))::integer as cumulative_pv,
   -- 下のビューが窓関数の結果へ join し直さずに済むよう、母集団の判定に使う列も出す（公開ビューには出さない）
-  s.age_days,
-  s.base_date,
-  p.published_on,
-  p.is_ad
-from internal.wp_post p
-join internal.article_summary s on s.post_id = p.post_id
-cross join lateral generate_series(1, least(s.age_days, 90)) as g (n)
+  ps.age_days,
+  ps.base_date,
+  ps.published_on,
+  ps.is_ad,
+  ps.child_category_ids
+from (
+  -- offset 0 で、記事の単位の結合と子カテゴリの対応を先に確定させる。統計が「0 行」のとき
+  -- （書き込みの直後など）に、記事の数だけ generate_series を総当たりしたり、累積の 1 行ごとに
+  -- カテゴリの表を引いたりする実行計画になり、桁違いに遅くなるため
+  select
+    p.post_id,
+    p.published_on,
+    p.is_ad,
+    s.age_days,
+    s.base_date,
+    array(
+      select cat.category_id
+      from internal.wp_post_category pc
+      join internal.wp_category cat on cat.category_id = pc.category_id and cat.parent_id is not null
+      where pc.post_id = p.post_id
+    ) as child_category_ids
+  from internal.wp_post p
+  join internal.article_summary s on s.post_id = p.post_id
+  offset 0
+) as ps
+cross join lateral generate_series(1, least(ps.age_days, 90)) as g (n)
 left join internal.article_daily d
-  on d.post_id = p.post_id
-  and d.day = p.published_on + (g.n - 1);
+  on d.post_id = ps.post_id
+  and d.day = ps.published_on + (g.n - 1);
 
 -- 全記事の分布（M-19、M-27）。母集団は広告を除く公開記事で、age_days >= n は累積の行の有無で満たす。
 -- 下の 30 は設定値 BENCHMARK_MIN_POPULATION（07 I-DB-17 で一致を確かめる）。
@@ -30,7 +49,8 @@ with cumulative as materialized (
     n,
     cumulative_pv,
     published_on >= base_date - 365 as in_12m,
-    base_date
+    base_date,
+    child_category_ids
   from internal.article_cumulative
   where not is_ad and published_on >= date '2025-10-08'
 ),
@@ -38,16 +58,10 @@ population as (
   select 'all'::text as scope, c.n, c.cumulative_pv, c.in_12m, c.base_date
   from cumulative c
   union all
+  -- 子カテゴリは累積のビューが記事の単位で引いた配列を開くだけにする（ここでは表を引かない）
   select 'cat:' || child.category_id::text, c.n, c.cumulative_pv, c.in_12m, c.base_date
   from cumulative c
-  -- offset 0 で cumulative を外側に固定し、記事ごとに索引で引く。逆順だと 9 万行を記事の数だけ読み直す
-  cross join lateral (
-    select cat.category_id
-    from internal.wp_post_category pc
-    join internal.wp_category cat on cat.category_id = pc.category_id and cat.parent_id is not null
-    where pc.post_id = c.post_id
-    offset 0
-  ) as child
+  cross join lateral unnest(c.child_category_ids) as child (category_id)
 ),
 aggregated as (
   select
@@ -228,9 +242,12 @@ select post_id, day, pageviews
 from internal.article_daily;
 grant select on public.pub_article_daily to anon;
 
+-- date '2025-10-08' は設定値 BACKFILL_START。これより前に公開した記事は初日からの日別がそろわず、
+-- 累積が小さく出るので、曲線を出さない（02 §4.1）
 create view public.pub_article_cumulative as
 select post_id, n, cumulative_pv
-from internal.article_cumulative;
+from internal.article_cumulative
+where published_on >= date '2025-10-08';
 grant select on public.pub_article_cumulative to anon;
 
 create view public.pub_article_period as
