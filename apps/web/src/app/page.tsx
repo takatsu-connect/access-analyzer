@@ -1,16 +1,14 @@
-import { HydrationProbe } from '@/components/HydrationProbe';
-import { uiText } from '@/lib/ui-text';
+import type { Metadata } from 'next';
 
-import styles from './page.module.css';
+import { getDashboardData } from '@/data';
+import { t } from '@/lib/ui-text';
+import { DashboardScreen } from '@/screens/s01/DashboardScreen';
 
-// 仮の 1 画面。S-01 の担当が、このファイルと HydrationProbe を置き換える。
-// main はレイアウトが持つので、ページはフラグメントを返す。
-export default function HomePage() {
-  return (
-    <>
-      <h1 className={styles.title}>{uiText.site.title}</h1>
-      <p className={styles.notice}>{uiText.scaffold.notice}</p>
-      <HydrationProbe />
-    </>
-  );
+export const metadata: Metadata = { title: t('s01.name') };
+
+// S-01 全体ダッシュボード（05 §3）。ビルド時にデータを取り、画面の部品に渡すだけ。
+// main はレイアウトが持つので、画面の部品は h1 から始まるフラグメントを返す。
+export default async function DashboardPage() {
+  const data = await getDashboardData();
+  return <DashboardScreen data={data} />;
 }

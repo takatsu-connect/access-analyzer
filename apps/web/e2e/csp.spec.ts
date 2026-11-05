@@ -82,7 +82,8 @@ test('CSP の下で仮の画面が動き、スタイルが当たる', async ({ p
   const styleAttributeCount = (html.match(/<[a-z][^>]*\sstyle\s*=/gi) ?? []).length;
 
   // スタイルが当たっているか（globals.css のトークンと CSS Modules）。
-  const button = page.getByRole('button', { name: uiText.scaffold.probeButton });
+  // S-01 の PeriodPicker の「直近 7 日」のボタンで確かめる。
+  const button = page.getByRole('button', { name: t('period.last7') });
   const computed = await button.evaluate((element) => {
     const buttonStyle = getComputedStyle(element);
     return {
@@ -94,19 +95,19 @@ test('CSP の下で仮の画面が動き、スタイルが当たる', async ({ p
     };
   });
   const stylesApplied =
-    computed.paddingTop === '8px' &&
+    // PeriodPicker のボタンの上下の余白は --space-1（4px）。
+    computed.paddingTop === '4px' &&
     computed.borderTopStyle === 'solid' &&
     computed.borderTopWidth === '1px' &&
     computed.bodyMargin === '0px' &&
     computed.shade5 !== '';
 
-  // クリックが効くか。
-  const state = page.getByRole('status');
-  const textBefore = await state.textContent();
+  // クリックが効くか（押すと aria-pressed が true になる）。
+  const pressedBefore = await button.getAttribute('aria-pressed');
   await button.click();
   let clickWorked = true;
   try {
-    await expect(state).toHaveText(uiText.scaffold.probeToggled, { timeout: 5_000 });
+    await expect(button).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
   } catch {
     clickWorked = false;
   }
@@ -128,7 +129,7 @@ test('CSP の下で仮の画面が動き、スタイルが当たる', async ({ p
     consoleMessageCount: consoleMessages.length,
     consoleMessages,
     pageErrors,
-    textBefore,
+    pressedBefore,
     clickWorked,
     html: {
       inlineScriptCount,
@@ -167,8 +168,8 @@ test('CSP の下で仮の画面が動き、スタイルが当たる', async ({ p
   expect.soft(dom.violations, 'CSP 違反').toEqual([]);
   expect.soft(consoleMessages, 'コンソールの CSP の通知').toEqual([]);
   expect.soft(pageErrors, 'ページのエラー').toEqual([]);
-  expect.soft(textBefore, 'クリック前の文言').toBe(uiText.scaffold.probeIdle);
-  expect.soft(clickWorked, 'クリックで文言が切り替わる').toBe(true);
+  expect.soft(pressedBefore, 'クリック前の aria-pressed').toBe('false');
+  expect.soft(clickWorked, 'クリックで aria-pressed が true になる').toBe(true);
 });
 
 test('一覧にないパスは 404 の固定文で、同じヘッダが付く（E-01）', async ({ request }) => {

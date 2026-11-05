@@ -1,0 +1,186 @@
+/*
+ * S-01 全体ダッシュボードの見た目。
+ * 色は globals.css のトークン（基調色の濃淡とグレー）だけを使う。評価色は使わない。
+ * 幅 600px 未満を狭い画面として扱う（05 §2.6）。
+ */
+
+.h1 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-xl);
+  line-height: 1.4;
+}
+
+.h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  line-height: 1.4;
+}
+
+.h3 {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--font-size-md);
+  line-height: 1.4;
+}
+
+.h4 {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+/* 折りたたみの見出し（summary の中の h2）。summary の行の中に収める。 */
+.summaryHeading {
+  display: inline;
+  margin: 0;
+  font-size: var(--font-size-lg);
+  line-height: 1.4;
+}
+
+.block {
+  margin-top: var(--space-4);
+}
+
+.section {
+  margin-top: var(--space-6);
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.benchmark {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.text {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+/* --- 比較の相手の文 --- */
+
+.compareLine {
+  display: block;
+}
+
+.compareLabel {
+  margin-inline-end: var(--space-2);
+}
+
+.absent {
+  color: var(--color-text-muted);
+}
+
+/* --- 表示の切り替え --- */
+
+.segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.segmentButton {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* 選んでいるものは、背景に加えて太字と太い枠で示す（色だけに頼らない）。 */
+.segmentButton[aria-pressed='true'] {
+  border-color: var(--shade-5);
+  box-shadow: inset 0 0 0 1px var(--shade-5);
+  background: var(--shade-1);
+  font-weight: 700;
+}
+
+/* --- 図と表 --- */
+
+.figure {
+  margin: 0;
+}
+
+.lead {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+  text-align: start;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+.table thead th {
+  border-bottom-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.table .num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 長いドメイン名で、狭い画面に横スクロールを出さない。 */
+.name {
+  overflow-wrap: anywhere;
+}
+
+.narrowGroup {
+  margin-inline-end: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+/* --- 画面の幅で出し分けるもの --- */
+
+.wideCell,
+.wideOnly {
+  display: none;
+}
+
+@media (min-width: 600px) {
+  .table .wideCell {
+    display: table-cell;
+  }
+
+  .wideOnly {
+    display: block;
+  }
+
+  .table .narrowCell,
+  .narrowOnly,
+  .narrowGroup {
+    display: none;
+  }
+}
