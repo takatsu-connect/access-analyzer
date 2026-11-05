@@ -1,12 +1,31 @@
 /**
  * ESLint の設定（flat config）。07 §7 の S-01〜S-04、S-07、S-12 の BI 側をここで検査する。
  * `next lint` は廃止されたので、ESLint を直接呼ぶ（package.json の lint）。
+ *
+ * CSP の script-src は 'unsafe-inline' を許している（ADR 0010）。インラインの script を
+ * CSP が止めないので、値を HTML として描く出口をここで塞ぐ。規則を緩めるときは ADR 0010 を
+ * 見直してからにする。
  */
 import { defineConfig, globalIgnores } from 'eslint/config';
 import nextVitals from 'eslint-config-next/core-web-vitals';
 import nextTs from 'eslint-config-next/typescript';
 
 import localRules from './eslint-rules/index.mjs';
+
+const ENV_MESSAGE =
+  'NEXT_PUBLIC_ で始まる環境変数は使いません（07 §7 S-01）。値はビルド時にサーバー側で読みます。';
+const HTML_SINK_MESSAGE =
+  '値を HTML として解釈させる書き方は使いません（ADR 0010）。値は React のテキストとして描きます。';
+
+/** HTML として解釈される出口（JSX の外）。 */
+const HTML_SINK_PROPERTIES = [
+  'innerHTML',
+  'outerHTML',
+  'insertAdjacentHTML',
+  'srcdoc',
+  'setHTMLUnsafe',
+  'createContextualFragment',
+];
 
 export default defineConfig([
   globalIgnores([
@@ -20,24 +39,41 @@ export default defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    name: 'access-analyzer/no-inline-config',
+    // 無効化コメント（eslint-disable）で規則を外せないようにする（ADR 0010 の 7）。
+    linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: 'error' },
+  },
+  {
     name: 'access-analyzer/static-rules',
     files: ['**/*.{js,jsx,mjs,ts,tsx,mts}'],
     plugins: { local: localRules },
     rules: {
-      // S-01: ブラウザに渡る名前の環境変数を参照しない（NFR-42）。
       'no-restricted-syntax': [
         'error',
+        // S-01: ブラウザに渡る名前の環境変数を参照しない（NFR-42）。
         {
           selector:
             "MemberExpression[object.type='MemberExpression'][object.object.name='process'][object.property.name='env'][property.name=/^NEXT_PUBLIC_/]",
-          message:
-            'NEXT_PUBLIC_ で始まる環境変数は使いません（07 §7 S-01）。値はビルド時にサーバー側で読みます。',
+          message: ENV_MESSAGE,
         },
         {
           selector:
             "MemberExpression[object.type='MemberExpression'][object.object.name='process'][object.property.name='env'][property.value=/^NEXT_PUBLIC_/]",
-          message:
-            'NEXT_PUBLIC_ で始まる環境変数は使いません（07 §7 S-01）。値はビルド時にサーバー側で読みます。',
+          message: ENV_MESSAGE,
+        },
+        // ADR 0010 の 1・6: script を作らない、イベントハンドラを属性で付けない。
+        {
+          selector:
+            "CallExpression[callee.property.name='createElement'][arguments.0.value='script']",
+          message: 'script 要素は作りません（ADR 0010）。',
+        },
+        {
+          selector: "ImportExpression[source.value='next/script']",
+          message: 'next/script は使いません（ADR 0010）。',
+        },
+        {
+          selector: "CallExpression[callee.property.name='setAttribute'][arguments.0.value=/^on/i]",
+          message: 'イベントハンドラを属性で付けません（ADR 0010）。React の props を使います。',
         },
       ],
       // S-02: 公開ビュー（pub_*）以外を読まない。
@@ -49,11 +85,67 @@ export default defineConfig([
       'react/jsx-no-literals': ['error', { noStrings: true, ignoreProps: true }],
       // S-07: 直接のログ出力をしない（NFR-44）。
       'no-console': 'error',
+      // ADR 0010 の 1: インラインの script や、別の文書を埋め込む要素を足さない。
+      // a は検証つきの部品（src/components/ExternalLink.tsx）と next/link だけが描く。
+      'react/forbid-elements': [
+        'error',
+        {
+          forbid: [
+            {
+              element: 'script',
+              message: 'script 要素は足しません（ADR 0010）。JSON-LD も同じです。',
+            },
+            { element: 'iframe', message: '別の文書を埋め込みません（ADR 0010）。' },
+            { element: 'object', message: '別の文書を埋め込みません（ADR 0010）。' },
+            { element: 'embed', message: '別の文書を埋め込みません（ADR 0010）。' },
+            { element: 'base', message: 'base 要素は足しません（ADR 0010）。' },
+            {
+              element: 'a',
+              message:
+                'a 要素は直接書きません。サイト内は next/link、外部は ExternalLink（リンク先を検証する）を使います（06 §7）。',
+            },
+          ],
+        },
+      ],
+      'no-restricted-imports': [
+        'error',
+        { paths: [{ name: 'next/script', message: 'next/script は使いません（ADR 0010）。' }] },
+      ],
+      // ADR 0010 の 6: JSX の外の出口。
+      'no-restricted-properties': [
+        'error',
+        ...HTML_SINK_PROPERTIES.map((property) => ({ property, message: HTML_SINK_MESSAGE })),
+        { object: 'document', property: 'write', message: HTML_SINK_MESSAGE },
+        { object: 'document', property: 'writeln', message: HTML_SINK_MESSAGE },
+      ],
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-new-func': 'error',
+      // ADR 0010 の 3: javascript: の URL を書かない。
+      'no-script-url': 'error',
+      'react/jsx-no-script-url': 'error',
     },
   },
   {
     name: 'access-analyzer/ui-text',
     files: ['src/lib/ui-text.ts'],
     rules: { 'react/jsx-no-literals': 'off' },
+  },
+  {
+    name: 'access-analyzer/tests',
+    // テストは、止めたい文字列（javascript: の URL など）を入力のデータとして持つ。
+    files: ['tests/**', 'e2e/**'],
+    rules: { 'no-script-url': 'off' },
+  },
+  {
+    name: 'access-analyzer/external-link',
+    // リンク先を検証してから a を描く、ただ 1 つの部品。
+    files: ['src/components/ExternalLink.tsx'],
+    rules: {
+      'react/forbid-elements': [
+        'error',
+        { forbid: ['script', 'iframe', 'object', 'embed', 'base'] },
+      ],
+    },
   },
 ]);
