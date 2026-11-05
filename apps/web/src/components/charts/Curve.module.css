@@ -1,0 +1,89 @@
+/*
+ * 累積曲線と四分位の帯（05 §2.8）。
+ * 帯は --shade-1 の面、真ん中は --shade-3 の点線、この記事は --shade-5 の実線。
+ */
+.chart {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.baseline {
+  stroke: var(--color-border-strong);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.band {
+  fill: var(--shade-1);
+}
+
+/* 線は横だけ引き伸ばした SVG の中にあるので、太さを画面の px に固定する。 */
+.line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.postLine {
+  stroke: var(--shade-5);
+}
+
+.medianLine {
+  stroke: var(--shade-3);
+  stroke-linecap: butt;
+}
+
+.postDot {
+  fill: var(--shade-5);
+  stroke: var(--color-surface);
+  stroke-width: 2;
+}
+
+.axisLabel,
+.dayLabel {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axisLabel {
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  flex: none;
+}

@@ -1,0 +1,65 @@
+/*
+ * 構成比の横棒と、表の行に埋める小さな棒（05 §2.8）。
+ * 棒は --shade-4、比較相手は --shade-3 の細い輪郭。文字は文字色のトークンで書く。
+ */
+.chart {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.mini {
+  display: block;
+  width: 100%;
+  min-width: 3rem;
+}
+
+.label {
+  fill: var(--color-text);
+  font-size: 14px;
+}
+
+.value,
+.masked {
+  fill: var(--color-text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.maskedLabel,
+.compareText {
+  fill: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.track {
+  fill: var(--color-surface-subtle);
+}
+
+.bar {
+  fill: var(--shade-4);
+}
+
+.compare {
+  fill: none;
+  stroke: var(--shade-3);
+  stroke-width: 1.5;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.swatch {
+  flex: none;
+}

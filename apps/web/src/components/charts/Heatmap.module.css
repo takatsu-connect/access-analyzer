@@ -1,0 +1,150 @@
+/*
+ * 格子のヒートマップ（05 §2.4、§2.8）。濃淡は --shade-1〜--shade-5 の 5 段階。
+ * 伏せ値のセルは面の色（白）に「—」。
+ */
+.chart {
+  /* Heatmap.tsx の HEADER_HEIGHT と CELL_HEIGHT と同じ値にする。 */
+  --heatmap-header: 18px;
+  --heatmap-cell: 28px;
+
+  display: grid;
+  gap: var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+
+.rowLabels {
+  display: grid;
+  grid-auto-rows: var(--heatmap-cell);
+  align-items: center;
+  padding-top: var(--heatmap-header);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1;
+}
+
+.rowLabel {
+  white-space: nowrap;
+}
+
+.plot {
+  min-width: 0;
+  border-radius: var(--radius-sm);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.colLabel {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* セルの間は、面の色の線で 2px あける。 */
+.cell {
+  stroke: var(--color-surface);
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.shade1 {
+  fill: var(--shade-1);
+}
+
+.shade2 {
+  fill: var(--shade-2);
+}
+
+.shade3 {
+  fill: var(--shade-3);
+}
+
+.shade4 {
+  fill: var(--shade-4);
+}
+
+.shade5 {
+  fill: var(--shade-5);
+}
+
+.masked {
+  fill: var(--color-surface);
+}
+
+.maskedMark,
+.cellValue {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.maskedMark {
+  fill: var(--color-text-muted);
+}
+
+/* セルの中の数字は広い画面だけ。狭い画面では、選んだセルの値を固定行で読む。 */
+.cellValue {
+  display: none;
+}
+
+@media (min-width: 600px) {
+  .cellValue {
+    display: inline;
+  }
+}
+
+/* 薄いセルの上は文字色、濃いセルの上は面の色で書く（ライトとダークで入れ替わる）。 */
+.onWeak {
+  fill: var(--color-text);
+}
+
+.onStrong {
+  fill: var(--color-surface);
+}
+
+.selected {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.fixedRow {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  flex: none;
+}

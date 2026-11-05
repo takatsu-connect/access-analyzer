@@ -1,0 +1,61 @@
+/*
+ * 帯と点（05 §2.4）。帯は --shade-2 の 1 色。点は --shade-5 に面の色の縁。
+ */
+.figure {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  max-width: 12rem;
+  vertical-align: middle;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.band {
+  fill: var(--shade-2);
+}
+
+/* 区分の境界の細い罫線。 */
+.rule {
+  stroke: var(--color-surface);
+  stroke-width: 1;
+}
+
+.dot {
+  fill: var(--shade-5);
+  stroke: var(--color-surface);
+  stroke-width: 1.5;
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+}
+
+/* 文言は点の下に寄せる。 */
+.lower {
+  text-align: left;
+}
+
+.middle {
+  text-align: center;
+}
+
+.upper {
+  text-align: right;
+}
+
+.text {
+  font-size: var(--font-size-sm);
+}
+
+.na {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
