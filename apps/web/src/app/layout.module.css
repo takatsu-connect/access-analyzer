@@ -1,0 +1,10 @@
+.main {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+/* スキップリンクの行き先。フォーカスの枠は出さない（操作する要素ではない）。 */
+.main:focus {
+  outline: none;
+}

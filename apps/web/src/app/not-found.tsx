@@ -1,13 +1,41 @@
-import { uiText } from '@/lib/ui-text';
+import Link from 'next/link';
 
-import styles from './page.module.css';
+import { CommonNotes } from '@/components/CommonNotes';
+import { t } from '@/lib/ui-text';
 
-// 404 は固定文だけを出す（06 §7）。共通の説明（CommonNotes。05 §2.7）は後の工程で足す。
+import styles from './not-found.module.css';
+
+// 404 は固定文だけを出す（05 §10、06 §7、NFR-91）。内部の情報を出さない。
+// 共通の説明（CommonNotes）を、ほかのページと同じ位置に置く。
 export default function NotFound() {
   return (
-    <main className={styles.main}>
-      <h1 className={styles.title}>{uiText.notFound.heading}</h1>
-      <p className={styles.notice}>{uiText.notFound.body}</p>
-    </main>
+    <>
+      <h1 className={styles.title}>{t('notFound.h1')}</h1>
+      <p>{t('notFound.lead')}</p>
+      <p>{t('notFound.reasons.lead')}</p>
+      <ul>
+        <li>{t('notFound.reason.notYet')}</li>
+        <li>{t('notFound.reason.removed')}</li>
+        <li>{t('notFound.reason.url')}</li>
+      </ul>
+      <ul className={styles.links}>
+        <li>
+          <Link href="/" prefetch={false} className={styles.link}>
+            {t('notFound.link.dashboard')}
+          </Link>
+        </li>
+        <li>
+          <Link href="/articles" prefetch={false} className={styles.link}>
+            {t('notFound.link.search')}
+          </Link>
+        </li>
+        <li>
+          <Link href="/authors" prefetch={false} className={styles.link}>
+            {t('notFound.link.authors')}
+          </Link>
+        </li>
+      </ul>
+      <CommonNotes />
+    </>
   );
 }

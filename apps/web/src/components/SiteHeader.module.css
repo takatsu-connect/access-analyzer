@@ -1,0 +1,57 @@
+.header {
+  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.inner {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+
+.title {
+  display: inline-block;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+  text-decoration: none;
+}
+
+.list,
+.subList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subList {
+  padding-top: var(--space-1);
+  border-top: var(--border-width) solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.link,
+.subLink {
+  display: inline-block;
+  padding: var(--space-2);
+  border-bottom: 3px solid transparent;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.link:hover,
+.subLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* 現在のページの印: 太字と下の線（色だけにしない）。 */
+.link[aria-current],
+.subLink[aria-current] {
+  border-bottom-color: var(--shade-5);
+  font-weight: 700;
+}

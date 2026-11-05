@@ -1,0 +1,20 @@
+.status {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.asOf {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+/* 遅れの知らせは、枠と太字で目立たせる（評価色を使わない）。 */
+.delayed {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+  font-weight: 700;
+}

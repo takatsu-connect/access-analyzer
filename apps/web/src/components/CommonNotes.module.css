@@ -1,0 +1,23 @@
+.notes {
+  margin: var(--space-7) 0 0;
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  font-size: var(--font-size-sm);
+}
+
+.heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-tight);
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.list > li + li {
+  margin-top: var(--space-1);
+}

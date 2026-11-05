@@ -1,0 +1,211 @@
+.wrap {
+  margin: var(--space-4) 0;
+}
+
+/* 広い画面だけ / 狭い画面だけ（05 §2.6。幅 600px 未満がスマホ扱い）。 */
+@media (max-width: 599.98px) {
+  .wideOnly {
+    display: none;
+  }
+}
+
+@media (min-width: 600px) {
+  .narrowOnly {
+    display: none;
+  }
+}
+
+.sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.sortLabel {
+  color: var(--color-text-muted);
+}
+
+.button {
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* 選んでいる印は、色だけでなく、太字と下の線でも伝える。 */
+.button[aria-pressed='true'] {
+  border-color: var(--shade-5);
+  background: var(--shade-1);
+  box-shadow: inset 0 -3px 0 var(--shade-5);
+  font-weight: 700;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.head {
+  padding: var(--space-2);
+  border-bottom: 2px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  line-height: var(--line-height-tight);
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.cell {
+  padding: var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* 数と日付は、空白でだけ折り返す（桁の途中で折らない）。 */
+.numeric,
+.compact {
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 広い画面: タイトルの右に「↗」、その下に印。狭い画面: タイトルの下に、印と「↗」。 */
+.titleBox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.titleLink,
+.link,
+.external {
+  color: var(--shade-5);
+  text-underline-offset: 0.2em;
+}
+
+.titleLink {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 1.5rem - var(--space-1));
+}
+
+/* 日付と帯の文言が 1 文字ずつ折れないよう、列の幅の下限を決める。 */
+.compact,
+.band {
+  min-width: 5.5em;
+}
+
+@media (min-width: 600px) {
+  .author {
+    min-width: 6em;
+  }
+}
+
+/* 十分に広い画面では、日付を 1 行に収める。 */
+@media (min-width: 900px) {
+  .compact {
+    min-width: 9.5em;
+  }
+}
+
+.external {
+  flex: none;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.badges {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.moreCell {
+  padding: 0 var(--space-2) var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.detailList {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.detailList dt {
+  color: var(--color-text-muted);
+}
+
+.detailList dd {
+  margin: 0;
+}
+
+.more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.shown {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 599.98px) {
+  /* タイトルに幅を残すため、ほかの列は小さい文字にする。 */
+  .head,
+  .cell {
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--font-size-xs);
+  }
+
+  .title {
+    font-size: var(--font-size-sm);
+  }
+
+  /* 「詳しく」の行が続くときは、区切りの線を「詳しく」の下に移す。 */
+  .hasMore > .cell {
+    border-bottom: 0;
+  }
+
+  /* タイトルは 2 行まで（05 §4.1）。 */
+  .titleLink {
+    display: -webkit-box;
+    flex: 1 0 100%;
+    max-width: 100%;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .badges {
+    flex: 0 1 auto;
+  }
+
+  .external {
+    order: 1;
+  }
+}

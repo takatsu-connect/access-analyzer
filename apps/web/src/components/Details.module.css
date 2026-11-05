@@ -1,0 +1,38 @@
+.details {
+  margin: var(--space-2) 0;
+}
+
+.summary {
+  display: inline-block;
+  min-height: 1.5rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+/* 開閉の印。色ではなく、向きで状態を伝える。 */
+.summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: var(--space-1);
+  text-decoration: none;
+}
+
+.details[open] > .summary::before {
+  content: '▾';
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.body {
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-border);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}

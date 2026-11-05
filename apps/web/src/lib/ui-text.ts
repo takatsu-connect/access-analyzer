@@ -99,6 +99,9 @@ export const dictionary = {
   'nav.categories': 'カテゴリ',
   'nav.tags': 'シリーズ',
   'nav.activity': '投稿活動',
+  'nav.aria': 'ページの移動',
+  'nav.articles.aria': '記事のページ',
+  'skip.toMain': '本文へ移動',
   'footer.about': 'この BI について',
   'footer.about.source':
     '数字は Google アナリティクス（GA4）と、高津コネクトが公開している記事の情報から作っています。',
@@ -164,6 +167,8 @@ export const dictionary = {
   'period.last90': '直近 90 日',
   'period.month': '月',
   'period.month.select': '年月を選ぶ',
+  'period.month.unconfirmed': '{label}（途中まで）',
+  'compare.withRatio': '{diff}（{ratio}）',
   'compare.prevWindow': '前の {days} 日と比べて',
   'compare.prevMonth': '前の月と比べて',
   'compare.yoy': '去年の同じ月と比べて',
@@ -218,6 +223,7 @@ export const dictionary = {
   'masked.label': '伏せ値',
   'absent.na': '該当なし',
   'absent.dayN': '{n} 日目',
+  'absent.dayN.count': '{n} 日目: {count} 回',
   // 助言 §9 の案で直した（仮）。05 §2.1 の初期値は「記事が 5 本以上になると出ます」。
   'absent.ownMedian': '数え始めてから公開した記事が 5 本以上になると出ます',
   'absent.ratio20': '読まれた回数が 20 回以上になると出ます',
@@ -291,6 +297,14 @@ export const dictionary = {
   'sort.pv30': '最初の 1 か月の多い順',
   'count.20': '20 件',
   'count.50': '50 件',
+  'column.pageviews.period': '読まれた回数（この期間）',
+  'column.recent7': '直近 7 日の読まれた回数',
+  'sort.label': '並び',
+  'table.more': 'さらに表示',
+  'table.shown': '{total} 件のうち {shown} 件を表示しています',
+  'list.separator': '、',
+  'link.external.mark': '↗',
+  'link.external.article': '{title}（高津コネクトの記事を新しいタブで開きます）',
 
   // --- 区分の名前（区分の値は contracts/constants.json と同じ） ---
   'channel.search': '検索',
@@ -330,6 +344,10 @@ export const dictionary = {
   's01.freshness.h3': '新しい記事と古い記事、どちらが読まれた？',
 
   // --- S-02 記事一覧 ---
+  's02a.note': '公開日が近い記事が有利です。記事以外のページと広告の記事は含めていません。',
+  's02b.empty': 'この期間に公開された記事はありません',
+  's02c.note': '公開から 91 日以上たった記事のうち、この期間に読まれた回数が多いものです',
+  's02d.empty': '今週は該当する記事がありません',
   's02b.note':
     '「多くの記事はこの範囲」との比較です。公開から 3 日未満は「まだ比較できません」。並びは公開日順で、帯で並べ替えません。',
   's02d.note': '直近 1 週間に、その前の数週間よりはっきり多く読まれた記事です（目安）。',

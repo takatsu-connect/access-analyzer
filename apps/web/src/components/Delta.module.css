@@ -1,0 +1,17 @@
+/* 矢印も数も文字色のまま（評価色を使わない。05 §2.4）。 */
+.delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: inherit;
+  white-space: nowrap;
+}
+
+.arrow {
+  font-size: var(--font-size-xs);
+  color: inherit;
+}
+
+.amount {
+  font-variant-numeric: tabular-nums;
+}

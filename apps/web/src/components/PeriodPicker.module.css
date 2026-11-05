@@ -1,0 +1,59 @@
+.picker {
+  margin: var(--space-4) 0;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.segment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.button,
+.select {
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* 選んでいる印は、色だけでなく、太字と下の線でも伝える。 */
+.button[aria-pressed='true'],
+.select[data-selected='true'] {
+  border-color: var(--shade-5);
+  background: var(--shade-1);
+  box-shadow: inset 0 -3px 0 var(--shade-5);
+  font-weight: 700;
+}
+
+.month {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.monthLabel {
+  color: var(--color-text-muted);
+}
+
+.select {
+  max-width: 100%;
+}
+
+.range {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
