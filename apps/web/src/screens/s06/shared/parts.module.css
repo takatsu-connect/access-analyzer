@@ -181,8 +181,15 @@
     font-size: var(--font-size-xs);
   }
 
+  /* 名前の列が 1 文字幅につぶれないよう、幅の下限を決める。そのぶん棒の列を狭くする。 */
   .rowHead {
+    min-width: 5.5em;
     font-size: var(--font-size-sm);
+  }
+
+  .barCell {
+    width: 5rem;
+    min-width: 3.5rem;
   }
 
   /* 「詳しく」の行が続くときは、区切りの線を「詳しく」の下に移す。 */

@@ -162,6 +162,12 @@
   color: var(--color-text-muted);
 }
 
+/* 「詳しく」が 1 文字ずつ折れないよう、列の幅の下限を決める。 */
+.table .narrowCell {
+  min-width: 4.5em;
+  padding-inline: var(--space-1);
+}
+
 /* --- 画面の幅で出し分けるもの --- */
 
 .wideCell,

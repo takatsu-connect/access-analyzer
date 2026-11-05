@@ -174,20 +174,67 @@
 }
 
 @media (max-width: 599.98px) {
-  /* タイトルに幅を残すため、ほかの列は小さい文字にする。 */
-  .head,
-  .cell {
-    padding: var(--space-2) var(--space-1);
-    font-size: var(--font-size-xs);
+  /*
+   * 狭い画面では、タイトルを幅いっぱいの 1 段目に置き、残りの列をその下に等幅で並べる。
+   * 4 列を横に並べると、タイトルの幅が 10 文字ほどになり、記事を見分けられないため。
+   * 表の要素の display を変えるので、役割は role 属性でも明示している（ArticleTable.tsx）。
+   */
+  .table,
+  .table > thead,
+  .table > tbody {
+    display: block;
   }
 
-  .title {
-    font-size: var(--font-size-sm);
+  .headRow,
+  .row,
+  .moreRow {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .headRow {
+    align-items: flex-end;
+    border-bottom: 2px solid var(--color-border-strong);
+  }
+
+  .row,
+  .moreRow {
+    border-bottom: var(--border-width) solid var(--color-border);
   }
 
   /* 「詳しく」の行が続くときは、区切りの線を「詳しく」の下に移す。 */
-  .hasMore > .cell {
+  .hasMore {
     border-bottom: 0;
+  }
+
+  .head,
+  .cell {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: var(--space-1);
+    border-bottom: 0;
+    font-size: var(--font-size-xs);
+  }
+
+  .head.title,
+  .cell.title {
+    flex: 0 0 100%;
+    padding-top: var(--space-2);
+  }
+
+  .cell.title {
+    font-size: var(--font-size-sm);
+  }
+
+  .row > .cell:not(.title),
+  .headRow > .head:not(.title) {
+    padding-bottom: var(--space-2);
+  }
+
+  .moreCell {
+    flex: 0 0 100%;
+    border-bottom: 0;
+    padding: 0 var(--space-1) var(--space-2);
   }
 
   /* タイトルは 2 行まで（05 §4.1）。 */

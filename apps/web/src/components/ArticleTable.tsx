@@ -179,6 +179,7 @@ function badgeLabels(post: ArticleTablePost, kinds: readonly ArticleBadgeKind[])
  *
  * - 連番を描かない。並べ替えの UI は sortable のときだけで、多い順だけ。
  * - 狭い画面では narrowColumns の 4 列までを残し、残りを行の末尾の「詳しく」に入れる。
+ *   タイトルは幅いっぱいの 1 段目に置き、残りの列をその下に並べる（題名を読めるようにするため）。
  *   切り替えは CSS だけで行う（静的な HTML と描画後の HTML が同じになる）。
  * - 関数の props を受けるので、Client Component から使う。
  */
@@ -323,40 +324,51 @@ export function ArticleTable({
           ))}
         </div>
       ) : null}
-      <table className={styles.table}>
+      {/* 狭い画面では CSS で行を組み替える（display を変える）ので、表の役割を role でも明示する。 */}
+      <table role="table" className={styles.table}>
         <caption className={a11y.srOnly}>{caption}</caption>
-        <thead>
-          <tr>
+        <thead role="rowgroup">
+          <tr role="row" className={styles.headRow}>
             {columns.map((column) => (
-              <th key={column} scope="col" className={cx(styles.head, cellClass(column))}>
+              <th
+                key={column}
+                role="columnheader"
+                scope="col"
+                className={cx(styles.head, cellClass(column))}
+              >
                 {label(column)}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {visibleRows.map((row) => {
             // 狭い画面で帯の列を残すときは、図を「詳しく」に入れる。
             const foldedFigure = kept.includes('band') ? bandFigure(row.post) : null;
             const hasMore = folded.length > 0 || foldedFigure !== null;
             return (
               <Fragment key={row.post.id}>
-                <tr className={cx(styles.row, hasMore && styles.hasMore)}>
+                <tr role="row" className={cx(styles.row, hasMore && styles.hasMore)}>
                   {columns.map((column) =>
                     column === 'title' ? (
-                      <th key={column} scope="row" className={cx(styles.cell, cellClass(column))}>
+                      <th
+                        key={column}
+                        role="rowheader"
+                        scope="row"
+                        className={cx(styles.cell, cellClass(column))}
+                      >
                         {cell(column, row, false)}
                       </th>
                     ) : (
-                      <td key={column} className={cx(styles.cell, cellClass(column))}>
+                      <td key={column} role="cell" className={cx(styles.cell, cellClass(column))}>
                         {cell(column, row, false)}
                       </td>
                     ),
                   )}
                 </tr>
                 {hasMore ? (
-                  <tr className={cx(styles.moreRow, styles.narrowOnly)}>
-                    <td colSpan={kept.length} className={styles.moreCell}>
+                  <tr role="row" className={cx(styles.moreRow, styles.narrowOnly)}>
+                    <td role="cell" colSpan={kept.length} className={styles.moreCell}>
                       <Details
                         summary={
                           <>
