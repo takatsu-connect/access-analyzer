@@ -13,36 +13,23 @@ import httpx
 import psycopg
 import pytest
 import respx
-from psycopg import sql
 from pydantic import SecretStr
 
 from support import batch_scenario as scenario
 from support.fake_ga4 import FakeGa4
 from support.fake_wp import FakeWp
-from support.localdb import assert_disposable_database
+from support.localdb import truncate_internal_tables
 from takatsu_batch import pipeline
 from takatsu_batch.env import BatchEnv, DbTarget
-from takatsu_batch.write import BATCH_WRITABLE_TABLES
 
 type Query = Callable[..., list[tuple[Any, ...]]]
-
-_TABLES = (*(spec.name for spec in BATCH_WRITABLE_TABLES), "batch_run")
-
-
-def _truncate(admin_url: str) -> None:
-    assert_disposable_database(admin_url)
-    statement = sql.SQL("truncate {} restart identity cascade").format(
-        sql.SQL(", ").join(sql.Identifier("internal", name) for name in _TABLES)
-    )
-    with psycopg.connect(admin_url, autocommit=True) as conn:
-        conn.execute(statement)
 
 
 @pytest.fixture
 def clean_db(admin_url: str) -> Iterator[None]:
-    _truncate(admin_url)
+    truncate_internal_tables(admin_url)
     yield
-    _truncate(admin_url)
+    truncate_internal_tables(admin_url)
 
 
 @pytest.fixture

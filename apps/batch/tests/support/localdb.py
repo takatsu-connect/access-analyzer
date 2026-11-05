@@ -8,10 +8,14 @@ import os
 
 import psycopg
 import pytest
+from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from support.localenv import local_setting
+from takatsu_batch.write import BATCH_WRITABLE_TABLES
 
+# 空にする表。バッチが書く内部表と、実行記録
+INTERNAL_TABLES = (*(spec.name for spec in BATCH_WRITABLE_TABLES), "batch_run")
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1"})
 LOOPBACK = "127.0.0.1"
 _ALLOWED_KEYS = frozenset({"host", "port", "user", "password", "dbname"})
@@ -49,3 +53,16 @@ def assert_disposable_database(admin_url: str) -> None:
         ).fetchone()
     if row is None or row[0]:
         pytest.fail("GitHub Actions の実行記録がある DB には、結合テストで触れない", pytrace=False)
+
+
+def truncate_internal_tables(admin_url: str) -> None:
+    """バッチが書く内部表と実行記録を空にする。使い捨ての DB であることを先に確かめる。
+
+    結合テスト（I-B）の前後と、E2E のフィクスチャの読み込み（load_e2e_fixture）で使う。
+    """
+    assert_disposable_database(admin_url)
+    statement = sql.SQL("truncate {} restart identity cascade").format(
+        sql.SQL(", ").join(sql.Identifier("internal", name) for name in INTERNAL_TABLES)
+    )
+    with psycopg.connect(admin_url, autocommit=True) as conn:
+        conn.execute(statement)
