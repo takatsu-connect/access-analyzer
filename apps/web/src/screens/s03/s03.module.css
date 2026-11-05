@@ -1,0 +1,197 @@
+/* S-03 記事詳細。色は globals.css のトークン（基調色の濃淡とグレー）だけを使う。 */
+
+/* --- 属性の行 --- */
+.title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+  overflow-wrap: anywhere;
+}
+
+.titleLink {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.externalMark {
+  margin-inline-start: var(--space-1);
+}
+
+.attrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.attrs > li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 数え始める前に公開した記事の 1 文。枠とグレーの地で、評価の色を使わない。 */
+.preMeasure {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+}
+
+/* --- 節 --- */
+.section {
+  margin-block: var(--space-6);
+}
+
+.lead {
+  margin: var(--space-2) 0;
+  overflow-wrap: anywhere;
+}
+
+.bars {
+  margin-block: var(--space-2) var(--space-4);
+}
+
+/* 「ここから下は、期間を選んで見る部分」。両側に罫線を引く。 */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-7) 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.divider::before,
+.divider::after {
+  flex: 1 1 var(--space-4);
+  border-top: var(--border-width) solid var(--color-border-strong);
+  content: '';
+}
+
+/* --- 到達のお知らせ。基調色の枠だけで、色で祝わない（05 §2.4）。 --- */
+.milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.milestone {
+  display: inline-flex;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--shade-4);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+/* --- 表（図と同じ値）。狭い画面でも横にはみ出さないよう、セルの中で折り返す。 --- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+  font-weight: 400;
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.table thead th {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.cellNote {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* --- 日ごと / 週ごとの切り替え。選んでいる側は太字と下線でも示す（色だけにしない）。 --- */
+.viewToggle {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin: var(--space-2) 0;
+}
+
+.viewButton {
+  min-height: 2.75rem;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.viewButton[aria-pressed='true'] {
+  border-color: var(--shade-5);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* --- 読み込まれ方の目安。狭い画面は 1 列、広い画面は 2 列。 --- */
+.stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+
+@media (width >= 600px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.stat {
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.statLabel {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.statValue {
+  margin: var(--space-1) 0;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: var(--line-height-tight);
+}
+
+.statText {
+  margin: var(--space-1) 0;
+}
+
+.statNote {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
