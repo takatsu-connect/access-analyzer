@@ -13,7 +13,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/lib/**/*.test.ts', 'tests/lint/**/*.test.ts'],
+          include: ['tests/lib/**/*.test.ts', 'tests/lint/**/*.test.ts', 'tests/data/**/*.test.ts'],
         },
       },
       {
