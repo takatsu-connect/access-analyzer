@@ -1,0 +1,192 @@
+/*
+ * S-06〜S-08 の画面が使う、合計の枠と表の見た目。表は ArticleTable と同じ見た目にそろえる。
+ * 色は基調色の濃淡とグレーだけ（05 §2.4）。
+ */
+
+/* 広い画面だけ / 狭い画面だけ（05 §2.6。幅 600px 未満がスマホ扱い）。 */
+@media (max-width: 599.98px) {
+  .wideOnly {
+    display: none;
+  }
+}
+
+@media (min-width: 600px) {
+  .narrowOnly {
+    display: none;
+  }
+}
+
+.section {
+  margin-top: var(--space-6);
+}
+
+.nav {
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+}
+
+.link {
+  color: var(--shade-5);
+  text-underline-offset: 0.2em;
+}
+
+/* 合計の枠。狭い画面は「名称 … 値」の行、広い画面は横に並ぶ。 */
+.totalsBox {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+}
+
+.totalsLabel {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+}
+
+.total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.total dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+}
+
+.total dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* 先頭の値（読まれた回数など）を大きく書く。 */
+.total:first-child dd {
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-tight);
+}
+
+@media (min-width: 600px) {
+  .totals {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+
+  .total {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+}
+
+/* 値がないことを文字で書くところ（「前の期間のデータなし」「該当なし」）。 */
+.absent {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.tableWrap {
+  margin: var(--space-4) 0;
+}
+
+/* 横に長い表を、この枠の中だけで横に送る（S-06b の子カテゴリのときだけ使う）。 */
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.head {
+  padding: var(--space-2);
+  border-bottom: 2px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  line-height: var(--line-height-tight);
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.cell {
+  padding: var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* 数は、空白でだけ折り返す（桁の途中で折らない）。 */
+.numeric {
+  overflow-wrap: normal;
+  word-break: keep-all;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* 数と、その下の小さな棒。 */
+.barCell {
+  min-width: 5.5rem;
+}
+
+.bar {
+  display: block;
+  margin-top: var(--space-1);
+}
+
+.moreCell {
+  padding: 0 var(--space-2) var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.detailList {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.detailList dt {
+  color: var(--color-text-muted);
+}
+
+.detailList dd {
+  margin: 0;
+}
+
+@media (max-width: 599.98px) {
+  .head,
+  .cell {
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--font-size-xs);
+  }
+
+  .rowHead {
+    font-size: var(--font-size-sm);
+  }
+
+  /* 「詳しく」の行が続くときは、区切りの線を「詳しく」の下に移す。 */
+  .hasMore > .cell {
+    border-bottom: 0;
+  }
+}

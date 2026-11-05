@@ -10,4 +10,23 @@
  */
 import type { ScreenTexts } from './types';
 
-export const S07_TEXT = {} as const satisfies ScreenTexts<'s07' | 's07b'>;
+export const S07_TEXT = {
+  // --- S-07 シリーズ（タグ）別（05 §7.3） ---
+  // 05 §7.3 の注記の文。
+  's07.note':
+    '1 つの記事が複数のシリーズに入ることがあり、サイト全体の合計には記事以外のページも含まれるため、シリーズの合計を足してもサイト全体の合計とは一致しません。',
+  // ここから下は仮の初期値。
+  's07.count': '{n} 回',
+  's07.posts': '{n} 本',
+  // 比較の相手が決まらないとき（前の期間がない月）の列名。ふだんは「前の 28 日と比べて」など。
+  's07.column.prev': '前の期間と比べて',
+  's07.column.postCount': '記事数',
+  's07.absent.prev': '前の期間のデータなし',
+  's07.table.caption': 'シリーズごとの読まれた回数と記事数（名前の順）',
+  's07.bar.title': '{name}: 読まれた回数 {n}',
+
+  // --- S-07b シリーズの記事（05 §7.3） ---
+  's07b.total': '合計',
+  's07b.back': 'シリーズの一覧へ',
+  's07b.table.caption': '{name}の記事（公開日の新しい順）',
+} as const satisfies ScreenTexts<'s07' | 's07b'>;

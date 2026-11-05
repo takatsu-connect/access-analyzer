@@ -1,0 +1,93 @@
+/* S-08 投稿活動（05 §8）。色は基調色の濃淡とグレーだけ（05 §2.4）。 */
+
+/* 主文。本数を大きく読ませる。 */
+.lead {
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: var(--line-height-tight);
+}
+
+.leadCompare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.leadCompare > :last-child {
+  color: var(--color-text);
+}
+
+/* 月ごとの横棒。月の名前、棒、本数の 3 つを 1 行に並べる（スマホもパソコンも同じ）。 */
+.bars {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 1fr) 3.5em;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+}
+
+.barLabel {
+  color: var(--color-text-muted);
+}
+
+.barValue {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.barSvg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.barTrack {
+  fill: var(--color-surface-subtle);
+}
+
+.barFill {
+  fill: var(--shade-4);
+}
+
+/* 去年の同じ月は、塗らずに細い枠で描く（色ではなく形で分ける）。 */
+.barOutline {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 1;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  flex: none;
+  overflow: visible;
+}

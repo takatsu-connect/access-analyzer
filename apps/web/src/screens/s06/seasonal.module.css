@@ -1,0 +1,71 @@
+/* S-06b 月ごと × カテゴリ（05 §7.2）。 */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-4) 0;
+}
+
+.segment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.segmentLabel {
+  color: var(--color-text-muted);
+}
+
+.button {
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* 選んでいる印は、色だけでなく、太字と下の線でも伝える（PeriodPicker、ArticleTable と同じ）。 */
+.button[aria-pressed='true'] {
+  border-color: var(--shade-5);
+  background: var(--shade-1);
+  box-shadow: inset 0 -3px 0 var(--shade-5);
+  font-weight: 700;
+}
+
+.fixedPeriod {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.figure {
+  margin: var(--space-4) 0;
+}
+
+/*
+ * 狭い画面の子カテゴリのときだけ、図をこの枠の中で横に送る（05 §7.2）。
+ * 案内、選んだマスの文、凡例は、横に送っても画面の左に残す（Heatmap の中の p と ul）。
+ */
+.scroll {
+  overflow-x: auto;
+}
+
+.scrollInner {
+  min-width: 36rem;
+}
+
+.scrollInner p,
+.scrollInner ul {
+  position: sticky;
+  left: 0;
+  justify-self: start;
+  max-width: calc(100vw - var(--space-6));
+}
