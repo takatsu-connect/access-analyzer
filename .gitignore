@@ -27,3 +27,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+
+# Node / Next.js（apps/web）。pnpm-lock.yaml は追跡する
+node_modules/
+.next/
+apps/web/out/
+apps/web/coverage/
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/blob-report/
+apps/web/next-env.d.ts
+*.tsbuildinfo
+.vercel/

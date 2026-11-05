@@ -1,5 +1,6 @@
 {
   "SITE_ORIGIN": "https://takatsu-connect.com",
+  "MEASURE_START": "2025-10-08",
   "CHANNEL_BUCKETS": ["search", "social", "direct", "referral", "other"],
   "SNS_BUCKETS": ["instagram", "facebook", "x", "line", "other"],
   "DEVICE_BUCKETS": ["mobile", "desktop", "tablet"],

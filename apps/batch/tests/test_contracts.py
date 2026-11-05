@@ -19,6 +19,8 @@ def _contract() -> dict[str, object]:
 def test_python_constants_match_contract() -> None:
     assert _contract() == {
         "SITE_ORIGIN": config.SITE_ORIGIN,
+        # 読まれた回数を数え始めた日。バッチでは BACKFILL_START、BI では MEASURE_START
+        "MEASURE_START": config.BACKFILL_START,
         "CHANNEL_BUCKETS": list(config.CHANNEL_BUCKETS),
         "SNS_BUCKETS": list(config.SNS_BUCKETS),
         "DEVICE_BUCKETS": list(config.DEVICE_BUCKETS),
