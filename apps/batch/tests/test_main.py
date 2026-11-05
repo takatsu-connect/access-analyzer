@@ -84,17 +84,21 @@ def test_normalized_exit_code(code: object, expected: int) -> None:
     assert entry._normalized_exit_code(SystemExit(code)) == expected
 
 
-def test_real_entry_without_implementation_fails_with_kind_only() -> None:
+def test_real_entry_without_env_fails_with_validation_kind_only() -> None:
+    """環境変数がないと pipeline に入る前に validation で止まり、変数名も値も出ない。"""
+    env = _env()
+    for name in ("SUPABASE_BATCH_DB_URL", "GA4_PROPERTY_ID", "VERCEL_DEPLOY_HOOK_URL"):
+        env.pop(name, None)
     result = subprocess.run(
         [sys.executable, "-m", "takatsu_batch", "daily"],
-        env=_env(),
+        env=env,
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
     assert result.returncode == 1
-    assert result.stdout.strip() == FAILURE_LINE
+    assert result.stdout.strip() == '{"step":"startup","kind":"validation"}'
     assert result.stderr == ""
 
 

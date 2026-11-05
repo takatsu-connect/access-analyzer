@@ -12,6 +12,8 @@
   - 2026-11-04: tech-writer の整合確認。Q-12、Q-13 の確定を反映（§2、§14、§16、§17）。§17 の TLS の基準を第 1 に合わせた
   - 2026-11-05: 構築 1 の実装を反映（依頼者の決定）。§1: `failed_step` の値に `preflight` と `period` を含めることを明記し、02 §3.6 を揃えた。§5.2: `threads` は `other`、規則に当たらないものは `unmapped` とした
   - 2026-11-05: 構築 1 のコードレビューを反映（依頼者の決定）。§5.1: クエリ除去の後で空白を除く、先頭ゼロと 11 桁以上は記事以外。§6.2、§16: `age_days` は累積の n にだけ使い、M-21〜M-23 は「基準日 − 公開日」で判定。`BACKFILL_START` より前に公開した記事の扱いを追加
+  - 2026-11-05: 構築 2 の実装を反映。§1: preflight で、残った `running` の行を失敗に直す。§2: コマンドの形。§4: 公開中なのに前回の状態にも差分にもない記事を ID を指定して取る（4b）、日時の検証、名前の HTML エンティティ。§5: 5xx の再試行、数字でない曜日・時間帯。§10: `from` の既定、`--phase` は作らない。§14: スレッドの未処理例外では `batch_run` が `running` のまま残る。§16: 実装で足した設定値、`BASE_DATE` の形
+  - 2026-11-05: 構築 2 のコードレビューと監査（audits/2026-11-05-build2-review.md）を反映。§3: 二重実行の防止は、データが揃ってから始まった成功だけを数える。取り直す月は未確定の月すべて。計測開始より前に公開した記事は公開後 30 日の参照元を問い合わせない。§4: 不完全な一覧で履歴ごと消さない歯止め、基準日より後に公開された記事はまだ取り込まない。§6.2: 集計の対象は基準日までに公開された記事。§9: 公開から 8 日以上たって初めて取り込んだ記事の扱い。§14: 失敗した実行にも件数を残す。§15: ログに出す件数。§16: 環境変数の検査
 
 ## 1. 全体の流れ
 
@@ -30,6 +32,8 @@
 
 工程 1〜5 はメモリ上で完結させ、工程 6 でまとめて 1 トランザクションで書く（§7）。書き込み途中で失敗すればロールバックされ、前回の成功時の状態が残る。公開（工程 7）は書き込みが成功したときだけ行うので、BI に半端なデータが載らない。工程 0 の `batch_run` の `running` と、失敗・成功の記録は、工程 6 とは別の短いトランザクションで書く。
 
+工程 0 では、`running` のまま残った古い行（開始から 2 時間を超えたもの。設定値 `ABANDONED_RUN_HOURS`）を `failed`、種別 `unknown` に直す。ランナーの強制終了などで失敗を記録できなかった実行の後始末で、工程は分からないので `failed_step` は入れない。
+
 ```mermaid
 flowchart LR
   WP[WP REST API<br/>wp/v2] -->|差分取得| B
@@ -46,19 +50,20 @@ flowchart LR
 ## 2. 実行時刻とトリガー
 
 - `schedule`: `cron: '0 8 * * *'`（UTC 08:00 = JST 17:00。FR-70、Q-13 確定）。GA4 の日次データが揃う JST 15:30 より後、NFR-02 の T = 18:00（Q-13 確定）より前。
-- GitHub の cron は遅延・欠落することがあるため、`cron: '0 9 * * *'`（JST 18:00）にも登録し、preflight で「同じ基準日の success があれば終了」とする。2 回目は保険であり、通常は 1 回目で終わる。
+- GitHub の cron は遅延・欠落することがあるため、`cron: '0 9 * * *'`（JST 18:00）にも登録し、preflight で「同じ基準日の success があれば終了」とする。2 回目は保険であり、通常は 1 回目で終わる。数える success は、その基準日のデータが揃う時刻（基準日の翌日の JST 15:30。設定値 `GA4_DATA_READY_JST`）以降に始まった実行だけにする。早い時刻に手動で実行した結果（前日ぶんが少ない値のまま）で、定時の実行を止めないため。
 - `workflow_dispatch`: 手動の再実行（FR-70）。入力は `mode`（`daily` / `backfill` / `publish_only`）、`from`、`to`（バックフィル時）。`publish_only` は工程 7（Deploy Hook の呼び出し）だけを行い、設定値や辞書（`ui-text.ts`）の変更後の再ビルド、ビルド失敗後の再試行に使う。データを更新しないので `batch_run` に行を書かない（`pub_meta` の最終更新を変えない。設計レビュー L-7）。
 - 定期実行は main ブランチのワークフローだけが動く（NFR-45 (4)。schedule は既定ブランチでしか動かないが、ジョブ側でも `if: github.ref == 'refs/heads/main'` を付ける）。
 - 所要時間の見込み: 通常 2〜4 分（GA4 約 30 リクエスト、WP 約 7 リクエスト、書き込み数万行）。`timeout-minutes: 30`。
+- コマンド: `python -m takatsu_batch daily`、`python -m takatsu_batch backfill [--from YYYY-MM-DD] [--to YYYY-MM-DD]`、`python -m takatsu_batch publish_only`（`publish-only` も受ける）。終了コードは成功と二重実行の回避が 0、失敗が 1、引数の誤りが 2。
 
 ## 3. 基準日と期間の決め方
 
 - 基準日 = 実行時刻を Asia/Tokyo に変換した日付の前日（NFR-02）。環境変数 `BASE_DATE` で上書きできる（再実行・試験用）。
 - 移動窓: `last7` = [基準日 − 6, 基準日]、`prev7` = [基準日 − 13, 基準日 − 7]。28、90 も同様。
 - 月: 2025-10 から基準日の属する月まで。基準日の属する月の `end_date` は基準日。
-- 今回「取り直す期間」= 移動窓 6 つ + 基準日の属する月 + 前月（`is_confirmed` がまだ false のとき。月末 + 7 日 ≤ 基準日 で true になり、その実行で最後に取り直して以後は触らない）。それ以前の月は変えない。
+- 今回「取り直す期間」= 移動窓 6 つ + 基準日の属する月 + 前月（`is_confirmed` がまだ false のとき。月末 + 7 日 ≤ 基準日 で true になり、その実行で最後に取り直して以後は触らない）。それ以前の月は変えない。実装は「`period` の行でまだ確定していない月すべて」を取り直す。通常は当月と前月だけになり、失敗が続いて確定の実行を逃した月も次の実行で拾える。
 - 確定した月の参照元ドメイン・市別（§4.1 行 5）は、その月が `is_confirmed` になった実行で 1 回だけ取得する。行がない確定月があれば（失敗で飛んだ場合）同じ実行で補う。
-- 公開後 30 日時点（§4.1 行 10）: `published_on + 29`（30 日目）+ 7 日 ≤ 基準日 かつ `article_summary.referrer_30d_computed_on` が null の記事を対象にする。
+- 公開後 30 日時点（§4.1 行 10）: `published_on + 29`（30 日目）+ 7 日 ≤ 基準日 かつ `article_summary.referrer_30d_computed_on` が null の記事を対象にする。`BACKFILL_START` より前に公開した記事は 30 日の窓がそろわないので、GA4 に問い合わせずに「計算済み、行なし」にする（7 日と 30 日の値を持たないのと同じ扱い。§6.2）。
 
 ## 4. WP REST API からの取得（差分取得、D-03）
 
@@ -70,21 +75,31 @@ flowchart LR
 | 2 | `GET /wp-json/wp/v2/tags?per_page=100&_fields=id,name` | タグ | 1〜2 |
 | 3 | `GET /wp-json/wp/v2/posts?status=publish&per_page=100&modified_after=<前回成功の started_at − 1 日>&_fields=id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected` | 追加・更新された記事 | 1（通常 0〜5 件） |
 | 4 | `GET /wp-json/wp/v2/posts?status=publish&per_page=100&_fields=id&page=1..N` | 公開記事の ID 一覧（削除・非公開化の検出） | 3（225 本） |
+| 4b | `GET /wp-json/wp/v2/posts?status=publish&per_page=100&include=<ID,...>&_fields=<3 と同じ>` | 4 の一覧にあるのに、前回の状態にも 3 の差分にもない記事を補う。予約投稿は公開の時点で `modified` が変わらず、3 の条件に掛からないため。100 本ずつ | 0〜1（該当があるときだけ） |
 | 5 | `GET /wp-json/wp/v2/users/<id>?_fields=name,slug,link` | 3 で現れた、まだ slug に解決していない author ID | 0〜数回 |
-| 6 | 週 1 回（日曜）: `posts?_fields=id,author` 3 回 + 全著者の `users/<id>` | 表示名・URL の変更を反映 | 週 24 回 |
+| 6 | 週 1 回（基準日が日曜の実行。通常は月曜の夕方）: `posts?_fields=id,author` 3 回 + 全著者の `users/<id>` | 表示名・URL の変更を反映 | 週 24 回 |
 
 - 間隔: リクエスト間に 1 秒以上空ける（NFR-72）。`User-Agent` に BI の名前とリポジトリ URL を入れる。失敗は 3 回まで指数バックオフで再試行し、それでも失敗したら `wp_fetch` で失敗にする。
 - 処理: `content.protected = true` の記事は取り込まない。既に `wp_post` にあって、今回 (a) ID 一覧にない、または (b) `content.protected = true` になった記事は `wp_post` から削除する（cascade で記事に関する行がすべて消える。FR-72、NFR-34、NFR-52）。
 - 著者: `author`（数値 ID）は `users/<id>` で slug・表示名・URL に解決してから捨てる。ID → slug の対応はメモリにだけ持ち、Supabase には置かない（NFR-35）。
-- 検証: `link` と著者 `link` が `https://takatsu-connect.com/` で始まることを確認する（FR-04、NFR-91）。違えば validation で失敗にする。
+- 4b の補足: パスワード付きの記事は 4 の一覧に入るが取り込まないので、ある間は毎回 4b で取って捨てる（1 リクエスト）。4 と 4b の間に消えた記事は、取れなくても止まらない。予約投稿の公開で `modified` が変わらないことは WordPress の実機では確かめていない（変わるなら 4b は呼ばれないだけで、害はない）。
+- 検証: `link` と著者 `link` が `https://takatsu-connect.com/` で始まることを確認する（FR-04、NFR-91）。`date_gmt` と `modified_gmt` が日時として読めることも確認する。違えば validation で失敗にする。
+- 名前: 記事のタイトル、著者の表示名、カテゴリ名、タグ名は、HTML エンティティ（`&amp;` など）を文字に戻してから格納する。BI は文字列として描くので、戻した値がそのまま HTML として解釈されることはない。
+- 基準日より後に公開された記事: バッチの実行日（基準日の翌日）に公開された記事は、数字がまだないので取り込まない。次の実行で、3 の差分か 4b で入る。すでに取り込んである記事は、基準日を過去にした実行でも消さない（集計の対象からは外す。§6.2）。
+- 不完全な応答で履歴ごと消さないための歯止め（記事を消すと日別の値が cascade で消え、戻すには backfill が要る）。どれも validation で止め、次の実行でやり直す。
+  - 4 の一覧で集めた ID の数が `X-WP-Total` と合わない（ページの取得中に記事が増減してずれた、応答が不完全）。
+  - daily で一度に消える記事が、10 本と前回の記事数の 5% の大きいほうを超える（設定値 `WP_DELETE_GUARD_MIN_POSTS`、`WP_DELETE_GUARD_PERCENT`）。意図した大量の非公開化は backfill で反映する（backfill では止めない）。
+  - 前回は記事とカテゴリの関連があったのに、カテゴリが 1 つも返らない（広告の判定が全件外れる）。
+  - `X-WP-TotalPages` が 50 を超える（100 件 × 50 ページ。応答のヘッダの値で読み続けない）。
 - 初回（バックフィル）は 3 の `modified_after` を付けずに全件を取る（3 回）。
 - 固定ページ（`/wp-json/wp/v2/pages`）は Q-17 が未確定のため取得しない。「記事以外」にまとまる。
 
 ## 5. GA4 Data API からの取得
 
 - クライアント: `google-analytics-data`（`google.analytics.data_v1beta`）の `BetaAnalyticsDataClient`。認証は google-github-actions/auth が書く資格情報ファイル（`GOOGLE_APPLICATION_CREDENTIALS`）を Application Default Credentials として拾う（ADR 0002）。プロパティは `properties/${GA4_PROPERTY_ID}`。
-- `runReport`（Python の `run_report`）の規則: `dateRanges` は 1 リクエストに最大 4 つ入れられるので、取り直す期間を 4 つずつまとめる。`limit` は既定 10,000 行、最大 250,000 行（2026-11-03 に公式リファレンスで確認）。行数が 10,000 を超えうる問い合わせ（pagePath × 日）は `limit = 100000` を指定し、`rowCount` が上回れば `offset` でページングする。`returnPropertyQuota: true` を常に付け、`propertyQuota.tokensPerDay.remaining` と `tokensPerHour.remaining`、`tokensPerProjectPerHour.remaining` を `batch_run.counts` に件数として記録する。
-- 同時実行はしない（逐次。同時リクエストの割当 10 を使わない）。リクエスト間に 200 ms 空ける。429 / `RESOURCE_EXHAUSTED` は 60 秒待って 1 回だけ再試行し、だめなら `quota` で失敗にする。
+- `runReport`（Python の `run_report`）の規則: `dateRanges` は 1 リクエストに最大 4 つ入れられるので、取り直す期間を 4 つずつまとめる。`limit` は既定 10,000 行、最大 250,000 行（2026-11-03 に公式リファレンスで確認）。行数が 10,000 を超えうる問い合わせ（pagePath × 日）は `limit = 100000` を指定し、`rowCount` が上回れば `offset` でページングする。`returnPropertyQuota: true` を常に付け、`propertyQuota.tokensPerDay.remaining` と `tokensPerHour.remaining`、`tokensPerProjectPerHour.remaining` を `batch_run.counts` に件数として記録する（`counts` のキーは 1 日と 1 時間の 2 つなので、1 時間のほうは `tokensPerHour` と `tokensPerProjectPerHour` の小さいほうを残す。割当が返らなかった応答は記録しない）。
+- 同時実行はしない（逐次。同時リクエストの割当 10 を使わない）。リクエスト間に 200 ms 空ける。429 / `RESOURCE_EXHAUSTED` は 60 秒待って 1 回だけ再試行し、だめなら `quota` で失敗にする。5xx と期限切れ（`ServerError`、`DeadlineExceeded`）は 2 秒待って 1 回だけ再試行し、だめなら `network` で失敗にする。それ以外のエラーは再試行しない。
+- 応答の扱い: `deviceCategory` が 3 区分（mobile、desktop、tablet）に入らない行（smart tv など）と、`dayOfWeek`・`hour` が数字でない行は内訳に数えない。前者は件数だけをログに出す（`ga4_unknown_device_rows`）。日別の値が返らなかった日の数もログに出す（`ga4_missing_days`）。
 - 取得する次元・指標は 03_data_sources.md §2.4 の範囲に限る。`pageReferrer`、`pageLocation`、`pageTitle`、ユーザー系、検索語、`customEvent:*`（D-15 の結論により page_type も）は使わない。
 
 ### 5.1 pagePath の正規化（D-05）と page_type（D-15）
@@ -178,9 +193,11 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 派生指標のうち累積（M-18）、判定（M-22、M-23）、自分の過去との比較の基準値（M-24）はバッチ（Python）が `article_daily` と `wp_post` から計算する。全記事の分布（M-19、M-27）と帯（band）は `internal.benchmark_curve` ビューと公開ビューが公開記事から計算し、バッチは計算しない（02 §4.1、ADR 0003 判断 4。最終確認 低-1 で文言を修正）。計算式は 02_metrics.md §4.3。
 
 - `article_period.pageviews` = 期間内の `article_daily.pageviews` の合計。
-- 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す。
+- 累積（M-18）: 公開日を 1 日目として n = 1〜90 の累積。公開前の日に PV があっても（公開日時より前のプレビューなど）累積には含めない。公開ビュー `pub_article_cumulative` は同じ定義を SQL の窓関数で出す（`BACKFILL_START` より前に公開した記事の行は出さない。02 §4.1）。
 - 分布（M-19、M-27、`benchmark_curve`）: **バッチは計算しない**（2026-11-03、再確認 N-1）。`internal.benchmark_curve` ビューが公開記事（広告を除く）から計算する（02 §4.1）。定義はビューに移しても変えない: 母集団 = 直近 12 か月（基準日 − 365 日以降）に公開、広告でない、age_days ≥ n の記事。30 本未満なら全期間に広げる（`population_window = all`）。それでも 30 本未満なら n の行を作らない。分位点は `percentile_cont`（線形補間）。`scope = cat:<id>` は、子カテゴリのうち母集団が 30 本以上のものだけ。`population_size` は母集団の件数。著者の除外は初回対象外だが（2026-11-04、ADR 0005 保留）、計算の場所はビューのままにする。追加するときに母集団の条件を DB 側の 1 か所に足すだけで済み、バッチに除外リストを読ませずに済むため（経緯と代替案は ADR 0003 判断 4 追記）。`apps/batch/tests/support/reference.py` の `quantiles()` はビューの結果と突き合わせる参照実装（07 U-07、I-DB-17）。
 - 帯（band）: **バッチは計算しない**。公開ビュー `pub_article_summary` が `band_7d`（`pv_7d` を曲線 (all, 7) の p25 / p75 と比べる。age_days ≥ 7 のときだけ）と `band_30d`（N = min(age_days, 30) 日目の累積を曲線 (all, N) と比べる。「◯日目」として同じ日数の帯と比べる。M-20）を、`pub_author_summary` が `band_30d`（`own_median_30d` を曲線 (all, 30) と比べる）を計算する。p75 と等しいときも p25 と等しいときも `middle`。age_days < 3、曲線の行がない、値が null のときは null。`apps/batch/tests/support/reference.py` の `band()` は参照実装（07 U-08、I-DB-17）。
+- 集計の対象: 基準日までに公開された記事だけ（`published_on` ≤ 基準日）。それより後の記事は GA4 の取得にも集計にも入れず、`article_summary` などの行を作らない。`age_days` は 1 以上になる（check 制約）。
+- 規則にない SNS の参照元（`sns_source_unmapped`）: 基準日で終わる期間（直近の移動窓と当月）に現れたものだけを残す。`last_seen_on` を基準日にするため。値は内部の確認用で、伏せない。
 - 経過日数の使い分け: `age_days`（基準日 − 公開日 + 1。公開日を 1 日目）は累積の n（M-18、M-20、帯）にだけ使う。M-21、M-22、M-23 の判定は要件どおり「基準日 − 公開日」（以下 d）で行う。
 - 計測開始より前に公開した記事: `published_on` < `BACKFILL_START` の記事は `pv_7d`、`pv_30d` を null で書く（累積が欠けるため。02 §4.1）。
 - M-21: d ≤ 30 は `new`、31 ≤ d ≤ 90 は `mid`、d ≥ 91 は `long`。
@@ -202,7 +219,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 - トランザクション: 工程 6 全体を `with conn.transaction():` の 1 つにまとめ、先頭で `set local statement_timeout = '120s'` を実行する。例外で抜ければロールバックする。
 - 全置換する表（`article_summary`、`author_summary`、`article_milestone`）は、同じ基準日で `delete` → `insert` ではなく、upsert のあと「今回のキー集合にない行を delete」とする（同じトランザクションの中なので、BI のビルドから空の状態は見えない）。`benchmark_curve` はビューなので書き込みはない（02 §4.1）。`truncate` は使わない（`batch_writer` に truncate の grant を付けない。最終確認 低-2）。
 - 移動窓（`period.kind = window`）の期間別行は upsert で上書きされる（キーが固定 ID なので古い日付範囲の行は残らない）。記事が増減した分は「今回のキー集合にない行を delete」で揃える。
-- 書き込み件数は `batch_run.counts` に残す。行の内容はログに出さない。
+- 書き込み件数は `batch_run.counts` に残す。行の内容はログに出さない。`rows_written` は upsert に渡した行と、消した行の合計（変わらなかった行も数える目安の値。cascade で消えた行は数えない）。
 
 ## 8. 公開（キャッシュ更新）
 
@@ -215,6 +232,7 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 - 毎回、基準日から過去 7 日（基準日を含む 7 日）の日別値を取り直して上書きする（FR-71、NFR-03）。
 - 再実行（手動、または 2 本目の cron）は同じ基準日で同じ結果になる（冪等）。`BASE_DATE` を過去日にして実行すると、その日を基準日とした移動窓を上書きするので、通常は使わない（試験用）。
 - 失敗した翌日は、前日ぶんも「直近 7 日」に含まれるので日別値は自動で埋まる。期間値も移動窓なので自動で追いつく。欠けうるのは (a) `is_confirmed` になった月の参照元・市別、(b) 30 日が経過した記事の参照元上位 3、で、いずれも「行がない対象を次回に補う」規則（§3）で埋まる。
+- daily で埋まらないもの（構築 2 のレビューで確認。未対応）: 公開から 8 日以上たって初めて取り込んだ記事は、日別の値が直近 7 日ぶんしか入らず、それより前の値と、そこから作る合計・累積・7 日と 30 日の値が小さく出る。一度非公開にして再公開した記事（消したときに日別の値も消える）、長くパスワード付きだった記事の公開、公開日をさかのぼった公開、8 日以上の連続した失敗のあとの記事が当たる。件数は `posts_late_seen` としてログに出す（0 でなければ該当あり）。直すには backfill を実行する（全期間を取り直すので戻る）。daily の中で自動で取り直すかは、初回公開後に決める。
 
 ## 10. 初回バックフィル
 
@@ -228,8 +246,9 @@ D-15（カスタム次元 `page_type`）: 使わない。理由は (1) 判定は
 6. 30 日が経過した全記事について G17（約 220 リクエスト）。
 7. derive、write、publish。
 
-- 冪等なので失敗したら最初からやり直してよい。長くなる場合は `--phase` で手順 2、4、6 を別々に実行できるようにする。
-- 割当: §11 のとおり 1 回で収まる見込みだが、`tokensPerProjectPerHour.remaining` が 2,000 を下回ったら処理を止めて `quota` で終了し、1 時間後に再実行する（G17 が最も多いので、手順 6 は記事 50 本ごとに残量を確認する）。
+- `from` を省くと `BACKFILL_START`、`to` を省くと `BASE_DATE`（あれば）、なければ実行時刻の前日（JST）になる。`from` が `BACKFILL_START` より前、`to` が未来、`from` > `to` は validation で失敗にする。`--from` と `--to` は `YYYY-MM-DD` の形だけを受け、backfill 以外に付けると validation で失敗にする（黙って無視しない）。
+- 冪等なので失敗したら最初からやり直してよい。手順を分けて実行する `--phase` は初回では作らない（見込みの所要時間が 6〜8 分で、やり直しで足りるため。長くなると分かったら足す）。
+- 割当: §11 のとおり 1 回で収まる見込みだが、`tokensPerProjectPerHour.remaining` が 2,000 を下回ったら処理を止めて `quota` で終了し、1 時間後に再実行する（実装では、バックフィルのすべての応答で残量を確認する）。
 - 所要時間: リクエスト約 300 × (応答 1 秒 + 間隔 0.2 秒) ≈ 6〜8 分。`timeout-minutes: 60`。
 - 2025-11 の不連続な値（03_data_sources.md §2.6）はそのまま取り込む（理由は確認しない）。
 - 接続文字列の漏えい後の作り直し（06 §3、W-2）にも `backfill` を使う。工程 0 の二重実行の防止（同じ基準日の `success` があれば終了）は `daily` だけに効かせ、`backfill` を止めない。`backfill` の upsert は攻撃者が足した行を消さないこと、GA4 から取り直せない期間の値は戻らないことが未解決（§17）。
@@ -277,7 +296,7 @@ Supabase Free は 1 週間アクセスがないと一時停止するが、日次
 
 ## 14. 失敗時の扱いと通知
 
-- どの工程で失敗しても `batch_run` を `failed` にし、`failed_step` と `error_kind` だけを記録する。例外のメッセージとスタックは Actions のログにも出さない（NFR-44。エラーの種別に分類できないものは `unknown`）。
+- どの工程で失敗しても `batch_run` を `failed` にし、`failed_step` と `error_kind` を記録する。`counts` には、そこまでのリクエスト数、割当の残量、所要時間を残す（割当で止まったときに残量が分かるように）。例外のメッセージとスタックは Actions のログにも出さない（NFR-44。エラーの種別に分類できないものは `unknown`）。
 - 未処理例外の既定出力を止める（設計レビュー M-8）: Python は未処理例外のメッセージとスタックを stderr に出す。例外のメッセージには次のものが含まれうる（Secrets の自動マスクは値の完全一致にしか効かない）。
   - psycopg の接続エラー（`OperationalError`）: pooler の host、ポート、ユーザー名（`batch_writer.<PROJECT-REF>`）。接続文字列の解析エラーは接続文字列の一部を含みうる（パスワードを含む可能性を前提にする）。
   - psycopg の SQL エラー: 行の値（`diag.message_detail` の `Failing row contains (...)`、`Key (...)=(...)`）、表名、列名、SQL 文の断片（`diag.statement_position` など）。
@@ -296,19 +315,20 @@ Supabase Free は 1 週間アクセスがないと一時停止するが、日次
 
      この処理は `__main__.py` だけで行う。`__init__.py` には第三者の import も処理も書かない（`python -m` では先に読まれるため。pytest も import するので、ここで fd 2 を塞がない）。
   5. ライブラリのログを止める: `httpx` は INFO でリクエストの URL をログに出すので、`logging.basicConfig` を呼ばず、ルートロガーに `NullHandler` を付けてレベルを `CRITICAL + 1` にし、`logging.lastResort = None` にする。独自のレベルとハンドラを持つロガーはルートのレベルでは止まらないので、4 の `logging.disable` で止める。
-  6. `batch_run` への `failed` の書き込みが失敗しても、そのエラーも出さず終了コードだけで知らせる。接続の失敗や import 時の例外では `batch_run` を `failed` にできない（§2 の Actions の失敗と、次回の行の不在で分かる）。
+  6. `batch_run` への `failed` の書き込みが失敗しても、そのエラーも出さず終了コードだけで知らせる。接続の失敗や import 時の例外では `batch_run` を `failed` にできない（§2 の Actions の失敗と、次回の行の不在で分かる）。スレッドの未処理例外（4 の 2 のフック）は後始末を挟まずに終えるので、`batch_run` は `running` のまま残り、次回以降の preflight が `failed` に直す（§1）。バッチ自身はスレッドを作らないので、ライブラリの内部で起きた場合の備えである。
 - 接続の設定（ADR 0009「TLS」）: `sslmode` と `sslrootcert` は `psycopg.connect` のキーワードでコードから渡し、`env.py` が `conninfo_to_dict` の実効値を検査する。接続文字列に TLS の設定を書かない。
 - 接続文字列の扱い: `pydantic.SecretStr` で持ち、`psycopg.connect` に渡す直前にだけ `get_secret_value()` を呼ぶ。`repr` に出ない。
 - テスト: 07 U-29、U-30、I-B-11（例外時のログに `postgresql://`、`pooler`、`batch_writer`、`Failing row`、`Key (`、`https://`、`properties/`、6 桁以上の数字列、`Traceback` が出ない）。
 - 通知（FR-74）: 通知先は GitHub の失敗通知メール（Q-12 確定。リポジトリの管理者に届く）。あとから Slack や LINE に変えるときは、GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。
 - BI は前回の成功時のデータで表示を続ける（NFR-90）。失敗した日は Deploy Hook を呼ばないので画面は変わらず、FR-02 の表示が「更新が遅れています」になる（§12 のクライアント側の判定）。
+- 失敗が続く間は、WordPress で取り下げた記事の反映も止まる（監査 L-2）。書き込みは工程 6 でまとめて行うので、GA4 の工程で失敗すると WP 側の削除も書かれない。書き込みのあとで Deploy Hook だけが失敗した日（`failed_step = publish`）は、データは新しいが画面が古いので、`publish_only` を実行する。どちらも、対処と期限を docs/operations/ の手順書に書く（デプロイ工程）。
 
 ## 15. ログの規律
 
 Actions のログは誰でも読める（public リポジトリ）。出すのは次だけ（NFR-44、security.md「GitHub Actions」）。
 
 - 工程の開始・終了、所要時間。
-- 件数: GA4 リクエスト数と消費トークン、WP リクエスト数、取り込んだ記事数、削除した記事数、書き込んだ行数。
+- 件数: GA4 リクエスト数と消費トークン、割当の残量（1 日、1 時間）、WP リクエスト数、取り込んだ記事数、削除した記事数、書き込んだ行数。日別の値が返らなかった日の数（`ga4_missing_days`）、3 区分に入らないデバイスの行の数（`ga4_unknown_device_rows`）、公開から 8 日以上たって初めて取り込んだ記事の数（`posts_late_seen`。§9）。
 - エラーの種別（§14）。
 - 出さないもの: API の応答本文、行データ（記事タイトル、著者名、pagePath、参照元ドメイン、市名を含む）、トークン、プロパティ ID、接続文字列とその部品（pooler の host、ユーザー名、PROJECT-REF、パスワード）、SQL 文、SQLSTATE 以外の DB のエラー情報。環境変数の一覧を出す `env` や `printenv` を使わない。`ACTIONS_STEP_DEBUG` は使わない。
 - ロガーは `apps/batch/src/takatsu_batch/log.py` に 1 つだけ置き、引数を件数・固定の種別・所要時間に限った関数（`log_count(step: Step, name: CountName, n: int)` など。`Step` と `CountName` は `Literal`）だけを公開する。任意のオブジェクトを出す関数を作らない。出力は `sys.stdout.write`。`print` は ruff の T201 で禁止する。
@@ -339,6 +359,22 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | SITE_ORIGIN | https://takatsu-connect.com | FR-04 |
 | WP_REQUEST_INTERVAL_MS | 1000 | NFR-72 |
 
+実装で足した設定値（構築 2。同じ `config.py` に置く）:
+
+| 名前 | 既定 | 根拠 |
+| --- | --- | --- |
+| WP_PER_PAGE / WP_MAX_RETRIES | 100 / 3 | §4 |
+| WP_DELETE_GUARD_MIN_POSTS / WP_DELETE_GUARD_PERCENT | 10 / 5 | §4（daily で一度に消してよい記事の上限） |
+| GA4_DATA_READY_JST | 15:30 | §2（二重実行の防止で数える成功の下限） |
+| WP_USER_AGENT | BI の名前とリポジトリの URL | §4、NFR-72 |
+| GA4_REQUEST_INTERVAL_MS | 200 | §5 |
+| GA4_QUOTA_RETRY_WAIT_SECONDS / GA4_SERVER_ERROR_RETRY_WAIT_SECONDS | 60 / 2 | §5 |
+| GA4_RANGES_PER_REQUEST / GA4_ROW_LIMIT / GA4_REQUEST_TIMEOUT_SECONDS | 4 / 100000 / 120 | §5 |
+| GA4_BACKFILL_CHUNK_DAYS / GA4_MIN_PROJECT_HOUR_TOKENS | 90 / 2000 | §10 |
+| DB_SSLMODE / DB_CA_CERT_FILE | verify-full / supabase-root-2021.crt | ADR 0009「TLS」 |
+| DB_CONNECT_TIMEOUT_SECONDS / DB_WRITE_CHUNK_ROWS | 10 / 1000 | §7 |
+| ABANDONED_RUN_HOURS | 2 | §1 |
+
 設定値 `MASK_ZERO` は置かない（D-16 確定: 0 は伏せない。切り替え可能にすると「0 を伏せる」設定で二次伏せの候補が崩れるため。設計レビュー M-1）。シェア数（M-41）に関する設定値もない（初回対象外、M-4）。
 
 秘密情報（環境変数。`.env.example` には名前だけ。06 §3）:
@@ -354,9 +390,9 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | VERCEL_DEPLOY_HOOK_URL | GitHub Environment（`production`、main のみ）の Secret | 再ビルドの起動 |
 | LOCAL_BATCH_WRITER_PASSWORD | ローカルの `.env` だけ（CI は実行時に生成する。本番では使わない） | ローカルの `batch_writer` のパスワード（02 §8） |
 | （失敗通知の Secret） | 置かない | 失敗通知は GitHub のメール（Q-12 確定）。Slack や LINE に変えるときに名前を決める |
-| BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行 |
+| BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行。`YYYY-MM-DD` の形だけを受ける |
 
-`env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。Environment が使えない場合の代替は ADR 0009「接続文字列のブランチへの束縛」。
+`env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。値の検査: `GA4_PROPERTY_ID` と `GITHUB_RUN_ID` は数字だけ、`VERCEL_DEPLOY_HOOK_URL` は `https://api.vercel.com/v1/integrations/deploy/` で始まるものだけ（POST の宛先を Vercel の Deploy Hook に限る）、`SUPABASE_BATCH_DB_URL` は ADR 0009「TLS」の検査。HTTP のクライアントは、プロキシや証明書の場所を環境変数から読まない（`trust_env=False`）。Environment が使えない場合の代替は ADR 0009「接続文字列のブランチへの束縛」。
 
 ## 17. 未確定
 

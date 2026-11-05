@@ -17,6 +17,13 @@ FORBIDDEN_TEXT = re.compile(
     r"\.diag\b|\.pgconn\b|\.pgresult\b|format_exc|format_exception|print_exc"
     r"|logging\.exception|basicConfig|__context__|__traceback__|__cause__"
 )
+# S-06: GA4 / WP の禁止名。著者は個別の /users/<id> だけを使い、一覧の /users は使わない（03 §4）
+S06_FORBIDDEN = re.compile(
+    r"newUsers|totalUsers|engagedSessions|engagementRate|averageSessionDuration|bounceRate"
+    r"|pageReferrer|pageLocation|customEvent|/comments|/users(?!/\{)|realtime|RANKING"
+)
+# S-17: バッチが触れてはいけない名前
+S17_FORBIDDEN = re.compile(r"pub_|benchmark_curve|article_cumulative|SERVICE_ROLE|service_role")
 # __main__.py が logging で使ってよい名前（03 §14 の 4・5）
 ALLOWED_LOGGING_ATTRS = {
     "disable",
@@ -129,6 +136,25 @@ def test_main_does_not_enable_faulthandler_or_reraise() -> None:
     assert "faulthandler" not in source
     tree = ast.parse(source)
     assert not any(isinstance(node, ast.Raise) for node in ast.walk(tree))
+
+
+@pytest.mark.parametrize("path", MODULES, ids=lambda p: p.name)
+def test_s06_forbidden_ga4_and_wp_names_are_absent(path: Path) -> None:
+    # 07 S-06。コメントも含めて置かない（CI の grep と同じ結果にする）
+    assert S06_FORBIDDEN.search(path.read_text(encoding="utf-8")) is None
+
+
+@pytest.mark.parametrize("path", MODULES, ids=lambda p: p.name)
+def test_s17_batch_does_not_touch_public_views(path: Path) -> None:
+    # 07 S-17: 公開ビュー、分布のビュー、service role に触れない
+    assert S17_FORBIDDEN.search(path.read_text(encoding="utf-8")) is None
+
+
+def test_s06_pattern_detects_violations() -> None:
+    for text in ('"/users"', '"/users?per_page=100"', "/comments", "newUsers", "RANKING_ENABLED"):
+        assert S06_FORBIDDEN.search(text) is not None
+    # 個別の著者（03 §4 の 5）は使ってよい
+    assert S06_FORBIDDEN.search('f"/users/{author_id}"') is None
 
 
 @pytest.mark.parametrize("path", MODULES, ids=lambda p: p.name)

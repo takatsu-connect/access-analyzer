@@ -1,0 +1,13 @@
+{
+  "SITE_ORIGIN": "https://takatsu-connect.com",
+  "CHANNEL_BUCKETS": ["search", "social", "direct", "referral", "other"],
+  "SNS_BUCKETS": ["instagram", "facebook", "x", "line", "other"],
+  "DEVICE_BUCKETS": ["mobile", "desktop", "tablet"],
+  "NEW_RETURNING_BUCKETS": ["new", "returning", "unknown"],
+  "LOCAL_BUCKETS": ["kawasaki", "japan_other", "unknown"],
+  "FRESHNESS_BUCKETS": ["new", "mid", "long"],
+  "SITE_AXES": ["sns", "new_returning", "local", "channel", "device_pv", "device_sessions"],
+  "ARTICLE_AXES": ["channel", "sns", "device"],
+  "AUTHOR_AXES": ["channel", "sns"],
+  "WINDOW_PERIOD_IDS": ["last7", "prev7", "last28", "prev28", "last90", "prev90"]
+}

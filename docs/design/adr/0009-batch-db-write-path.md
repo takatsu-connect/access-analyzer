@@ -1,13 +1,14 @@
 # ADR 0009: バッチの書き込み経路（psycopg、shared pooler の session mode、専用ロール）
 
 - 状態: 条件付き承認の条件を反映済み。残る確認は実装着手前（docs/security/audits/2026-11-03-write-path-review.md。残る確認は本文「実装着手前の確認項目」）
-- 更新日: 2026-11-04
+- 更新日: 2026-11-05
 - 関係: 02_data_model.md §1・§6、03_data_pipeline.md §7・§14・§15、06_security.md §2.3・§3・§9、ADR 0004、ADR 0007、NFR-22、NFR-40、NFR-43、NFR-44、NFR-45
 - 変更履歴:
   - 2026-11-03: 新規。ADR 0007 の「supabase-js の upsert、直接接続は使わない」を置き換える
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-4、W-8、L-1〜L-4、L-7 を反映。TLS の 3 段階の基準、接続設定のコード固定、Environment への Secret の移動、`nologin` でのロール作成、漏えい時の影響の書き直し、実装着手前の確認項目
   - 2026-11-04: 著者の除外（FR-36）を初回対象外にしたため、除外の記述（漏えい時の影響、確認項目 3 の slug、V-4 の件数の確認など）を外した。経路、ロール、TLS の判断は変わらない
   - 2026-11-04: tech-writer の整合確認。A-11 の記述と「残る確認」を、TLS の基準を第 1 とした途中経過に合わせた。判断は変えていない
+  - 2026-11-05: 構築 2 で V-1 の一部をローカルで確かめた結果を「実装着手前の確認項目」に追記した。判断は変えていない
 
 ## 文脈
 
@@ -185,6 +186,15 @@ CA の失効や交換が起きると、接続は TLS のエラーで失敗し、
 | V-4 | Postgres: パスワード変更で既存のセッションが切れないこと。`generated always as identity` のシーケンスが grant なしで動くか。`batch_writer` 自身が `connection limit` を変えられないこと | 「漏えい時の影響」、06 §3、02 §6 |
 | V-5 | Postgres / Supabase: `alter role ... password` の平文が履歴やログに残る条件。SCRAM の verifier を渡す方法と pooler との互換 | 「ロールと権限」 |
 | V-6 | Dependabot と pip-audit: `cooldown` の設定とセキュリティ更新の扱い、pip-compile のハッシュの再生成、`pip-audit --disable-pip` の可否 | ADR 0004、06 §10 |
+
+V-1 のうち、構築 2 でローカルで確かめたこと（2026-11-05。psycopg 3.3.8、`psycopg-binary` が同梱する libpq 18.0）:
+
+- URI の `?host=` は、前に書いた host を上書きする。`conninfo_to_dict("postgresql://u:p@prod.example:5432/postgres?host=localhost")` の `host` は `localhost` になる。`hostaddr` と `sslmode` もクエリ文字列から実効値に入る。複数 host はカンマ区切りの 1 つの値、Unix ソケットは `/` で始まる値として返る。
+- そこで `env.py` は、許可リストの検査に加えて、クエリ文字列とフラグメントのある接続文字列をそれだけで拒否する（許可リストより狭い。07 U-30）。
+- 同梱の libpq は 16 以上なので、ローカル以外への接続には `require_auth=scram-sha-256` が付く。pooler が対応しているかは A-11 で確かめる。
+- 確かめていないこと: サーバーが平文認証を要求したときの挙動、`sslrootcert=system` の挙動（使わない）、pooler への実際の接続（A-11）。
+
+構築 2 の監査（audits/2026-11-05-build2-review.md の L-4）で足した固定（判断は変えていない）: ローカル以外への接続には `gssencmode=disable` もキーワードで渡す（暗号化を TLS だけにする）。`env.py` は `@` で始まる host（抽象ソケット）も拒否する。Deploy Hook を呼ぶ HTTP のクライアントは `trust_env=False` にし、プロキシや証明書の場所を環境変数から読まない。
 
 ## 結果
 

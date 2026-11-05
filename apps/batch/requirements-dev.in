@@ -6,4 +6,6 @@ mypy
 pip-tools
 pytest
 pytest-cov
+# WP REST API と Deploy Hook のモック（07 §2、§5）
+respx
 ruff

@@ -28,9 +28,12 @@ type CountName = Literal[
     "wp_requests",
     "posts_upserted",
     "posts_deleted",
+    "posts_late_seen",
     "rows_written",
+    "ga4_missing_days",
+    "ga4_unknown_device_rows",
 ]
-type StepEvent = Literal["start", "end"]
+type StepEvent = Literal["start", "end", "skip"]
 
 _STEPS: Final[frozenset[str]] = frozenset(get_args(Step.__value__))
 _KINDS: Final[frozenset[str]] = frozenset(get_args(ErrorKind.__value__))

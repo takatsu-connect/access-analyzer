@@ -103,11 +103,13 @@ def main() -> None:
     """全工程を囲み、失敗は種別だけを出して終了コードで知らせる。再送出しない。"""
     harden_process()
     classify_error: Callable[[BaseException], str] = _unknown_kind
+    exit_code: object = None
     try:
         classify_error = _load_classifier()
         from takatsu_batch.cli import dispatch
 
-        dispatch(sys.argv[1:])
+        # 工程の失敗は pipeline が工程名つきで記録済み。ここでは終了コードだけを受け取る
+        exit_code = dispatch(sys.argv[1:])
     except SystemExit as exc:
         code = _normalized_exit_code(exc)
         if code != 0:
@@ -117,6 +119,8 @@ def main() -> None:
     except BaseException as exc:
         _report_failure(classify_error(exc))
         sys.exit(1)
+    if isinstance(exit_code, int) and exit_code != 0:
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

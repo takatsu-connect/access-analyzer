@@ -16,6 +16,14 @@ from takatsu_batch.log import ErrorKind
 _NETWORK_SQLSTATE_CLASSES: Final = frozenset({"08", "53", "57"})
 
 
+class BatchValidationError(Exception):
+    """入力の検証の失敗（種別 validation）。メッセージを持たせない。"""
+
+
+class BatchQuotaError(Exception):
+    """割当の残量が足りないので自分から止まる（種別 quota。03 §10）。メッセージを持たせない。"""
+
+
 def _classify_psycopg(exc: psycopg.Error) -> ErrorKind:
     sqlstate = exc.sqlstate
     if sqlstate is None:
@@ -34,9 +42,9 @@ def _classify_psycopg(exc: psycopg.Error) -> ErrorKind:
 
 def classify_error(exc: BaseException) -> ErrorKind:
     """種別を返す。分類できないものは `unknown`。"""
-    if isinstance(exc, pydantic.ValidationError):
+    if isinstance(exc, pydantic.ValidationError | BatchValidationError):
         return "validation"
-    if isinstance(exc, google_api.ResourceExhausted):
+    if isinstance(exc, google_api.ResourceExhausted | BatchQuotaError):
         return "quota"
     if isinstance(exc, google_api.PermissionDenied | google_api.Unauthenticated):
         return "auth"
