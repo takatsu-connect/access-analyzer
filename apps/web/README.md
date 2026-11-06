@@ -23,8 +23,8 @@ Next.js（App Router）で全ページを静的生成する。ビルド時に Su
 E2E のデータと手順:
 
 - フィクスチャの基準日は「読み込んだ日の前日」。日付をまたぐと `pub_meta.is_stale` が true になり、全ページに「更新が遅れています」が出て E2E が落ちる。その日のうちに読み込み直して、ビルドし直す。
-- `.next/cache/fetch-cache` に前のビルドの Supabase の応答が残っていると、ページによって古いデータで作られる。フィクスチャを読み込み直したあとは、このディレクトリを消してから `pnpm run build` をする（`check:build` が、ページごとのデータの時点の食い違いを見つける）。
-- E-18 の手順: `apps/batch` で `PYTHONPATH="src;tests" .venv/Scripts/python.exe -m support.load_e2e_fixture --stale` → `.next/cache/fetch-cache` を消す → `pnpm run build` → `pnpm run e2e:stale` → 同じ読み込みを `--stale` なしで流す → `.next/cache/fetch-cache` を消す → `pnpm run build`（元に戻す）。
+- `pnpm run build` は、最初に `.next/cache/fetch-cache` を消す（`scripts/clean-fetch-cache.mjs`）。前のビルドの Supabase の応答が残ると、ページによって古いデータで作られるため。`check:build` は、ページごとのデータの時点の食い違いを見つける。
+- E-18 の手順: `apps/batch` で `PYTHONPATH="src;tests" .venv/Scripts/python.exe -m support.load_e2e_fixture --stale` → `pnpm run build` → `pnpm run e2e:stale` → 同じ読み込みを `--stale` なしで流す → `pnpm run build`（元に戻す）。
 - 全画面の一覧と、フィクスチャに入れてある HTML の形の文字列は `e2e/support/screens.ts` にある。07 §6 の ID と spec の対応は `e2e/README.md`。
 
 ## ファイルの置き方
