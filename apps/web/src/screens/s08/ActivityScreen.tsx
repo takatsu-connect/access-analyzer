@@ -195,8 +195,9 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
                 </tr>
               </thead>
               <tbody>
-                {authors.map((author) => (
-                  <tr key={`${author.slug ?? ''}:${author.name}`}>
+                {/* 著者ページのない同名の著者がいても重ならないよう、key に並びの位置を含める。 */}
+                {authors.map((author, index) => (
+                  <tr key={`${index}:${author.slug ?? ''}:${author.name}`}>
                     <th scope="row" className={cx(parts.cell, parts.rowHead)}>
                       <AuthorLink slug={author.slug} className={parts.link}>
                         {author.name}

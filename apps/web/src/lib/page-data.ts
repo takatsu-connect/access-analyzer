@@ -144,8 +144,9 @@ export type PostRow = {
   pvTotal: number;
   isRecentHot: boolean;
   isRevival: boolean;
-  /** S-02e（記事を探す）だけ。ほかは空の配列。 */
+  /** S-02e（記事を探す）と S-05（著者ページ）だけ。ほかは空の配列。 */
   categoryIds: number[];
+  /** S-02e だけ。ほかは空の配列。 */
   tagIds: number[];
 };
 
