@@ -24,6 +24,7 @@ import {
   sortedPosts,
   toPostRow,
 } from './shared';
+import { checkPage } from './check';
 
 type AxisRow = { axis: string; bucket: string; value: Masked };
 
@@ -43,7 +44,7 @@ export function buildAuthorIndex(cache: PubCache, builtAt: Date): AuthorIndexDat
       url: author.author_url,
     })),
   };
-  return authorIndexDataSchema.parse(data);
+  return checkPage(authorIndexDataSchema, data, 'authorIndexDataSchema');
 }
 
 /** 流入チャネルと SNS の内訳。どちらの軸にも行がなければ undefined。 */
@@ -184,5 +185,5 @@ export function buildAuthorPage(
       ),
     benchmark: benchmark30(cache),
   };
-  return authorPageDataSchema.parse(data);
+  return checkPage(authorPageDataSchema, data, 'authorPageDataSchema');
 }

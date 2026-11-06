@@ -32,6 +32,7 @@ import {
   sortedPosts,
   toPostRow,
 } from './shared';
+import { checkPage } from './check';
 
 /** 季節の画面に出す月の数。 */
 const SEASONAL_MONTHS = 24;
@@ -100,7 +101,7 @@ export function buildCategories(cache: PubCache, builtAt: Date): CategoryData {
       return table;
     }),
   };
-  return categoryDataSchema.parse(data);
+  return checkPage(categoryDataSchema, data, 'categoryDataSchema');
 }
 
 export function buildSeasonal(cache: PubCache, builtAt: Date): SeasonalData {
@@ -134,7 +135,7 @@ export function buildSeasonal(cache: PubCache, builtAt: Date): SeasonalData {
     yoyMonths,
     pvByMonth,
   };
-  return seasonalDataSchema.parse(data);
+  return checkPage(seasonalDataSchema, data, 'seasonalDataSchema');
 }
 
 // --- タグ ---
@@ -185,7 +186,7 @@ export function buildTagIndex(cache: PubCache, builtAt: Date): TagIndexData {
       return table;
     }),
   };
-  return tagIndexDataSchema.parse(data);
+  return checkPage(tagIndexDataSchema, data, 'tagIndexDataSchema');
 }
 
 /** タグのページ。公開ビューにないタグと、記事が 0 本のタグは null（ページを作らない）。 */
@@ -208,5 +209,5 @@ export function buildTagPage(cache: PubCache, tagId: number, builtAt: Date): Tag
       return row === undefined || row.post_count === 0 ? undefined : { [tagId]: tagValue(row) };
     }),
   };
-  return tagPageDataSchema.parse(data);
+  return checkPage(tagPageDataSchema, data, 'tagPageDataSchema');
 }

@@ -55,8 +55,9 @@ export function useQueryState(allow: QueryAllow): UseQueryStateResult {
     (patch) => {
       const current = parseQuery(window.location.search, allow);
       const query = toQueryString({ ...current, ...patch }, allow);
-      const { pathname, hash } = window.location;
-      const url = `${pathname}${query === '' ? '' : `?${query}`}${hash}`;
+      // いまの URL から作る（パスの連結だと、// で始まるパスが別のホストに読まれる。監査 L-1）。
+      const url = new URL(window.location.href);
+      url.search = query;
       // 第 1 引数は null（Next.js のルーターが URL の変化を取り込む形）。
       window.history.replaceState(null, '', url);
       window.dispatchEvent(new Event(QUERY_CHANGE_EVENT));

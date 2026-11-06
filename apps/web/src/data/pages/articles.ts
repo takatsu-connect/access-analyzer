@@ -37,6 +37,7 @@ import {
   sortedPosts,
   toPostRow,
 } from './shared';
+import { checkPage } from './check';
 
 /** 一覧に載せる件数の上限。 */
 export type ListLimits = { top: number; recent: number };
@@ -145,7 +146,7 @@ export function buildArticleList(
     authors: pageAuthors(cache).map((row) => ({ slug: row.author_slug, name: row.display_name })),
     benchmark: benchmark30(cache),
   };
-  return articleListDataSchema.parse(data);
+  return checkPage(articleListDataSchema, data, 'articleListDataSchema');
 }
 
 /** 1 つの期間の記事の内訳。行がなければ undefined。 */
@@ -287,5 +288,5 @@ export function buildArticleDetail(
     isEvergreen365: summary.is_evergreen_365,
     ownMedian30d: ownMedian === undefined || ownMedian === null ? null : { value: ownMedian },
   };
-  return articleDetailDataSchema.parse(data);
+  return checkPage(articleDetailDataSchema, data, 'articleDetailDataSchema');
 }

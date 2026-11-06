@@ -1,12 +1,13 @@
 # ADR 0010: CSP の `script-src`（静的生成のインラインスクリプト）
 
 - 状態: レビュー中（2026-11-05。security-auditor は条件つきで認めた。依頼者の確認の前）
-- 更新日: 2026-11-05
+- 更新日: 2026-11-06
 - 関係: NFR-91、06_security.md §6・§13（D-17）、ADR 0006（静的生成）、ADR 0008「結果」（`style-src` は確定、`script-src` は実装時に決める）、07_test_plan.md E-01・S-11
 - 監査: docs/security/audits/2026-11-05-csp-script-src.md（条件つきで認める。致命的 0、高 1、中 4、低 4）
 - 変更履歴:
   - 2026-11-05: 新規
   - 2026-11-05: 監査の指摘を反映。残る害の記述と比較表を直し（M-1）、かわりに守ることに 6〜8 を足し（H-1、M-3、M-4）、見直す条件に置き場所などを足した（M-2）。選ばなかった案に `'strict-dynamic'` を足した（L-1）
+  - 2026-11-06: 構築 3 の監査（audits/2026-11-05-build3-review.md）の M-1、M-2 を反映。2 に URL のクエリ由来の値を、6 に lint の抜け道（スプレッド、`createElement`、`cloneElement`、`setAttribute`、移動の出口）を足し、見直す条件の「入力する欄」を絞って S-02e の検索欄を名指しした。5 と 8 の E2E の結果を記録した
 - 事実の出典:
   - 実機の検証（2026-11-05、構築 3）。Next.js 16.4.5（App Router、Turbopack）で `next build` → `next start` し、Playwright の Chromium で仮の 1 画面を開いた。検証のスクリプトは `apps/web/e2e/csp.spec.ts`
   - Next.js 公式文書 v16.2.9 `docs/01-app/02-guides/content-security-policy.mdx`（context7 で 2026-11-05 に確認。実機の版とは違う）
@@ -73,17 +74,18 @@
 - 理由: ブラウザに秘密がなく、害の上限は表示の書き換えと誘導である。入口は静的検査と React の描き方で塞ぐ。案 C は二重の守りになるが、配り方が未確認で、無人の日次ビルドに気づきにくい壊れ方を持ち込むおそれがあり、運用の負荷（NFR-70）に見合わないと判断した。
 - 案 A では、CSP がインラインの script を止めないので、静的検査が主な守りになる。かわりに次を守る。1〜8 が初回公開の条件である。
   1. アプリのコードはインラインの script を足さない。JSX の `<script>`（JSON-LD を含む）、`next/script`、`iframe`、`object`、`embed`、`base` を lint で禁止する。
-  2. `dangerouslySetInnerHTML`、`style` prop、JSX のリテラル文言の禁止（07 S-03、S-04）を外さない。記事のタイトル、著者名、カテゴリ名、タグ名は HTML ではない文字列として、テキストと属性値にだけ使う。
+  2. `dangerouslySetInnerHTML`、`style` prop、JSX のリテラル文言の禁止（07 S-03、S-04）を外さない。記事のタイトル、著者名、カテゴリ名、タグ名、参照元ドメインと、URL のクエリ由来の値（S-02e の検索語 `q`。匿名の第三者がリンク 1 本で持ち込める唯一の文字列）は、HTML ではない文字列として、テキストと属性値にだけ使う。
   3. 値から URL を作らない。外部へのリンクは `https://takatsu-connect.com/` で始まることを描く前に確かめる（06 §7）。`javascript:` の URL を lint で禁止する。
   4. CSP に `object-src 'none'` を足す。ほかの値（`default-src 'self'`、`connect-src 'self'`、`img-src 'self' data:`、`form-action 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`style-src 'self'`）は変えない。`'unsafe-inline'` が現れるのは `script-src` の 1 か所だけにし、`'unsafe-eval'`、`data:`、`blob:`、`https:`、`*` を `script-src` に入れない。
   5. E2E（E-01）で、画面の種類ごとに、CSP の指示の集合が期待値と完全に一致すること、CSP 違反が 0 件であること、インラインの script が Next.js の出す形（チャンクの登録と `self.__next_f`）だけであること、`on*` の属性と `javascript:` の URL がないことを確かめる。HTML として解釈されうる文字列（`<img src=x onerror=…>` と、そのエンティティの形）を題名や名前に持つフィクスチャを入れ、文字として描かれることを確かめる。
-  6. JSX の外の出口を lint で禁止する: `innerHTML`、`outerHTML`、`insertAdjacentHTML`、`srcdoc`、`setHTMLUnsafe`、`createContextualFragment`、`document.write`、`document.writeln`、`createElement('script')`、`setAttribute('on…')`、`eval`、`new Function`、文字列を渡す `setTimeout`。
+  6. JSX の外の出口を lint で禁止する: `innerHTML`、`outerHTML`、`insertAdjacentHTML`、`srcdoc`、`setHTMLUnsafe`、`createContextualFragment`、`document.write`、`document.writeln`、`eval`、`new Function`、文字列を渡す `setTimeout`。あわせて、規則を素通りする書き方を禁止する（2026-11-06）: DOM 要素への props のスプレッド、オブジェクトに書いた `dangerouslySetInnerHTML`、`createElement` と `cloneElement`（import も）、`setAttribute` の全般、`location.assign`、`location.replace`、`window.open`、`href` への代入。規則ごとに「落ちるべき書き方」を `apps/web/tests/lint/eslint-config.test.ts` で確かめる。
   7. lint の無効化コメント（`eslint-disable`）を使えなくする（`noInlineConfig`）。lint、E2E、下の 8 のビルド後の検査を、CI の必須チェックにする（デプロイ工程）。ビルド後の検査は日次の本番ビルドでも走らせ、失敗したらビルドを失敗させる（前日の版が残る）。
-  8. `script-src-attr 'none'`（イベントハンドラの属性の実行を止める指示）を実機で試し、成り立てば足す。成り立たなければ、その結果をこの ADR に記録する。途中経過（2026-11-05）: 仮の 1 画面では、`script-src-attr 'none'` と `object-src 'none'` を足しても CSP 違反は 0 件で、操作も効いた。`next.config.ts` に入れてある。全種類の画面での確認は E2E（上の 5）で行う。
+  8. `script-src-attr 'none'`（イベントハンドラの属性の実行を止める指示）を実機で試し、成り立てば足す。成り立たなければ、その結果をこの ADR に記録する。途中経過（2026-11-05）: 仮の 1 画面では、`script-src-attr 'none'` と `object-src 'none'` を足しても CSP 違反は 0 件で、操作も効いた。`next.config.ts` に入れてある。全種類の画面での確認は E2E（上の 5）で行う。結果（2026-11-06）: 全 21 画面で CSP 違反 0 件、onclick 属性のハンドラが動かず違反が出ることを Chromium で確認した。WebKit だけ、期間の選択（select）で `style-src-attr` の違反が 1 件出る（操作は効く。原因と実機の Safari で出るかは未確認。E2E は fixme）。
 - 見直す条件（どれかに当たれば、案 A のままにしない）:
   - ログイン、Cookie、ブラウザに渡る秘密を足すとき。
   - BI を、ログインのあるサイトと同じ登録ドメインに置くとき（例: `takatsu-connect.com` のサブドメイン。WordPress と同じサイトの扱いになり、「ブラウザに秘密がない」の前提が崩れる）。
-  - 訪問者が入力する欄や、第三者のスクリプト（解析、広告、Vercel の Web Analytics や Speed Insights、Toolbar など）を足すとき。`'unsafe-inline'` のもとでは、HTML に足された script は CSP 違反にならない。
+  - 秘密や個人情報を入力させる欄、または入力をサーバーや外部へ送る欄を足すとき。第三者のスクリプト（解析、広告、Vercel の Web Analytics や Speed Insights、Toolbar など）を足すとき。`'unsafe-inline'` のもとでは、HTML に足された script は CSP 違反にならない。
+    - S-02e の検索欄（記事の題名の部分一致）は当たらない。入力は送られず（`form-action 'none'`、`connect-src 'self'`、問い合わせに使わない）、秘密でもなく、検証（NFC、1〜50 文字）のあと React の値と `URLSearchParams` にだけ使う。HTML の形の検索語が入力欄の値のままで要素にならないことを E2E で確かめる（`apps/web/e2e/inline-script.spec.ts`）。検索語を見出しや文に差し込む変更は、上の 2 に従う。
   - HTML として値を描く必要が出たとき。
   - Next.js の更新で、インライン script の形が変わったとき（上の 5 と 8 の検査が落ちる）と、静的生成のインライン script をハッシュで許す仕組みが正式に入ったとき。
 

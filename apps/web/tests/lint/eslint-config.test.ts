@@ -198,6 +198,73 @@ describe('eslint.config.mjs（ADR 0010 の歯止め）', () => {
       'src/lib/probe.ts',
       'no-script-url',
     ],
+    // 監査 2026-11-05-build3-review.md M-2 の抜け道。
+    [
+      'DOM 要素へのスプレッド',
+      'export const View = (props: object) => <div {...props} />;\n',
+      component,
+      'react/jsx-props-no-spreading',
+    ],
+    [
+      'オブジェクトに書いた dangerouslySetInnerHTML',
+      'export const props = { dangerouslySetInnerHTML: { __html: "" } };\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      'import した createElement',
+      "import { createElement } from 'react';\nexport const View = () => createElement('div');\n",
+      component,
+      'no-restricted-imports',
+    ],
+    [
+      'React.createElement（タグ名が変数）',
+      "import React from 'react';\nexport const View = (tag: string) => React.createElement(tag);\n",
+      component,
+      'no-restricted-syntax',
+    ],
+    [
+      'cloneElement',
+      "import React from 'react';\nexport const copy = (el: React.ReactElement) => React.cloneElement(el, {});\n",
+      component,
+      'no-restricted-syntax',
+    ],
+    [
+      'setAttribute（名前が変数）',
+      'export const run = (el: HTMLElement, name: string, value: string) => el.setAttribute(name, value);\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      'location.assign',
+      'export const go = (url: string) => window.location.assign(url);\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      'location.replace',
+      'export const go = (url: string) => location.replace(url);\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      'window.open',
+      'export const go = (url: string) => window.open(url);\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      'href への代入',
+      'export const go = (url: string) => {\n  window.location.href = url;\n};\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      '画面の部品からの読み出しの層の import（監査 L-4）',
+      "import { getDashboardData } from '@/data';\nexport const load = getDashboardData;\n",
+      'src/screens/s01/Probe.tsx',
+      'no-restricted-imports',
+    ],
   ];
 
   it.each(cases)(
@@ -214,6 +281,26 @@ describe('eslint.config.mjs（ADR 0010 の歯止め）', () => {
       const code =
         '// eslint-disable-next-line react/no-danger\nexport const View = () => <div dangerouslySetInnerHTML={{ __html: "" }} />;\n';
       expect(await ruleIds(code, component)).toContain('react/no-danger');
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    '自前の部品へのスプレッドは許す',
+    async () => {
+      const code =
+        'const Box = (props: { a: number }) => <p>{props.a}</p>;\nexport const View = (p: { a: number }) => <Box {...p} />;\n';
+      expect(await ruleIds(code, component)).not.toContain('react/jsx-props-no-spreading');
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    'ページ（src/app）は読み出しの層を import できる',
+    async () => {
+      const code =
+        "import { getDashboardData } from '@/data';\nexport const load = getDashboardData;\n";
+      expect(await ruleIds(code, 'src/app/probe/page.tsx')).not.toContain('no-restricted-imports');
     },
     TIMEOUT_MS,
   );

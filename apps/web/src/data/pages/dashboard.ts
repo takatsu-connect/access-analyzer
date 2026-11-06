@@ -24,6 +24,7 @@ import {
   daysBetween,
   rowsOf,
 } from './shared';
+import { checkPage } from './check';
 
 const HEATMAP_CELLS = 7 * 24;
 
@@ -158,5 +159,5 @@ export function buildDashboard(cache: PubCache, builtAt: Date): DashboardData {
             populationWindow: point.population_window,
           },
   };
-  return dashboardDataSchema.parse(data);
+  return checkPage(dashboardDataSchema, data, 'dashboardDataSchema');
 }

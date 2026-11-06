@@ -14,6 +14,7 @@ import {
   rowsOf,
   selectableIds,
 } from './shared';
+import { checkPage } from './check';
 
 /** 月ごとの公開本数に出す月の数。 */
 const ACTIVITY_MONTHS = 24;
@@ -110,5 +111,5 @@ export function buildActivity(cache: PubCache, builtAt: Date): ActivityData {
         .sort((a, b) => compareJa(a.path, b.path) || a.categoryId - b.categoryId);
     }),
   };
-  return activityDataSchema.parse(data);
+  return checkPage(activityDataSchema, data, 'activityDataSchema');
 }

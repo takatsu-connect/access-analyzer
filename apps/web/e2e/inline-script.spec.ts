@@ -249,6 +249,36 @@ test.describe('ADR 0010 の歯止め（インラインの script、イベント�
     expect(await watch.violations()).toEqual([]);
   });
 
+  // 監査 2026-11-05-build3-review.md M-1: 匿名の第三者がリンク 1 本で持ち込める文字列は、
+  // 記事を探す画面の検索語（?q=）だけ。HTML として解釈されず、入力欄の値としてだけ扱われる。
+  test('検索語（?q=）が HTML の形でも、入力欄の値としてだけ扱われ、要素にならない', async ({
+    page,
+  }) => {
+    const watch = await watchPage(page);
+    const payloads = [
+      '<img src=x onerror=alert(5)>',
+      '"><script>alert(6)</script>',
+      'javascript:alert(7)',
+    ];
+    for (const payload of payloads) {
+      await openScreen(page, `/articles?q=${encodeURIComponent(payload)}`);
+      const box = page.getByRole('searchbox', { name: t('s02e.filter.q') });
+      await expect(box, payload).toHaveValue(payload);
+      await expect(page.locator('main img'), payload).toHaveCount(0);
+      expect(await page.locator('main script').count(), payload).toBe(0);
+      // リンク先は、どれもサイト内のパスか takatsu-connect.com のまま。
+      const hrefs = await page
+        .locator('main a')
+        .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href') ?? ''));
+      expect(
+        hrefs.filter((href) => !/^(\/(?!\/)|https:\/\/takatsu-connect\.com\/|#)/.test(href)),
+        payload,
+      ).toEqual([]);
+    }
+    expect(watch.dialogs).toEqual([]);
+    expect(await watch.violations()).toEqual([]);
+  });
+
   test('題名・著者名・カテゴリ名・タグ名が HTML の形でも、どの画面でも文字として出る', async ({
     page,
   }) => {
