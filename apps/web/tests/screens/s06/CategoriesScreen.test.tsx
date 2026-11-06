@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { buildCategories } from '@/data/pages';
 import type { CategoryData, CategoryPeriodValue } from '@/lib/page-data';
+import { t } from '@/lib/ui-text';
 import { CategoriesScreen } from '@/screens/s06/CategoriesScreen';
 
 import { BUILT_AT, makeCache } from '../../data/fixture';
@@ -38,22 +39,115 @@ describe('S-06 カテゴリ別', () => {
     expect(container.textContent).not.toContain('軸');
   });
 
-  it('期間の選択と、足しても合計と一致しないことの注記、平均ではないことの注記がある', () => {
+  it('期間の選択と、足しても合計と一致しないことの注記、広告の注記がある', () => {
     setQuery('?p=last7');
     const { container } = render(<CategoriesScreen data={built()} />);
 
     expect(screen.getByRole('group', { name: '期間' })).toBeTruthy();
     expect(container.textContent).toContain('子の数字を足しても合計とは一致しません。');
-    expect(container.textContent).toContain('平均ではなく真ん中の記事の値です。');
-    expect(container.textContent).toContain('広告の記事は他の合計に含めていません。');
+    expect(container.textContent).toContain(
+      '広告の記事は、ほかの 3 つのカテゴリの数字に入れていません。',
+    );
   });
 
-  it('母数が 0 のときは「該当なし」と書き、伏せ値の印にしない', () => {
-    setQuery('?p=last7');
-    const { container } = render(<CategoriesScreen data={built()} />);
+  it.each([['?p=last7'], ['?p=m2026-11']])(
+    '値がありえない期間（%s）では、真ん中の値の行と注記を出さない',
+    (search) => {
+      setQuery(search);
+      const { container } = render(<CategoriesScreen data={built()} />);
+      const text = container.textContent ?? '';
+      expect(text).not.toContain(t('column.median30'));
+      expect(text).not.toContain(t('s06.median.note'));
+      expect(text).not.toContain(t('s06.median.absent'));
+      expect(text).not.toContain('該当なし');
+    },
+  );
 
-    expect(screen.getAllByText('該当なし').length).toBeGreaterThan(0);
+  it('直近 28 日では、真ん中の値の行がない', () => {
+    setQuery('');
+    const data = built();
+    const last7 = data.period.last7 ?? {};
+    const { container } = render(
+      <CategoriesScreen data={{ ...data, period: { ...data.period, last28: last7 } }} />,
+    );
+    expect(screen.getAllByRole('heading', { level: 2 }).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain(t('column.median30'));
+  });
+
+  it('直近 90 日と終わった月では、行の下に注記を出し、母数が 0 なら「公開から 30 日たった記事ができると出ます」', () => {
+    setQuery('?p=last90');
+    const data = built();
+    const last7 = data.period.last7 ?? {};
+    const periods = [
+      ...data.periods,
+      {
+        id: 'last90' as const,
+        kind: 'window' as const,
+        start: '2026-08-06',
+        end: '2026-11-03',
+        isConfirmed: false,
+        label: '直近 90 日',
+        prevId: null,
+        yoyId: null,
+      },
+    ];
+    const { container } = render(
+      <CategoriesScreen data={{ ...data, periods, period: { ...data.period, last90: last7 } }} />,
+    );
+    expect(container.textContent).toContain('真ん中の記事が、最初の 1 か月に読まれた回数');
+    expect(container.textContent).toContain(
+      'この期間に公開して 30 日たった記事の、真ん中の値です（平均ではありません）。',
+    );
+    expect(screen.getAllByText('公開から 30 日たった記事ができると出ます').length).toBeGreaterThan(
+      0,
+    );
     expect(container.querySelector('.masked')).toBeNull();
+  });
+
+  it('月の途中（2026 年 11 月）は ▲▼ と % を出さず、「月が終わると…」を出す', () => {
+    setQuery('?p=m2026-11');
+    const data = built();
+    const last7 = data.period.last7 ?? {};
+    const { container } = render(
+      <CategoriesScreen
+        data={{
+          ...data,
+          period: { ...data.period, 'm2026-11': last7, 'm2026-10': last7 },
+        }}
+      />,
+    );
+    expect(screen.getAllByText(t('compare.inProgress')).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/[▲▼%]/);
+  });
+
+  it('前の月が数え始めた月（2025-10、8 日から）なら、差を出さず相手の数字を並べる', () => {
+    setQuery('?p=m2025-11');
+    const data = built();
+    const last7 = data.period.last7 ?? {};
+    const periods = [
+      ...data.periods,
+      {
+        id: 'm2025-11' as const,
+        kind: 'month' as const,
+        start: '2025-11-01',
+        end: '2025-11-30',
+        isConfirmed: true,
+        label: '2025 年 11 月',
+        prevId: 'm2025-10' as const,
+        yoyId: null,
+      },
+    ];
+    const { container } = render(
+      <CategoriesScreen
+        data={{
+          ...data,
+          periods,
+          period: { ...data.period, 'm2025-11': last7, 'm2025-10': { 1: value(50) } },
+        }}
+      />,
+    );
+    expect(screen.getAllByText('前の月は 50（8 日からの数字）').length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/[▲▼%]/);
   });
 
   it('母数があるときは、真ん中の記事の値を出す', () => {
@@ -110,7 +204,7 @@ describe('S-06 カテゴリ別', () => {
     expect(row?.textContent).toContain('+38');
     expect(row?.textContent).not.toContain('%');
     // 前の期間の行がないカテゴリは、伏せ値の印ではなく、文字で書く。
-    expect(screen.getAllByText('前の期間のデータなし').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('前の期間の数字なし').length).toBeGreaterThan(0);
     expect(container.querySelector('.masked')).toBeNull();
     // 比較の相手の言い方。
     expect(screen.getAllByText('前の 7 日と比べて').length).toBeGreaterThan(0);

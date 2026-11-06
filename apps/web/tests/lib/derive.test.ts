@@ -180,8 +180,11 @@ describe('topChannel', () => {
     ).toBeNull();
   });
 
-  it('見えている値の最大が 0 なら null（区分を名指ししない）', () => {
-    expect(topChannel({ search: 0, social: 0, direct: 0, referral: 0, other: 0 })).toBeNull();
+  it('全区分が 0 なら none（訪問がない。伏せ値ではない）', () => {
+    expect(topChannel({ search: 0, social: 0, direct: 0, referral: 0, other: 0 })).toBe('none');
+  });
+
+  it('見えている値がすべて 0 で伏せ値もあれば null（最多が伏せ値の側にあり、名指ししない）', () => {
     expect(topChannel({ search: null, social: null, direct: 0, referral: 0, other: 0 })).toBeNull();
   });
 });

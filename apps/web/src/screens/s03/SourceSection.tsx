@@ -1,7 +1,13 @@
+import a11y from '@/components/a11y.module.css';
 import { Notice, StateMessage } from '@/components/Notice';
 import { CHANNEL_BUCKETS, SNS_BUCKETS } from '@/lib/config';
 import { formatNumber } from '@/lib/format';
-import type { ArticleBreakdown, ArticleDetailData, ArticlePeriodValue } from '@/lib/page-data';
+import type {
+  ArticleBreakdown,
+  ArticleDetailData,
+  ArticlePeriodValue,
+  Masked,
+} from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
 import styles from './s03.module.css';
@@ -34,6 +40,7 @@ function ReferrerBlock({ referrer30d }: Pick<SourceSectionProps, 'referrer30d'>)
         <p className={styles.lead}>{t('s03.referrer.empty')}</p>
       ) : (
         <table className={styles.table}>
+          <caption className={a11y.srOnly}>{t('s03.referrer.caption')}</caption>
           <thead>
             <tr>
               <th scope="col">{t('column.domain')}</th>
@@ -56,24 +63,33 @@ function ReferrerBlock({ referrer30d }: Pick<SourceSectionProps, 'referrer30d'>)
   );
 }
 
+/** 前置きを出せる数か（伏せ値と 0 では出さない。「訪問 0 回のうち」と書かない）。 */
+function leadCount(value: Masked): number | null {
+  return value === null || value === 0 ? null : value;
+}
+
 /**
  * 読者はどこから来たか（M-10、M-11、M-12、M-17。FR-23 (6)）。
- * 流入チャネルの分母は「この記事から読み始めた訪問」（landingSessions）。伏せ値なら前置きも比率も出さない。
- * SNS の種類の分母は、流入チャネルの SNS の値。伏せ値なら前置きも比率も出さない。
+ * 流入チャネルの分母は「この記事から読み始めた訪問」（landingSessions）。伏せ値か 0 なら前置きを出さない。
+ * 前置きの注記（s03.landing.note）は、最初に出るこの節にだけ添える（助言 B-6）。
+ * SNS の種類の分母は、流入チャネルの SNS の値。伏せ値か 0 なら前置きを出さない。
  */
 export function SourceSection({ value, breakdown, referrer30d, isPreMeasure }: SourceSectionProps) {
+  const landing = value === undefined ? null : leadCount(value.landingSessions);
+  const social = breakdown === undefined ? null : leadCount(breakdown.channel.social);
   return (
     <section className={styles.section} aria-labelledby="s03-source">
       <h2 id="s03-source">{t('s03.source.h2')}</h2>
+      <p className={styles.lead}>{t('s03.source.lead')}</p>
       {value === undefined || breakdown === undefined ? (
         <StateMessage kind="empty" />
       ) : (
         <>
-          {value.landingSessions === null ? null : (
-            <p className={styles.lead}>
-              {t('lead.sessions', { n: formatNumber(value.landingSessions) })}
-              {t('s03.landing.note')}
-            </p>
+          {landing === null ? null : (
+            <>
+              <p className={styles.lead}>{t('s03.landing.lead', { n: formatNumber(landing) })}</p>
+              <Notice>{t('s03.landing.note')}</Notice>
+            </>
           )}
           <ShareBars
             title={t('metric.M10.label')}
@@ -87,10 +103,8 @@ export function SourceSection({ value, breakdown, referrer30d, isPreMeasure }: S
           />
 
           <h3>{t('metric.M11.label')}</h3>
-          {breakdown.channel.social === null ? null : (
-            <p className={styles.lead}>
-              {t('lead.sessions', { n: formatNumber(breakdown.channel.social) })}
-            </p>
+          {social === null ? null : (
+            <p className={styles.lead}>{t('lead.sessions', { n: formatNumber(social) })}</p>
           )}
           <ShareBars
             title={t('metric.M11.label')}

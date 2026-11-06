@@ -45,33 +45,45 @@ export function RecentSection({ data }: RecentSectionProps) {
     };
   }, [data.posts, recent7]);
   const { name } = data.author;
+  const lists = [
+    {
+      key: 'hot',
+      h3: t('s05.recent.hot.h3'),
+      caption: t('s05.recent.caption.hot', { name }),
+      rows: hot,
+    },
+    {
+      key: 'revival',
+      h3: t('s05.recent.revival.h3'),
+      caption: t('s05.recent.caption.revival', { name }),
+      rows: revival,
+    },
+  ].filter((list) => list.rows.length > 0);
 
   return (
     <section className={styles.section}>
       <h2>{t('s05.recent.h2')}</h2>
-      <div className={styles.pair}>
-        <div>
-          <h3>{t('s05.recent.hot.h3')}</h3>
-          <ArticleTable
-            caption={t('s05.recent.caption.hot', { name })}
-            rows={hot}
-            columns={COLUMNS}
-            badges={NO_BADGES}
-            emptyText={t('s02d.empty')}
-          />
-        </div>
-        <div>
-          <h3>{t('s05.recent.revival.h3')}</h3>
-          <ArticleTable
-            caption={t('s05.recent.caption.revival', { name })}
-            rows={revival}
-            columns={COLUMNS}
-            badges={NO_BADGES}
-            emptyText={t('s02d.empty')}
-          />
-        </div>
-      </div>
-      <Notice>{t('metric.M22.note')}</Notice>
+      {/* 両方ないときは h3 と枠を出さず 1 文だけ。片方だけなら、ある方だけ（助言 A-1）。 */}
+      {lists.length === 0 ? (
+        <p>{t('s05.recent.empty')}</p>
+      ) : (
+        <>
+          <div className={styles.pair}>
+            {lists.map((list) => (
+              <div key={list.key}>
+                <h3>{list.h3}</h3>
+                <ArticleTable
+                  caption={list.caption}
+                  rows={list.rows}
+                  columns={COLUMNS}
+                  badges={NO_BADGES}
+                />
+              </div>
+            ))}
+          </div>
+          <Notice>{t('metric.M22.note')}</Notice>
+        </>
+      )}
     </section>
   );
 }

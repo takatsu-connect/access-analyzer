@@ -1,5 +1,6 @@
 import { ExternalLink } from '@/components/ExternalLink';
 import { AuthorLink } from '@/components/SiteLinks';
+import { safeExternalUrl } from '@/lib/derive';
 import { formatDate } from '@/lib/format';
 import type { ArticleDetailData } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
@@ -22,25 +23,28 @@ export function ArticleHeader({ post, measureStart }: ArticleHeaderProps) {
   const date = formatDate(post.publishedOn);
   const published = post.isPreMeasure
     ? t('s03.attr.published.only', { date })
-    : t('s03.attr.published', {
-        date,
-        day: t('absent.dayN', { n: Math.max(post.ageDays, 1) }),
-      });
+    : // ageDays は「基準日 − 公開日 + 1」（公開した当日が 1 日目。04 §3.4）なので、そのまま出す。
+      t('s03.attr.published', { date, day: t('absent.dayN', { n: post.ageDays }) });
 
   return (
     <>
       <h1>{t('s03.h1')}</h1>
       <p className={styles.title}>
-        <ExternalLink
-          href={post.url}
-          className={styles.titleLink}
-          ariaLabel={t('link.external.article', { title: post.title })}
-        >
-          {post.title}
-          <span className={styles.externalMark} aria-hidden="true">
-            {t('link.external.mark')}
-          </span>
-        </ExternalLink>
+        {/* 許可外の URL ではリンクにしないので、外部リンクの印「↗」も出さない。 */}
+        {safeExternalUrl(post.url) === null ? (
+          post.title
+        ) : (
+          <ExternalLink
+            href={post.url}
+            className={styles.titleLink}
+            ariaLabel={t('link.external.article', { title: post.title })}
+          >
+            {post.title}
+            <span className={styles.externalMark} aria-hidden="true">
+              {t('link.external.mark')}
+            </span>
+          </ExternalLink>
+        )}
       </p>
       <ul className={styles.attrs}>
         <li>

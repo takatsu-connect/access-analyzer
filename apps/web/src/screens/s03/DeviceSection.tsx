@@ -28,10 +28,10 @@ export function DeviceSection({ value, breakdown }: DeviceSectionProps) {
         <StateMessage kind="empty" />
       ) : (
         <>
-          {value.landingSessions === null ? null : (
+          {/* 伏せ値か 0 なら前置きを出さない。注記（s03.landing.note）は最初の節にだけ添える。 */}
+          {value.landingSessions === null || value.landingSessions === 0 ? null : (
             <p className={styles.lead}>
-              {t('lead.sessions', { n: formatNumber(value.landingSessions) })}
-              {t('s03.landing.note')}
+              {t('s03.landing.lead', { n: formatNumber(value.landingSessions) })}
             </p>
           )}
           <ShareBars

@@ -8,7 +8,7 @@ import { MiniBar } from '@/components/charts';
 import { cx } from '@/components/class-names';
 import { Notice, StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
-import { usePeriod } from '@/components/usePeriod';
+import { absentCompareText, usePeriod } from '@/components/usePeriod';
 import { formatNumber } from '@/lib/format';
 import type { TagIndexData } from '@/lib/page-data';
 import { metricLabel, metricNote, t } from '@/lib/ui-text';
@@ -30,7 +30,10 @@ function TagLink({ id, children }: { id: number; children: ReactNode }) {
  * 並びは名前の順で固定（データの順のまま描く）。読まれた回数の順への切り替えは置かない。
  */
 export function TagsScreen({ data }: { data: TagIndexData }) {
-  const { period, prevId, prevLabel, setPeriod } = usePeriod(data.periods);
+  const { period, prevId, prevLabel, withheld, prevPartialDay, setPeriod } = usePeriod(
+    data.periods,
+    data.meta.measureStart,
+  );
   const values = period === null ? undefined : data.period[period.id];
   const prevValues = prevId === null ? undefined : data.period[prevId];
   // 記事が 0 本のシリーズは行を出さない（FR-42）。
@@ -93,7 +96,8 @@ export function TagsScreen({ data }: { data: TagIndexData }) {
                     <PrevDelta
                       current={value.pageviews}
                       previous={prevValues?.[tag.id]?.pageviews}
-                      absentText={t('s07.absent.prev')}
+                      absentText={absentCompareText(withheld, 'prev')}
+                      partialDay={prevPartialDay}
                     />
                   </td>
                   <td className={cx(styles.cell, styles.numeric)}>

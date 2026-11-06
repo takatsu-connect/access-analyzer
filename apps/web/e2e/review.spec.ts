@@ -131,22 +131,23 @@ test.describe('画面レビューの反映（E-22）', () => {
     }
   });
 
-  test('E-22 S-05: 期間内の公開が 0 本の著者は「新しく公開した記事はありません」になる', async ({
+  test('E-22 S-05: 期間内の公開が 0 本の著者も、合計を先に出し「0 本公開し」と書かない', async ({
     page,
   }) => {
     // author-c は、どの期間にも公開がない（記事はすべて公開から 91 日以上）。
+    // 助言 2026-11-05-build3-screens-text.md B-3: 合計が先、本数が後。0 本のときは本数を書かない。
+    const zeroTail = 'どれも、この期間より前に公開した記事です。';
     for (const [period, text] of Object.entries(await textsByPeriod(page, '/authors/author-c'))) {
-      expect.soft(text, `author-c（${period}）`).toContain('新しく公開した記事はありません');
+      expect.soft(text, `author-c（${period}）`).toMatch(/この期間に合計 [\d,]+ 回読まれました/);
+      expect.soft(text, `author-c（${period}）`).toContain(zeroTail);
       expect.soft(text, `author-c（${period}）`).not.toContain('0 本公開し');
-      expect
-        .soft(text, `author-c（${period}）の以前の記事`)
-        .toMatch(/以前に書いた \d+ 本の記事が [\d,]+ 回読まれました/);
+      expect.soft(text, `author-c（${period}）`).not.toContain('以前に書いた');
     }
     // author-a は直近 28 日に 2 本公開した。
     await openScreen(page, '/authors/author-a');
     const text = await mainText(page);
-    expect(text).toContain('この期間に 2 本公開し');
-    expect(text).not.toContain('新しく公開した記事はありません');
+    expect(text).toContain('この期間に公開した記事は 2 本です');
+    expect(text).not.toContain(zeroTail);
   });
 
   test('E-22 S-05: 到達がない期間には「到達のお知らせ」の見出しがない', async ({ page }) => {

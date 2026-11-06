@@ -87,8 +87,9 @@ export function SourceSection({ data, period, site }: SourceSectionProps) {
       )}
 
       <div data-part="referrer">
-        <h3 className={styles.h3}>{t('s01.monthly.heading', { label: metricLabel('M12') })}</h3>
         <MonthTable
+          label={metricLabel('M12')}
+          measureStart={data.meta.measureStart}
           caption={metricLabel('M12')}
           nameHeader={t('column.domain')}
           table={data.monthReferrer}

@@ -3,8 +3,9 @@ import { renderToString } from 'react-dom/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { PeriodPicker } from '@/components/PeriodPicker';
-import { resolvePeriod, usePeriod } from '@/components/usePeriod';
+import { absentCompareText, resolvePeriod, usePeriod } from '@/components/usePeriod';
 import { useQueryState } from '@/components/useQueryState';
+import type { MonthId, Period } from '@/lib/page-data';
 import type { QueryAllow } from '@/lib/query';
 
 import { PERIODS } from './fixtures';
@@ -115,12 +116,13 @@ describe('PeriodPicker と URL の状態', () => {
     expect(text('period')).toBe('last28');
   });
 
-  it('月を選ぶと、ボタンの選択が外れ、前の月が比較の相手になる', () => {
+  it('月を選ぶと、ボタンの選択が外れる。月の途中の月では、前の月と比べない', () => {
     render(<PeriodScreen />);
     fireEvent.change(screen.getByLabelText('月'), { target: { value: 'm2026-11' } });
     expect(window.location.search).toBe('?p=m2026-11');
-    expect(text('prev')).toBe('m2026-10');
-    expect(text('prev-label')).toBe('前の月と比べて');
+    // 11 月は 2 日までの途中の月なので、10 月の 31 日分とは比べない（05 §2.2）。
+    expect(text('prev')).toBe('');
+    expect(text('prev-label')).toBe('');
     expect(pressed()).toEqual([]);
   });
 
@@ -168,5 +170,71 @@ describe('PeriodPicker と URL の状態', () => {
 
   it('resolvePeriod: 一覧が空なら period は null', () => {
     expect(resolvePeriod([], 'last28').period).toBeNull();
+  });
+});
+
+describe('resolvePeriod: 比較の決まり（05 §2.2）', () => {
+  /** 基準日 2026-11-04。11 月は途中、10 月は終わったが未確定（settling）、9 月は確定。 */
+  const month = (id: MonthId, start: string, end: string, isConfirmed: boolean): Period => ({
+    id,
+    kind: 'month',
+    start,
+    end,
+    isConfirmed,
+    label: id,
+    prevId: null,
+    yoyId: null,
+  });
+  const NOV = {
+    ...month('m2026-11', '2026-11-01', '2026-11-04', false),
+    prevId: 'm2026-10' as const,
+    yoyId: 'm2025-11' as const,
+  };
+  const OCT = {
+    ...month('m2026-10', '2026-10-01', '2026-10-31', false),
+    prevId: 'm2026-09' as const,
+    yoyId: 'm2025-10' as const,
+  };
+  const SEP = month('m2026-09', '2026-09-01', '2026-09-30', true);
+  const NOV_2025 = {
+    ...month('m2025-11', '2025-11-01', '2025-11-30', true),
+    prevId: 'm2025-10' as const,
+  };
+  const OCT_2025 = month('m2025-10', '2025-10-08', '2025-10-31', true);
+  const LIST: Period[] = [NOV, OCT, SEP, NOV_2025, OCT_2025];
+
+  it('月の途中（end 2026-11-04、未確定）は、前の月と去年の同じ月との比較を止める', () => {
+    const choice = resolvePeriod(LIST, 'm2026-11', '2025-10-08');
+    expect(choice.withheld).toBe('inProgress');
+    expect(choice.prevId).toBeNull();
+    expect(choice.yoyId).toBeNull();
+    expect(choice.prevLabel).toBeNull();
+    expect(absentCompareText(choice.withheld, 'prev')).toBe(
+      '月が終わると、前の月と比べた数字が出ます',
+    );
+    expect(absentCompareText(choice.withheld, 'yoy')).toBe(
+      '月が終わると、去年の同じ月と比べた数字が出ます',
+    );
+  });
+
+  it('終わった月（settling）は比べる。数え始めた月を去年の同じ月とするときは、その日を返す', () => {
+    const choice = resolvePeriod(LIST, 'm2026-10', '2025-10-08');
+    expect(choice.withheld).toBeNull();
+    expect(choice.prevId).toBe('m2026-09');
+    expect(choice.prevLabel).toBe('前の月と比べて');
+    expect(choice.prevPartialDay).toBeNull();
+    expect(choice.yoyId).toBe('m2025-10');
+    expect(choice.yoyPartialDay).toBe(8);
+  });
+
+  it('数え始めた月を前の月とするとき（2025-11）は prevPartialDay。1 日から数えていれば扱わない', () => {
+    expect(resolvePeriod(LIST, 'm2025-11', '2025-10-08').prevPartialDay).toBe(8);
+    expect(resolvePeriod(LIST, 'm2025-11', '2025-10-01').prevPartialDay).toBeNull();
+    expect(resolvePeriod(LIST, 'm2025-11').prevPartialDay).toBeNull();
+  });
+
+  it('止めていないときの不在の文は「前の期間の数字なし」「去年の同じ月の数字なし」', () => {
+    expect(absentCompareText(null, 'prev')).toBe('前の期間の数字なし');
+    expect(absentCompareText(null, 'yoy')).toBe('去年の同じ月の数字なし');
   });
 });

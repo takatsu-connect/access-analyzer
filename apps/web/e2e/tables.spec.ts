@@ -408,10 +408,10 @@ test.describe('表の決まり（E-07〜E-10、E-15）', () => {
     // S-05（author-a）: 前の 28 日の読まれた回数は 19（記事 103 の公開日の分）。差だけが出る。
     await openScreen(page, '/authors/author-a');
     const summary = await page
-      .getByText(/この期間に \d+ 本公開し/)
+      .getByText(/この期間に合計 [\d,]+ 回読まれました/)
       .first()
       .innerText();
-    const match = /合計 ([\d,]+) 回読まれました（.*読まれた回数 \+([\d,]+)）/.exec(summary);
+    const match = /合計 ([\d,]+) 回読まれました（.*と比べて \+([\d,]+)）/.exec(summary);
     expect(match, summary).not.toBeNull();
     const total = Number((match?.[1] ?? '').replace(/,/g, ''));
     const diff = Number((match?.[2] ?? '').replace(/,/g, ''));
@@ -426,7 +426,8 @@ test.describe('表の決まり（E-07〜E-10、E-15）', () => {
       kpi.indexOf(t('metric.M30.label')),
       kpi.indexOf(t('metric.M03.label')),
     );
-    expect(pvPart).toContain('%');
+    // 比率は「+8%」か、丸めて 0% のときの「ほぼ同じ」で出る（分母が 20 以上なので比率がある）。
+    expect(pvPart).toMatch(new RegExp(`%|${t('compare.ratio.flat')}`));
     expect(countPart).toMatch(/[+−±]\d+/);
     expect(countPart).not.toContain('%');
   });

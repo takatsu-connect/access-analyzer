@@ -24,37 +24,51 @@ export const S05_TEXT = {
 
   // --- S-05 (a)〜(d) この期間のまとめ ---
   's05.summary.h2': 'この期間のまとめ',
+  // (a) は合計が先、本数が後（助言 B-3）。本数には印と差を付けず、前の期間の本数を並べる（助言 A-2）。
   // 月を選んだとき（「前の {days} 日」が合わない）。
   's05.summary.a.month':
-    'この期間に {n} 本公開し、合計 {pv} 回読まれました（前の月と比べて 本数 {diffCount}、読まれた回数 {diffPv}）。',
+    '{name}さんの記事は、この期間に合計 {pv} 回読まれました（前の月と比べて {diffPv}）。この期間に公開した記事は {n} 本です（前の月は {prevCount} 本）。',
   // 前の期間の数字がないとき。
-  's05.summary.a.single': 'この期間に {n} 本公開し、合計 {pv} 回読まれました。',
-  // 期間内の公開が 0 本で、公開から 3 か月以上たった記事もまだないとき。
-  's05.summary.a.zero.total':
-    'この期間に新しく公開した記事はありません。これまでに書いた記事が、この期間に合計 {pv} 回読まれました。',
+  's05.summary.a.single':
+    '{name}さんの記事は、この期間に合計 {pv} 回読まれました。この期間に公開した記事は {n} 本です。',
   // 多くの記事の範囲（全体の分布）がまだないとき。前半だけを出す。
   's05.summary.b.own': '{name}さんの記事は、公開から 30 日で {median} 回くらい読まれています。',
   // {condition} には absent.ownMedian を入れる。
   's05.summary.b.absent': '公開から 30 日で読まれた回数の目安は、{condition}。',
-  // 公開から 3 か月以上たった記事がまだないとき。
-  's05.summary.c.absent':
-    '公開から 3 か月以上たった記事ができると、その記事がこの期間に読まれた回数が出ます。',
 
   // --- S-05 読者はどこから来たか ---
   's05.referrer.note': '傾向として見るためのもので、良し悪しではありません。',
   's05.referrer.compare': 'サイト全体: {share}',
   's05.referrer.column.site': 'サイト全体の割合',
-  's05.referrer.table': '表で見る',
+  's05.referrer.table': '同じ数字を表で見る',
+  // 伏せ値があるときは、棒をやめて文にする（助言 B-4）。{list} は「検索から 162 回、SNS から 40 回」。
+  's05.referrer.text': '{list}の訪問がありました。',
+  's05.referrer.masked':
+    '{list}は伏せ値です（小さな数は表示していません）。期間を「直近 90 日」にすると、数字が出やすくなります。',
+  // SNS の種類の文の 1 項目。{label} は区分の名前、{n} は訪問回数。
+  's05.referrer.item': '{label}から {n} 回',
+  // 流入チャネルの文の 1 項目（「他のサイトから」は「から」を重ねない）。
+  's05.referrer.from.search': '検索から {n} 回',
+  's05.referrer.from.social': 'SNS から {n} 回',
+  's05.referrer.from.direct': '直接 {n} 回',
+  's05.referrer.from.referral': '他のサイトから {n} 回',
+  's05.referrer.from.other': 'その他 {n} 回',
+  // 伏せ値の区分の並び（「SNS と直接」）。
+  's05.referrer.and': 'と',
   's05.referrer.caption.channel': '{name}さんの記事への訪問回数（どこから来たか）',
   's05.referrer.caption.sns': '{name}さんの記事への訪問回数（SNS の種類）',
 
-  // --- S-05 どんなカテゴリを書いたか ---
-  's05.category.h2': 'どんなカテゴリを書いたか',
-  's05.category.column.posts': '記事数',
+  // --- S-05 どのカテゴリの記事を書いたか ---
+  's05.category.h2': 'どのカテゴリの記事を書いたか',
+  // pub_author_category_period.post_count は期間によらない本数（02 §4 の列の定義）。
+  's05.category.column.posts': 'これまでの記事数',
   's05.category.caption': '{name}さんの記事の、カテゴリごとの記事数と読まれた回数',
 
-  // --- S-05 最近よく読まれている記事 / 久しぶりに読まれた記事 ---
-  's05.recent.h2': '最近よく読まれている記事 / 久しぶりに読まれた記事',
+  // --- S-05 いま読まれている記事（最近よく読まれている / 久しぶりに読まれた） ---
+  's05.recent.h2': 'いま読まれている記事',
+  // 両方の一覧がないとき、h3 と枠の代わりに 1 文だけ出す（助言 A-1）。
+  's05.recent.empty':
+    'ふだんよりはっきり多く読まれた記事があると、ここに出ます（直近 7 日で見ています）。',
   's05.recent.hot.h3': '最近よく読まれている記事',
   's05.recent.revival.h3': '久しぶりに読まれた記事',
   's05.recent.caption.hot': '{name}さんの、最近よく読まれている記事',

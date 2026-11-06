@@ -98,8 +98,8 @@ export function DailySection({ data, period, line, onLineChange }: DailySectionP
             <Segment
               label={t('s01.daily.grain.aria')}
               options={[
-                { value: 'week', label: t('s01.daily.grain.week') },
                 { value: 'day', label: t('s01.daily.grain.day') },
+                { value: 'week', label: t('s01.daily.grain.week') },
               ]}
               value={grain}
               onChange={setGrain}
@@ -147,7 +147,7 @@ export function DailySection({ data, period, line, onLineChange }: DailySectionP
                       {series.prevValues === undefined ? null : (
                         <td className={styles.num}>
                           {row.prev === null ? (
-                            <span className={styles.absent}>{t('s01.absent.prev')}</span>
+                            <span className={styles.absent}>{t('absent.prev')}</span>
                           ) : (
                             formatNumber(row.prev)
                           )}

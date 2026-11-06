@@ -297,7 +297,9 @@ describe('辞書の完全性（U-19）', () => {
     expect(t('band.lower.alt')).toBe('ゆっくり読まれています');
     expect(t('band.na')).toBe('まだ比較できません');
     expect(t('absent.band')).toBe(t('band.na'));
-    expect(t('absent.ownMedian')).toBe('数え始めてから公開した記事が 5 本以上になると出ます');
+    expect(t('absent.ownMedian')).toBe(
+      '直近 1 年に公開して 30 日たった記事が 5 本以上になると出ます',
+    );
     expect(t('absent.ratio20')).toBe('読まれた回数が 20 回以上になると出ます');
   });
 

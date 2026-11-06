@@ -111,8 +111,11 @@ describe('S-08 投稿活動', () => {
     const table = screen.getByRole('table', { name: '月ごとの公開本数の表', hidden: true });
     const rows = [...table.querySelectorAll('tbody tr')].map((row) => row.textContent);
     expect(rows.length).toBe(18);
-    expect(rows[0]).toBe('2026 年 11 月（途中まで）10');
-    expect(rows.at(-1)).toBe('2025 年 6 月1前年のデータなし');
+    // 途中の月は、去年の 1 か月分と比べない（枠も描かない）。
+    expect(rows[0]).toBe(
+      '2026 年 11 月（途中まで）1月が終わると、去年の同じ月と比べた数字が出ます',
+    );
+    expect(rows.at(-1)).toBe('2025 年 6 月1去年の同じ月の数字なし');
   });
 
   it('ライターの表: 見出し、名前の順、本数が 0 の行がない', () => {
@@ -178,9 +181,70 @@ describe('S-08 投稿活動', () => {
 
     expect(mixTable().textContent).not.toContain('%');
     expect(within(mixTable()).queryByRole('columnheader', { name: '割合' })).toBeNull();
-    expect(
-      screen.getByText('割合は、期間内に公開した記事が 20 本以上になると出ます。'),
-    ).toBeTruthy();
+    // 割合の注記は notes.ratio と重なるので出さない（助言 A-3）。
+    expect(screen.queryByText(/割合は、期間内に公開した記事が/)).toBeNull();
+    // 列名は「カテゴリ」「この期間に公開した本数」。
+    const headers = within(mixTable())
+      .getAllByRole('columnheader')
+      .map((item) => item.textContent);
+    expect(headers.slice(0, 2)).toEqual(['カテゴリ', 'この期間に公開した本数']);
+  });
+
+  it('月の途中（2026 年 11 月）は ▲▼ を出さず、「月が終わると…」を出す', () => {
+    setQuery('?p=m2026-11');
+    const { container } = render(<ActivityScreen data={built()} />);
+    const lead = screen.getByText('この期間に 1 本の記事が公開されました。');
+    expect(lead).toBeTruthy();
+    expect(container.textContent).toContain('月が終わると、前の月と比べた数字が出ます');
+    expect(container.querySelector('[class*="arrow"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/[▲▼]/);
+  });
+
+  it('終わった月（2026 年 10 月）は、前の月と比べる', () => {
+    setQuery('?p=m2026-10');
+    const data = built();
+    const { container } = render(
+      <ActivityScreen
+        data={{
+          ...data,
+          periods: data.periods.map((period) =>
+            period.id === 'm2026-10' ? { ...period, prevId: 'm2026-09' as const } : period,
+          ),
+          posting: { ...data.posting, 'm2026-09': { postCount: 3 } },
+        }}
+      />,
+    );
+    expect(screen.getAllByText('前の月と比べて').length).toBeGreaterThan(0);
+    // 10 月は 1 本、9 月は 3 本。
+    expect(container.textContent).toContain('−2');
+  });
+
+  it('13 か月前の行にも、去年の同じ月の本数が出る（36 か月のデータ）', () => {
+    const cache = makeCache();
+    // 2023 年 12 月から 2026 年 11 月までの 36 か月。本数は月の通し番号。
+    const months = [...new Array<undefined>(36).keys()].map((index) => {
+      const serial = 2023 * 12 + 11 + index;
+      const month = `${Math.floor(serial / 12)}-${String((serial % 12) + 1).padStart(2, '0')}`;
+      return { month, post_count: index + 1 };
+    });
+    const data = buildActivity({ ...cache, postingMonthly: months }, BUILT_AT);
+    expect(data.monthly).toHaveLength(24);
+    // 2025 年 10 月（13 か月前）は 23 本、去年の同じ月（2024 年 10 月）は 11 本。
+    expect(data.monthly.find((row) => row.month === '2025-10')).toEqual({
+      month: '2025-10',
+      postCount: 23,
+      yoyPostCount: 11,
+    });
+    // 2024 年 12 月（24 か月の先頭）の去年は 2023 年 12 月（1 本）。
+    expect(data.monthly[0]).toEqual({ month: '2024-12', postCount: 13, yoyPostCount: 1 });
+
+    render(<ActivityScreen data={data} />);
+    const table = screen.getByRole('table', { name: '月ごとの公開本数の表', hidden: true });
+    const rows = [...table.querySelectorAll('tbody tr')].map((row) => row.textContent);
+    expect(rows).toHaveLength(24);
+    expect(rows).toContain('2025 年 10 月2311');
+    expect(rows.at(-1)).toBe('2024 年 12 月131');
+    expect(rows.join('')).not.toContain('去年の同じ月の数字なし');
   });
 
   it('カテゴリの割合は、分母が 20 のときは出す', () => {
@@ -193,9 +257,6 @@ describe('S-08 投稿活動', () => {
     expect(rows[1]?.textContent).toContain('イベント');
     expect(rows[1]?.textContent).toContain('25%');
     expect(within(mixTable()).getByRole('columnheader', { name: '割合' })).toBeTruthy();
-    expect(
-      screen.queryByText('割合は、期間内に公開した記事が 20 本以上になると出ます。'),
-    ).toBeNull();
   });
 
   it('カテゴリの前の期間との比較は、本数の差だけ', () => {
@@ -213,7 +274,7 @@ describe('S-08 投稿活動', () => {
   it('前の期間の内訳がないときは、文字で書く', () => {
     const { container } = render(<ActivityScreen data={withMix(20)} />);
 
-    expect(mixTable().textContent).toContain('前の期間のデータなし');
+    expect(mixTable().textContent).toContain('前の期間の数字なし');
     expect(container.querySelector('.masked')).toBeNull();
   });
 

@@ -6,7 +6,7 @@ import { Details } from '@/components/Details';
 import { Notice, StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { AuthorLink } from '@/components/SiteLinks';
-import { usePeriod } from '@/components/usePeriod';
+import { absentCompareText, usePeriod } from '@/components/usePeriod';
 import { monthProgress, share } from '@/lib/derive';
 import { formatNumber, formatShare, formatYearMonth } from '@/lib/format';
 import type { ActivityData } from '@/lib/page-data';
@@ -21,11 +21,6 @@ import type { MonthlyBarRow } from './MonthlyBars';
 /** 図に出す月の数（05 §8）。 */
 const MONTHS = 24;
 
-/** 'YYYY-MM' の前年の同じ月。 */
-function yoyOf(month: string): string {
-  return `${Number(month.slice(0, 4)) - 1}${month.slice(4)}`;
-}
-
 /**
  * S-08 投稿活動（05 §8）。
  *
@@ -34,10 +29,11 @@ function yoyOf(month: string): string {
  * - カテゴリの割合は、期間の公開本数が 20 本以上のときだけ出す（05 §2.3）。
  */
 export function ActivityScreen({ data }: { data: ActivityData }) {
-  const { period, prevId, prevLabel, setPeriod } = usePeriod(data.periods);
+  // 公開本数は WordPress から数えるので、数え始めた日に関係なくそろっている（measureStart は渡さない）。
+  const { period, prevId, prevLabel, withheld, setPeriod } = usePeriod(data.periods);
   const periodId = period?.id ?? null;
   const compareLabel = prevLabel ?? t('s08.column.prev');
-  const absentPrev = t('s08.absent.prev');
+  const absentPrev = absentCompareText(withheld, 'prev');
 
   const posting = periodId === null ? undefined : data.posting[periodId];
   const prevPosting = prevId === null ? undefined : data.posting[prevId];
@@ -49,21 +45,22 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
       .filter((item) => item.kind === 'month' && monthProgress(item) === 'inProgress')
       .map((item) => item.id),
   );
-  const countByMonth = new Map(data.monthly.map((item) => [item.month, item.postCount]));
-  const monthlyRows: MonthlyBarRow[] = data.monthly
+  // 去年の同じ月の本数は、データ層が行ごとに持つ（13〜24 か月前の月の去年も引ける）。
+  // 途中の月は、去年の 1 か月分と日数がそろわないので、枠を描かない。
+  const monthlyRows: (MonthlyBarRow & { withheld: boolean })[] = data.monthly
     .slice(-MONTHS)
     .reverse()
-    .map(({ month, postCount }) => {
+    .map(({ month, postCount, yoyPostCount }) => {
       const name = formatYearMonth(month);
-      const label = inProgress.has(`m${month}`)
-        ? t('period.month.unconfirmed', { label: name })
-        : name;
-      const yoy = countByMonth.get(yoyOf(month)) ?? null;
+      const isInProgress = inProgress.has(`m${month}`);
+      const label = isInProgress ? t('period.month.unconfirmed', { label: name }) : name;
+      const yoy = isInProgress ? null : yoyPostCount;
       return {
         key: month,
         label,
         value: postCount,
         yoy,
+        withheld: isInProgress,
         valueText: t('s08.posts', { n: formatNumber(postCount) }),
         title:
           yoy === null
@@ -161,7 +158,9 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
                       <td className={cx(parts.cell, parts.numeric)}>{formatNumber(row.value)}</td>
                       <td className={cx(parts.cell, parts.numeric)}>
                         {row.yoy === null ? (
-                          <span className={parts.absent}>{t('absent.yoy')}</span>
+                          <span className={parts.absent}>
+                            {row.withheld ? t('compare.inProgress.yoy') : t('absent.yoy')}
+                          </span>
                         ) : (
                           formatNumber(row.yoy)
                         )}
@@ -180,7 +179,7 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
         {authors === undefined ? (
           <StateMessage kind="empty" />
         ) : authors.length === 0 ? (
-          <StateMessage kind="empty">{t('s02b.empty')}</StateMessage>
+          <StateMessage kind="empty">{t('s08.empty')}</StateMessage>
         ) : (
           <div className={parts.tableWrap}>
             <table className={parts.table}>
@@ -220,7 +219,7 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
         {mix === undefined ? (
           <StateMessage kind="empty" />
         ) : mixRows.length === 0 ? (
-          <StateMessage kind="empty">{t('s02b.empty')}</StateMessage>
+          <StateMessage kind="empty">{t('s08.empty')}</StateMessage>
         ) : (
           <>
             <div className={parts.tableWrap}>
@@ -274,7 +273,6 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
                 </tbody>
               </table>
             </div>
-            {hasShare ? null : <Notice>{t('s08.mix.share.note')}</Notice>}
             <Notice>{t('s08.mix.note')}</Notice>
           </>
         )}

@@ -3,7 +3,7 @@ import { cx } from '@/components/class-names';
 import { Delta } from '@/components/Delta';
 import { Details } from '@/components/Details';
 import { Notice, StateMessage } from '@/components/Notice';
-import { compare } from '@/lib/derive';
+import { compare, partialMonthStartDay } from '@/lib/derive';
 import { formatNumber } from '@/lib/format';
 import type { ByPeriod, Period } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
@@ -23,6 +23,8 @@ export type MonthTableRow = {
 };
 
 export type MonthTableProps<Row extends { sessions: number }> = {
+  /** 見出し（h3）の名前。「リンク元のサイト」。見出しは「{label}（{month}）」になる。 */
+  label: string;
   /** 表の説明（caption）。 */
   caption: string;
   /** 区分の列の見出し（都道府県）。渡さなければ列を作らない。 */
@@ -34,26 +36,50 @@ export type MonthTableProps<Row extends { sessions: number }> = {
   periods: readonly Period[];
   /** 選んでいる期間。確定した月ならその月、それ以外は最新の確定月の表を出す。 */
   selected: Period;
+  /** 見出しの段（既定は h3。市別は h4）。 */
+  headingLevel?: 3 | 4;
+  /** meta.measureStart。比べる月が数え始めた月なら、差を出さずに数字を並べる。 */
+  measureStart: string;
 };
 
 type OtherMonthProps = {
   current: number;
-  /** 比べる月の値。null は、その月の表にこの行がない。 */
-  other: number | null;
-  absentText: string;
+  /** 比べる月の表。undefined は、その月の表そのものがない。 */
+  rows: Map<string, number> | undefined;
+  rowKey: string;
+  /** 比べる月が数え始めた月なら、数え始めた日。 */
+  partialDay: number | null;
+  target: 'prev' | 'yoy';
 };
 
-function OtherMonth({ current, other, absentText }: OtherMonthProps) {
-  if (other === null) return <span className={styles.absent}>{absentText}</span>;
+function OtherMonth({ current, rows, rowKey, partialDay, target }: OtherMonthProps) {
+  if (rows === undefined) {
+    const text = target === 'prev' ? t('s01.monthly.noPrev') : t('absent.yoy');
+    return <span className={styles.absent}>{text}</span>;
+  }
+  const other = rows.get(rowKey);
+  if (other === undefined) {
+    // 表はあるが、上位 10 行に入っていない。
+    const text = target === 'prev' ? t('s01.monthly.prevNotListed') : t('s01.monthly.yoyNotListed');
+    return <span className={styles.absent}>{text}</span>;
+  }
+  if (partialDay !== null) {
+    return (
+      <span className={styles.absent}>
+        {t(`compare.partial.${target}`, { value: formatNumber(other), day: partialDay })}
+      </span>
+    );
+  }
   return <Delta comparison={compare(current, other)} />;
 }
 
 /**
  * 月ごとに集計する表（リンク元のサイト、市別。FR-13、FR-15）。
+ * 見出し「リンク元のサイト（2026 年 9 月）」と、その直下に、期間の選択に連動しないことの注記。
  * 名前 | 訪問回数 | 前の月と比べて | 去年の同じ月と比べて。狭い画面では最後の列を「詳しく」に入れる。
- * 期間の選択に連動しないことを、表の下に書く。
  */
 export function MonthTable<Row extends { sessions: number }>({
+  label,
   caption,
   groupHeader,
   nameHeader,
@@ -61,21 +87,36 @@ export function MonthTable<Row extends { sessions: number }>({
   toRow,
   periods,
   selected,
+  measureStart,
+  headingLevel = 3,
 }: MonthTableProps<Row>) {
+  const Heading = headingLevel === 4 ? 'h4' : 'h3';
+  const headingClass = headingLevel === 4 ? styles.h4 : styles.h3;
   const target = monthlyTarget(periods, selected);
   const current = target === null ? undefined : table[target.id];
   if (target === null || current === undefined || current.length === 0) {
-    return <StateMessage kind="empty" />;
+    return (
+      <>
+        <Heading className={headingClass}>{label}</Heading>
+        <StateMessage kind="empty" />
+      </>
+    );
   }
 
-  const sessionsByKey = (rows: Row[] | undefined): Map<string, number> =>
-    new Map((rows ?? []).map((row) => [toRow(row).key, row.sessions]));
+  const sessionsByKey = (rows: Row[] | undefined): Map<string, number> | undefined =>
+    rows === undefined ? undefined : new Map(rows.map((row) => [toRow(row).key, row.sessions]));
   const prev = sessionsByKey(pick(table, target.prevId));
   const yoy = sessionsByKey(pick(table, target.yoyId));
+  const prevPartial = partialMonthStartDay(target.prevId, measureStart);
+  const yoyPartial = partialMonthStartDay(target.yoyId, measureStart);
   const rows = current.slice(0, TOP_ROWS).map(toRow);
 
   return (
     <>
+      <Heading className={headingClass}>
+        {t('s01.monthly.heading', { label, month: target.label })}
+      </Heading>
+      <Notice>{t('s01.monthly.note')}</Notice>
       <table className={styles.table}>
         <caption className={a11y.srOnly}>{caption}</caption>
         <thead>
@@ -105,8 +146,10 @@ export function MonthTable<Row extends { sessions: number }>({
             const yoyCell = (
               <OtherMonth
                 current={row.sessions}
-                other={yoy.get(row.key) ?? null}
-                absentText={t('absent.yoy')}
+                rows={yoy}
+                rowKey={row.key}
+                partialDay={yoyPartial}
+                target="yoy"
               />
             );
             return (
@@ -124,8 +167,10 @@ export function MonthTable<Row extends { sessions: number }>({
                 <td className={styles.num}>
                   <OtherMonth
                     current={row.sessions}
-                    other={prev.get(row.key) ?? null}
-                    absentText={t('s01.monthly.noPrev')}
+                    rows={prev}
+                    rowKey={row.key}
+                    partialDay={prevPartial}
+                    target="prev"
                   />
                 </td>
                 <td className={cx(styles.num, styles.wideCell)}>{yoyCell}</td>
@@ -140,11 +185,6 @@ export function MonthTable<Row extends { sessions: number }>({
           })}
         </tbody>
       </table>
-      <Notice>
-        {target.id === selected.id
-          ? t('s01.monthly.note.selected', { month: target.label })
-          : t('s01.monthly.note.latest', { month: target.label })}
-      </Notice>
     </>
   );
 }

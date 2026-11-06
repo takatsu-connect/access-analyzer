@@ -15,7 +15,9 @@ export const S08_TEXT = {
   's08.posts': '{n} 本',
   // 比較の相手が決まらないとき（前の期間がない月）の言い方。ふだんは「前の 28 日と比べて」など。
   's08.column.prev': '前の期間と比べて',
-  's08.absent.prev': '前の期間のデータなし',
+  // 前の期間の不在は共通の absent.prev を使う。
+  // この期間に公開した記事がないとき（ライターの表、カテゴリの表）。
+  's08.empty': 'この期間に公開された記事はありません',
 
   // --- 月ごとの公開本数 ---
   's08.monthly.h2': '月ごとの公開本数（直近 24 か月）',
@@ -33,10 +35,9 @@ export const S08_TEXT = {
 
   // --- どんな記事が多かった？（FR-52） ---
   's08.mix.h2': 'どんな記事が多かった？',
-  's08.mix.column.category': 'カテゴリ（親 > 子）',
-  's08.mix.column.count': '期間内に公開した本数',
+  's08.mix.column.category': 'カテゴリ',
+  's08.mix.column.count': 'この期間に公開した本数',
   's08.mix.column.prev': '{label}（本数の差）',
-  's08.mix.share.note': '割合は、期間内に公開した記事が 20 本以上になると出ます。',
   's08.mix.note':
     '1 つの記事が複数のカテゴリに入ることがあるので、本数を足しても公開した本数とは一致しません。',
 } as const satisfies ScreenTexts<'s08'>;

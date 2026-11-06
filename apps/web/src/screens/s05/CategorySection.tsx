@@ -14,8 +14,10 @@ export type CategorySectionProps = {
 };
 
 /**
- * h2 どんなカテゴリを書いたか（FR-33。M-32）。
+ * h2 どのカテゴリの記事を書いたか（FR-33。M-32）。
  * 本人の記事の内訳なので、読まれた回数の多い順に並べる。連番は付けない。伏せ値はない。
+ * 記事数は、期間によらない「これまでの記事数」（pub_author_category_period.post_count。02 §4）。
+ * 読まれた回数は、選んだ期間の値。
  */
 export function CategorySection({ data, periodId }: CategorySectionProps) {
   const rows = [...(data.categoryMix[periodId] ?? [])].sort(
@@ -39,7 +41,7 @@ export function CategorySection({ data, periodId }: CategorySectionProps) {
                 {t('s05.category.column.posts')}
               </th>
               <th scope="col" className={styles.numeric}>
-                {t('column.pageviews')}
+                {t('column.pageviews.period')}
               </th>
             </tr>
           </thead>

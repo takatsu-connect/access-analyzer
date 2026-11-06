@@ -13,12 +13,13 @@ import { useQueryState } from '@/components/useQueryState';
 import { compare, monthProgress, splitYmd } from '@/lib/derive';
 import type { Comparison, MonthProgress } from '@/lib/derive';
 import {
+  formatChange,
   formatDate,
   formatDiff,
   formatMonthWithProgress,
   formatNumber,
-  formatRatio,
   formatYearMonth,
+  isFlatChange,
 } from '@/lib/format';
 import type { MonthId, SeasonalData } from '@/lib/page-data';
 import type { QueryAllow } from '@/lib/query';
@@ -61,13 +62,16 @@ function yoyOf(month: MonthId): MonthId {
   return `m${year - 1}-${month.slice(-2)}`;
 }
 
-/** 差を文字にする。向きは、矢印と符号の 2 つで伝える（色に頼らない）。 */
+/**
+ * 差を文字にする。向きは、矢印と符号の 2 つで伝える（色に頼らない）。
+ * 比率の書き方は Delta と同じ（丸めて 0% なら「ほぼ同じ」で印なし、+100% 以上は倍）。
+ */
 function diffText({ diff, ratio }: Comparison): string {
   const amount =
     ratio === null
       ? formatDiff(diff)
-      : t('compare.withRatio', { diff: formatDiff(diff), ratio: formatRatio(ratio) });
-  if (diff === 0) return amount;
+      : t('compare.withRatio', { diff: formatDiff(diff), ratio: formatChange(diff, ratio) });
+  if (diff === 0 || (ratio !== null && isFlatChange(diff, ratio))) return amount;
   return `${t(diff > 0 ? 'compare.arrow.up' : 'compare.arrow.down')} ${amount}`;
 }
 
@@ -103,7 +107,8 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
       .filter((item) => item.kind === 'month')
       .map((item) => [item.id, monthProgress(item)]),
   );
-  const progressOf = (month: MonthId): MonthProgress => progressByMonth.get(month) ?? 'confirmed';
+  // periods にない月は、状態が分からないので安全側（月の途中）とみなす（比較を出さない）。
+  const progressOf = (month: MonthId): MonthProgress => progressByMonth.get(month) ?? 'inProgress';
   // 数え始めた月。月の途中から数えているときだけ、注記を添える。
   const start = splitYmd(data.meta.measureStart);
   const startMonth: MonthId = `m${start.year}-${String(start.month).padStart(2, '0')}`;
@@ -131,17 +136,25 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
     // 途中までの月は、去年の 1 か月分と比べない（月が終わってから比べる）。
     if (progress === 'inProgress') return t('s06b.cell.unconfirmed', { text });
     const yoyMonth = yoyOf(month);
-    const withYoy = data.months.includes(yoyMonth)
-      ? t('s06b.cell.yoy', {
-          text,
-          label: t('compare.yoy'),
-          diff: diffText(compare(value, valueOf(category, yoyMonth))),
-        })
-      : t('s06b.cell.noYoy', { text, absent: t('absent.yoy') });
-    const touchesStart = isPartialStart && (month === startMonth || yoyMonth === startMonth);
-    const withStart = touchesStart
-      ? t('s06b.cell.note', { text: withYoy, note: partialText })
-      : withYoy;
+    const hasYoy = data.months.includes(yoyMonth) || data.yoyMonths.includes(yoyMonth);
+    const withYoy = !hasYoy
+      ? t('s06b.cell.noYoy', { text, absent: t('absent.yoy') })
+      : isPartialStart && yoyMonth === startMonth
+        ? // 去年の同じ月が数え始めた月: 日数がそろわないので、差を出さずに数字を並べる（助言 B-2）。
+          t('s06b.cell.partialYoy', {
+            text,
+            day: start.day,
+            count: formatNumber(valueOf(category, yoyMonth)),
+          })
+        : t('s06b.cell.yoy', {
+            text,
+            label: t('compare.yoy'),
+            diff: diffText(compare(value, valueOf(category, yoyMonth))),
+          });
+    const withStart =
+      isPartialStart && month === startMonth
+        ? t('s06b.cell.note', { text: withYoy, note: partialText })
+        : withYoy;
     // 月は終わったが、月末から 1 週間ほどは数字を取り直している。
     return progress === 'settling'
       ? t('s06b.cell.note', { text: withStart, note: t('s06b.settling') })
@@ -163,6 +176,7 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   /** 行 = カテゴリ、列 = 月の図。 */
   const byCategory = (months: readonly MonthId[]) => (
     <Heatmap
+      key={axis}
       title={t('s06b.chart.title')}
       rowLabels={categories.map((category) => category.name)}
       colLabels={months.map(shortLabel)}
@@ -178,6 +192,7 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   /** 行 = 月、列 = カテゴリの図（狭い画面の親カテゴリ）。 */
   const byMonth = (months: readonly MonthId[]) => (
     <Heatmap
+      key={axis}
       title={t('s06b.chart.title')}
       rowLabels={months.map(shortLabel)}
       colLabels={categories.map((category) => category.name)}

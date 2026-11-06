@@ -32,58 +32,92 @@ function sumIfAllVisible(values: readonly Masked[]): number | null {
   return total;
 }
 
+/** 「A」「A と B」「A、B と C」。 */
+function joinLabels(labels: readonly string[]): string {
+  const last = labels.at(-1);
+  if (last === undefined) return '';
+  const rest = labels.slice(0, -1);
+  if (rest.length === 0) return last;
+  return `${rest.join(t('list.separator'))}${t('s05.referrer.and')}${last}`;
+}
+
 type BreakdownProps = {
   /** 図の説明と、表の 1 列目の見出し。 */
   title: string;
   /** 表の名前（読み上げ用）。 */
   caption: string;
   items: readonly HBarItem[];
+  /** 伏せ値があるときの文の 1 項目（「検索から 162 回」）。 */
+  phrase: (key: string, count: string) => string;
   /** サイト全体の値（items と同じ順）。その期間の値がなければ null。 */
   siteValues: readonly Masked[] | null;
 };
 
 /**
- * 横棒 1 組（この著者の棒に、サイト全体の構成比を細い輪郭で重ねる）と、同じ値の表。
- * 伏せ値が 1 つでもあれば、前置きも比率もサイト全体との比較も出さず、数だけにする。
+ * 伏せ値があるときの文（助言 B-4）。棒は描かない: 合計がなく棒の長さの基準がないうえ、
+ * 伏せた区分に大きい数が入りうるので、見える区分だけの棒は内訳として誤る。
+ * 見える数（0 より大きいもの）を文で言い、伏せ値の区分は 1 行にまとめる。0 の区分は表にだけ出す。
+ * 「いちばん多いのは」とは書かない（伏せた区分のほうが多いことがありうる）。
  */
-function Breakdown({ title, caption, items, siteValues }: BreakdownProps) {
+function MaskedText({ items, phrase }: Pick<BreakdownProps, 'items' | 'phrase'>) {
+  const visible = items.flatMap((item) =>
+    item.value !== null && item.value > 0 ? [phrase(item.key, formatNumber(item.value))] : [],
+  );
+  const masked = items.flatMap((item) => (item.value === null ? [item.label] : []));
+  return (
+    <>
+      {visible.length === 0 ? null : (
+        <p className={styles.lead}>
+          {t('s05.referrer.text', { list: visible.join(t('list.separator')) })}
+        </p>
+      )}
+      <p className={styles.small}>{t('s05.referrer.masked', { list: joinLabels(masked) })}</p>
+    </>
+  );
+}
+
+/**
+ * 伏せ値がなければ、横棒 1 組（この著者の棒に、サイト全体の構成比を細い輪郭で重ねる）と、同じ値の表。
+ * 伏せ値が 1 つでもあれば、棒をやめて文にし（MaskedText）、表だけを残す。
+ */
+function Breakdown({ title, caption, items, phrase, siteValues }: BreakdownProps) {
   const values = items.map((item) => item.value);
+  const hasMasked = values.some((value) => value === null);
   const total = sumIfAllVisible(values);
   const hasShare = total !== null && total >= RATIO_MIN_DENOMINATOR;
   const ownShares = share(values, total);
   const siteShares =
     hasShare && siteValues !== null ? share(siteValues, sumIfAllVisible(siteValues)) : [];
   const hasSite = siteShares.length > 0 && siteShares.every((value) => value !== null);
+  const valueWithShare = (count: string, percent: string): string =>
+    t('hbar.valueWithShare', { n: count, share: percent });
 
   return (
     <div className={styles.chartBox}>
-      {/* 0 は 0 として数を出す（05 §2.3）。分けるものがないので、前置きだけ省く。 */}
-      {total === null || total === 0 ? null : (
-        <p className={styles.lead}>{t('lead.sessions', { n: formatNumber(total) })}</p>
-      )}
-      {hasSite ? (
-        <HBar
-          title={title}
-          items={items}
-          total={total}
-          valueWithShare={(count, percent) =>
-            t('hbar.valueWithShare', { n: count, share: percent })
-          }
-          compare={{
-            shares: siteShares,
-            legend: t('s05.referrer.legend'),
-            text: (percent) => t('s05.referrer.compare', { share: percent }),
-          }}
-        />
+      {hasMasked ? (
+        <MaskedText items={items} phrase={phrase} />
       ) : (
-        <HBar
-          title={title}
-          items={items}
-          total={total}
-          valueWithShare={(count, percent) =>
-            t('hbar.valueWithShare', { n: count, share: percent })
-          }
-        />
+        <>
+          {/* 0 は 0 として数を出す（05 §2.3）。分けるものがないので、前置きだけ省く。 */}
+          {total === null || total === 0 ? null : (
+            <p className={styles.lead}>{t('lead.sessions', { n: formatNumber(total) })}</p>
+          )}
+          {hasSite ? (
+            <HBar
+              title={title}
+              items={items}
+              total={total}
+              valueWithShare={valueWithShare}
+              compare={{
+                shares: siteShares,
+                legend: t('s05.referrer.legend'),
+                text: (percent) => t('s05.referrer.compare', { share: percent }),
+              }}
+            />
+          ) : (
+            <HBar title={title} items={items} total={total} valueWithShare={valueWithShare} />
+          )}
+        </>
       )}
       <Details summary={t('s05.referrer.table')}>
         <table className={styles.table}>
@@ -135,11 +169,17 @@ function Breakdown({ title, caption, items, siteValues }: BreakdownProps) {
 /**
  * h2 読者はどこから来たか（FR-33。M-10、M-11）。
  * 比較の相手はサイト全体の構成比だけ。良し悪しの言葉を付けない。
+ * 「SNS の種類」は、流入チャネルの SNS が伏せ値のとき、または SNS の種類に見える数が 1 つもないときは、
+ * h3 ごと出さない（助言 B-4）。
  */
 export function ReferrerSection({ data, periodId }: ReferrerSectionProps) {
   const own = data.breakdown[periodId];
   const site = data.siteBreakdown[periodId];
   const { name } = data.author;
+  const showSns =
+    own !== undefined &&
+    own.channel.social !== null &&
+    SNS_BUCKETS.some((key) => own.sns[key] !== null);
 
   return (
     <section className={styles.section}>
@@ -156,22 +196,34 @@ export function ReferrerSection({ data, periodId }: ReferrerSectionProps) {
               label: t(`channel.${key}`),
               value: own.channel[key],
             }))}
+            phrase={(key, count) => {
+              const bucket = CHANNEL_BUCKETS.find((candidate) => candidate === key);
+              return bucket === undefined ? '' : t(`s05.referrer.from.${bucket}`, { n: count });
+            }}
             siteValues={site === undefined ? null : CHANNEL_BUCKETS.map((key) => site.channel[key])}
           />
           <Notice>{t('s05.referrer.note')}</Notice>
-          <div className={styles.subsection}>
-            <h3>{t('metric.M11.label')}</h3>
-            <Breakdown
-              title={t('metric.M11.label')}
-              caption={t('s05.referrer.caption.sns', { name })}
-              items={SNS_BUCKETS.map((key) => ({
-                key,
-                label: t(`sns.${key}`),
-                value: own.sns[key],
-              }))}
-              siteValues={site === undefined ? null : SNS_BUCKETS.map((key) => site.sns[key])}
-            />
-          </div>
+          {showSns ? (
+            <div className={styles.subsection}>
+              <h3>{t('metric.M11.label')}</h3>
+              <Breakdown
+                title={t('metric.M11.label')}
+                caption={t('s05.referrer.caption.sns', { name })}
+                items={SNS_BUCKETS.map((key) => ({
+                  key,
+                  label: t(`sns.${key}`),
+                  value: own.sns[key],
+                }))}
+                phrase={(key, count) => {
+                  const bucket = SNS_BUCKETS.find((candidate) => candidate === key);
+                  return bucket === undefined
+                    ? ''
+                    : t('s05.referrer.item', { label: t(`sns.${bucket}`), n: count });
+                }}
+                siteValues={site === undefined ? null : SNS_BUCKETS.map((key) => site.sns[key])}
+              />
+            </div>
+          ) : null}
         </>
       )}
     </section>

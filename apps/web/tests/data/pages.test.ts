@@ -575,9 +575,9 @@ describe('著者（S-04、S-05）', () => {
     expect(data?.posts.map((post) => post.id)).toEqual([103, 104, 106]);
     expect(data?.pvByPeriod.last7).toEqual([60, 12, 90]);
     expect(Object.keys(data?.pvByPeriod ?? {}).filter((id) => id.startsWith('prev'))).toEqual([]);
-    // 103 は social が最多、104 は行がない、106 は全区分が伏せ値。
-    expect(data?.topChannelByPeriod.last7).toEqual(['social', null, null]);
-    expect(data?.topChannelByPeriod.last28).toEqual([null, null, null]);
+    // 103 は social が最多、104 は行がない（訪問なし = none）、106 は全区分が伏せ値（null）。
+    expect(data?.topChannelByPeriod.last7).toEqual(['social', 'none', null]);
+    expect(data?.topChannelByPeriod.last28).toEqual(['none', 'none', 'none']);
   });
 
   it('ほかの著者の記事や値を混ぜない', () => {
@@ -800,9 +800,15 @@ describe('buildActivity（S-08）', () => {
 
   it('月ごとの公開本数。行のない月は 0 本', () => {
     expect(data.monthly).toHaveLength(18);
-    expect(data.monthly[0]).toEqual({ month: '2025-06', postCount: 1 });
-    expect(data.monthly[1]).toEqual({ month: '2025-07', postCount: 0 });
-    expect(data.monthly.at(-1)).toEqual({ month: '2026-11', postCount: 1 });
+    // 最初の記録（2025-06）より前の月は、去年の同じ月の本数がない（null）。
+    expect(data.monthly[0]).toEqual({ month: '2025-06', postCount: 1, yoyPostCount: null });
+    expect(data.monthly[1]).toEqual({ month: '2025-07', postCount: 0, yoyPostCount: null });
+    expect(data.monthly.find((row) => row.month === '2026-06')).toEqual({
+      month: '2026-06',
+      postCount: 0,
+      yoyPostCount: 1,
+    });
+    expect(data.monthly.at(-1)).toEqual({ month: '2026-11', postCount: 1, yoyPostCount: 0 });
   });
 
   it('月は直近 24 か月まで', () => {
@@ -871,6 +877,7 @@ const NULL_ALLOWED = [
   /^summary\.(ownMedian30d|band30)$/,
   /^topChannelByPeriod\.[^.]+\.\d+$/,
   /^period\.[^.]+\.\d+\.median30$/,
+  /^monthly\.\d+\.yoyPostCount$/,
 ];
 
 describe('U-21: 埋め込み JSON のスキーマ', () => {

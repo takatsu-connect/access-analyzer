@@ -240,11 +240,17 @@ export type AuthorPageData = PageCommon & {
     { categoryId: number; path: string; postCount: number; pageviews: number }[]
   >;
   summary: { ownMedian30d: number | null; eligibleCount: number; band30: Band | null };
+  /** categoryIds を持つ（記事の一覧のカテゴリの列）。tagIds は空の配列。 */
   posts: PostRow[];
+  /** posts の categoryIds を引くための、カテゴリの ID とパス（ID の順）。著者の記事に付いたものだけ。 */
+  categoryPaths: { id: number; path: string }[];
   /** posts と同じ順。 */
   pvByPeriod: ByPeriod<number[]>;
-  /** 流入の主な経路。全区分が伏せ値なら null。 */
-  topChannelByPeriod: ByPeriod<(Channel | null)[]>;
+  /**
+   * 流入の主な経路（posts と同じ順）。null は伏せ値（最多の区分が伏せ値の側にある）。
+   * 'none' は訪問がない（その期間の行がないか、全区分が 0）。伏せ値ではなく「該当なし」と書く。
+   */
+  topChannelByPeriod: ByPeriod<(Channel | null | 'none')[]>;
   milestones: { postId: number; milestone: Milestone; reachedOn: string }[];
   benchmark: BenchmarkPoint | null;
 };
@@ -275,6 +281,12 @@ export type SeasonalData = PageCommon & {
   axes: CategoryAxis[];
   /** 直近 24 か月（ある月だけ）。 */
   months: MonthId[];
+  /**
+   * 比較の相手としてだけ使う月（months の各月の去年の同じ月のうち、months に入っていない月で、
+   * 数字がある月）。古い順。13〜24 か月前の月の「去年の同じ月と比べて」に使う。図には描かない。
+   */
+  yoyMonths: MonthId[];
+  /** months と yoyMonths の月の、カテゴリごとの読まれた回数。 */
   pvByMonth: Record<number, Partial<Record<MonthId, number>>>;
 };
 
@@ -296,8 +308,11 @@ export type TagPageData = PageCommon & {
 // --- S-08 投稿活動 ---
 
 export type ActivityData = PageCommon & {
-  /** 'YYYY-MM'。直近 24 か月。 */
-  monthly: { month: string; postCount: number }[];
+  /**
+   * 'YYYY-MM'。直近 24 か月。yoyPostCount は去年の同じ月の本数で、
+   * 数字がない（公開の記録より前の）月なら null。
+   */
+  monthly: { month: string; postCount: number; yoyPostCount: number | null }[];
   posting: ByPeriod<{ postCount: number }>;
   /** 名前の順で固定。期間内に 1 本以上公開した著者だけ。slug は href にだけ使う。著者ページがない著者は null。 */
   authorCounts: ByPeriod<{ name: string; slug: string | null; postCount: number }[]>;

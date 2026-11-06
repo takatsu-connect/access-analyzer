@@ -1,3 +1,4 @@
+import a11y from '@/components/a11y.module.css';
 import { BandDot, Curve } from '@/components/charts';
 import { Details } from '@/components/Details';
 import { Notice } from '@/components/Notice';
@@ -7,6 +8,7 @@ import { t } from '@/lib/ui-text';
 
 import { benchmarkAt, curveDays, FULL_DAYS, MIN_COMPARE_DAYS, youngProgress } from './progress';
 import styles from './s03.module.css';
+import { TableSummary } from './TableSummary';
 
 export type CurveSectionProps = {
   post: ArticleDetailData['post'];
@@ -76,10 +78,12 @@ export function CurveSection(props: CurveSectionProps) {
       {/* 帯の文が出せないときは、点も出さない（「まだ比較できません」と区分の名前を並べない）。 */}
       {sentence === null || post.band30 === null ? null : <BandDot band={post.band30} />}
       <Notice>{t('metric.M18.note')}</Notice>
-      <Notice>{t('band.note')}</Notice>
+      {/* 帯の文を出さない（まだ比較できません）ときは、3 つの区分の説明も出さない（助言 A-3）。 */}
+      {sentence === null ? null : <Notice>{t('band.note')}</Notice>}
       {rows.length === 0 ? null : (
-        <Details summary={t('s03.table.summary')}>
+        <Details summary={<TableSummary name={t('metric.M18.label')} />}>
           <table className={styles.table}>
+            <caption className={a11y.srOnly}>{t('s03.curve.caption')}</caption>
             <thead>
               <tr>
                 <th scope="col">{t('s03.curve.table.day')}</th>

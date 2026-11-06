@@ -77,17 +77,30 @@ describe('S-06b 月ごと × カテゴリ', () => {
     expect(rowLabels(view(container, 'wide'))).toEqual(['グルメ']);
   });
 
-  it('選んだマスの文に、去年の同じ月との差を書く', () => {
+  it('去年の同じ月が数え始めた月（8 日から）なら、差を出さず、去年の数字を並べる', () => {
     setQuery('?axis=child');
     const { container } = render(<SeasonalScreen data={built()} />);
 
     // 最初に選んであるのは、終わっている月のうち、いちばん新しい月（2026 年 10 月）。175 と 300。
+    const text = fixedRow(view(container, 'wide'));
+    expect(text).toBe(
+      '2026 年 10 月 グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です。',
+    );
+    expect(text).not.toMatch(/[▲▼%]/);
+  });
+
+  it('数え始めた日が 1 日なら、去年の同じ月との差を書く', () => {
+    setQuery('?axis=child');
+    const data = built();
+    const { container } = render(
+      <SeasonalScreen data={{ ...data, meta: { ...data.meta, measureStart: '2025-10-01' } }} />,
+    );
     expect(fixedRow(view(container, 'wide'))).toBe(
-      '2026 年 10 月 グルメ: 175 回。去年の同じ月と比べて ▼ −125（−42%）。2025 年 10 月は 8 日からの数字です',
+      '2026 年 10 月 グルメ: 175 回。去年の同じ月と比べて ▼ −125（−42%）',
     );
   });
 
-  it('前年の同じ月がないマスでは「前年のデータなし」と書く', () => {
+  it('去年の同じ月がないマスでは「去年の同じ月の数字なし」と書く', () => {
     setQuery('?axis=child');
     const { container } = render(<SeasonalScreen data={built()} />);
     const wide = view(container, 'wide');
@@ -95,8 +108,50 @@ describe('S-06b 月ごと × カテゴリ', () => {
     clickCell(wide, 0, 0);
 
     expect(fixedRow(wide)).toBe(
-      '2025 年 10 月 グルメ: 300 回。前年のデータなし。2025 年 10 月は 8 日からの数字です',
+      '2025 年 10 月 グルメ: 300 回。去年の同じ月の数字なし。2025 年 10 月は 8 日からの数字です',
     );
+  });
+
+  it('periods にない月は、月の途中とみなして比べない（安全側）', () => {
+    setQuery('?axis=child');
+    const data = built();
+    const { container } = render(
+      <SeasonalScreen
+        data={{ ...data, periods: data.periods.filter((period) => period.id !== 'm2026-10') }}
+      />,
+    );
+    const wide = view(container, 'wide');
+    clickCell(wide, 0, 1);
+    expect(fixedRow(wide)).toContain('月が終わると、去年の同じ月と比べた数字が出ます');
+  });
+
+  it('24 か月の外にある去年の同じ月（yoyMonths）とも比べる', () => {
+    setQuery('?axis=child');
+    const data = built();
+    const { container } = render(
+      <SeasonalScreen
+        data={{
+          ...data,
+          meta: { ...data.meta, measureStart: '2024-10-01' },
+          months: ['m2025-10', 'm2026-10', 'm2026-11'],
+          yoyMonths: ['m2024-10'],
+          pvByMonth: { ...data.pvByMonth, 3: { ...data.pvByMonth[3], 'm2024-10': 150 } },
+        }}
+      />,
+    );
+    const wide = view(container, 'wide');
+    clickCell(wide, 0, 0);
+    expect(fixedRow(wide)).toContain('去年の同じ月と比べて ▲ +150（約 2 倍）');
+  });
+
+  it('分け方を切り替えると、選んだマスの位置を引き継がない（Heatmap に key）', () => {
+    const { container } = render(<SeasonalScreen data={built()} />);
+    const wide = view(container, 'wide');
+    clickCell(wide, 3, 0);
+    expect(fixedRow(wide)).toContain('広告');
+    fireEvent.click(screen.getByRole('button', { name: '子カテゴリ' }));
+    // 子カテゴリは 1 行（グルメ）。既定のマス（いちばん新しい終わった月）に戻る。
+    expect(fixedRow(view(container, 'wide'))).toContain('2026 年 10 月 グルメ');
   });
 
   it('途中までの月は、去年の同じ月と比べない', () => {
@@ -125,7 +180,8 @@ describe('S-06b 月ごと × カテゴリ', () => {
 
     const text = fixedRow(wide);
     expect(text).toContain('2026 年 10 月（集計中） イベント:');
-    expect(text).toContain('去年の同じ月と比べて');
+    // 去年の同じ月（2025 年 10 月）は数え始めた月なので、差ではなく数字を並べる。
+    expect(text).toContain('去年の同じ月は、8 日からの数字で');
     expect(text).toContain('月末から 1 週間ほどは、あとで増えることがあります');
     expect(text).not.toContain('途中まで');
   });

@@ -7,7 +7,7 @@ import { AUTHOR_AXES, CHANNEL_BUCKETS, SNS_BUCKETS } from '@/lib/config';
 import { topChannel } from '@/lib/derive';
 import type { AuthorBreakdown, AuthorIndexData, AuthorPageData, Masked } from '@/lib/page-data';
 import { authorIndexDataSchema, authorPageDataSchema } from '@/lib/page-data-schema';
-import type { PubCache } from '@/lib/pub-types';
+import type { PubCache, PubPost } from '@/lib/pub-types';
 
 import {
   benchmark30,
@@ -61,6 +61,27 @@ function channelAndSnsOf(rows: readonly AxisRow[]): AuthorBreakdown | undefined 
       used.filter((row) => row.axis === 'sns'),
     ),
   };
+}
+
+/** 著者の記事に付いたカテゴリの ID とパス（ID の順）。記事の一覧のカテゴリの列で引く。 */
+function categoryPathsOf(
+  cache: PubCache,
+  posts: readonly PubPost[],
+  pathById: ReadonlyMap<number, string>,
+): { id: number; path: string }[] {
+  const ids = new Set<number>();
+  for (const post of posts) {
+    for (const row of rowsOf(cache.postCategories, 'post_id', post.post_id))
+      ids.add(row.category_id);
+  }
+  return [...ids]
+    .sort((a, b) => a - b)
+    .map((id) => {
+      const path = pathById.get(id);
+      if (path === undefined)
+        throw new Error('pub_post_category に、pub_category にないカテゴリがあります');
+      return { id, path };
+    });
 }
 
 /** 著者ページ。公開ビューにない slug は null（404）。 */
@@ -132,15 +153,18 @@ export function buildAuthorPage(
       eligibleCount: summary?.eligible_count ?? 0,
       band30: summary?.band_30d ?? null,
     },
-    posts: posts.map((post) => toPostRow(cache, post, false)),
+    // 記事の一覧のカテゴリの列のために categoryIds を持たせる。タグは使わないので空にする（JSON を増やさない）。
+    posts: posts.map((post) => ({ ...toPostRow(cache, post, true), tagIds: [] })),
+    // 記事の一覧のカテゴリの列で引く、カテゴリの ID → パス。著者の記事に付いたカテゴリだけ。
+    categoryPaths: categoryPathsOf(cache, posts, pathById),
     pvByPeriod: pvByPeriodOf(cache, posts, selectable),
-    // 流入の主な経路。記事にその期間の行がなければ null。
+    // 流入の主な経路。記事にその期間の行がなければ、訪問がないので 'none'（該当なし。伏せ値ではない）。
     topChannelByPeriod: byPeriod(selectable, (id) =>
       posts.map((post) => {
         const rows = rowsOf(cache.articlePeriodBreakdown, 'post_id', post.post_id).filter(
           (row) => row.period_id === id && row.axis === 'channel',
         );
-        if (rows.length === 0) return null;
+        if (rows.length === 0) return 'none';
         return topChannel(
           bucketRecord(
             CHANNEL_BUCKETS,

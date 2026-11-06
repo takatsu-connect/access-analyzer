@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ArticleTable } from '@/components/ArticleTable';
 import type { ArticleColumnId } from '@/components/ArticleTable';
@@ -31,6 +31,8 @@ const COLUMNS: readonly ArticleColumnId[] = [
 const NARROW_COLUMNS: readonly ArticleColumnId[] = ['title', 'publishedOn', 'pageviews', 'pv30'];
 /** 検索語の長さの上限（04 §8）。 */
 const SEARCH_MAX_LENGTH = 50;
+/** 検索語を URL に書き戻すまでの待ち時間（打つのをやめてから書く）。 */
+const SEARCH_WRITE_DELAY_MS = 300;
 
 /**
  * S-02e 記事を探す（05 §4.5、FR-24）。data は getArticleListData('search')。
@@ -63,10 +65,35 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
     const typed = parseQuery(new URLSearchParams({ q: draft.text }), allow).q;
     setDraft({ text: typed === q ? draft.text : (q ?? ''), q });
   }
+  // 絞り込みは、URL を待たずに入力欄の文字で行う（URL への書き戻しは遅らせるうえ、
+  // Safari の回数の上限などで失敗しうるため）。検証は URL と同じ parseQuery を通す。
+  const liveQ = useMemo(
+    () => parseQuery(new URLSearchParams({ q: draft.text }), allow).q,
+    [draft.text, allow],
+  );
+
+  // 打つのをやめてから URL に書き戻す。書き戻しが例外を投げても、入力欄と絞り込みは壊さない。
+  const pendingWrite = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelWrite = (): void => {
+    if (pendingWrite.current !== null) clearTimeout(pendingWrite.current);
+    pendingWrite.current = null;
+  };
+  useEffect(() => cancelWrite, []);
+  const scheduleWrite = (text: string): void => {
+    cancelWrite();
+    pendingWrite.current = setTimeout(() => {
+      pendingWrite.current = null;
+      try {
+        update({ q: text === '' ? null : text });
+      } catch {
+        // URL に残せないだけで、画面は入力欄の文字で絞り込んでいる。
+      }
+    }, SEARCH_WRITE_DELAY_MS);
+  };
 
   const rows = useMemo(
-    () => searchRows(data, periodId, { q, cat, author, ym }),
-    [data, periodId, q, cat, author, ym],
+    () => searchRows(data, periodId, { q: liveQ, cat, author, ym }),
+    [data, periodId, liveQ, cat, author, ym],
   );
 
   if (periodId === null) {
@@ -85,7 +112,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
     author !== null ||
     ym !== null ||
     (selectedCategory !== undefined && selectedCategory.parentId !== null);
-  const hasCondition = q !== null || cat !== null || author !== null || ym !== null;
+  const hasCondition = liveQ !== null || cat !== null || author !== null || ym !== null;
 
   return (
     <>
@@ -100,9 +127,10 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
             value={draft.text}
             maxLength={SEARCH_MAX_LENGTH}
             onChange={(event) => {
-              const text = event.currentTarget.value;
+              // 日本語入力の変換中は maxLength を超えることがある。落とさず、先頭 50 文字で切る。
+              const text = [...event.currentTarget.value].slice(0, SEARCH_MAX_LENGTH).join('');
               setDraft((previous) => ({ ...previous, text }));
-              update({ q: text === '' ? null : text });
+              scheduleWrite(text);
             }}
           />
         </label>
@@ -165,9 +193,12 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
             type="button"
             className={styles.button}
             disabled={!hasCondition}
-            onClick={() =>
-              update({ q: null, cat: null, author: null, ym: null, sort: 'published' })
-            }
+            onClick={() => {
+              // 書き戻し待ちの検索語が、消したあとに戻ってこないようにする。
+              cancelWrite();
+              setDraft((previous) => ({ ...previous, text: '' }));
+              update({ q: null, cat: null, author: null, ym: null, sort: 'published' });
+            }}
           >
             {t('s02e.filter.clear')}
           </button>

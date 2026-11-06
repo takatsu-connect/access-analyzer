@@ -162,7 +162,7 @@ test.describe('期間の切り替えと URL（E-06、E-20）', () => {
     expect(watch.consoleCsp).toEqual([]);
   });
 
-  test('E-20: S-01 のリンク元と市別は、期間を変えても値と「前月までの集計です」が変わらない', async ({
+  test('E-20: S-01 のリンク元と市別は、期間を変えても値と、集計した月の見出しが変わらない', async ({
     page,
   }) => {
     await openScreen(page, '/');
@@ -170,9 +170,11 @@ test.describe('期間の切り替えと URL（E-06、E-20）', () => {
     const city = tableByCaption(page, t('s01.city.label'));
     await expect(referrer).toHaveCount(1);
     await expect(city).toHaveCount(1);
-    const referrerHeading = t('s01.monthly.heading', { label: t('metric.M12.label') });
-    const cityHeading = t('s01.monthly.heading', { label: t('s01.city.label') });
-    expect(referrerHeading).toContain('前月までの集計です');
+    // 見出しは「リンク元のサイト（2026 年 9 月）」の形。月は基準日で変わるので、形で確かめる。
+    const monthHeading = (label: string): RegExp =>
+      new RegExp(`${label}（[0-9]{4} 年 [0-9]{1,2} 月）`);
+    const referrerHeading = monthHeading(t('metric.M12.label'));
+    const cityHeading = monthHeading(t('s01.city.label'));
 
     const before = {
       referrer: await referrer.innerText(),
@@ -183,11 +185,11 @@ test.describe('期間の切り替えと URL（E-06、E-20）', () => {
     // 値が実際に入っている（フィクスチャの 4 行）。
     expect(before.referrer).toContain('news.example');
     expect(before.city).toContain('Kawasaki');
-    expect(before.text).toContain(referrerHeading);
-    expect(before.text).toContain(cityHeading);
-    // 期間に連動しないことの注記（月の名前は基準日で変わるので、後ろの部分で確かめる）。
-    const noteTail = t('s01.monthly.note.latest', { month: '' });
-    expect(before.text.split(noteTail).length - 1, '連動しない注記は 2 か所').toBe(2);
+    expect(before.text).toMatch(referrerHeading);
+    expect(before.text).toMatch(cityHeading);
+    // 期間に連動しないことの注記。
+    const note = t('s01.monthly.note');
+    expect(before.text.split(note).length - 1, '連動しない注記は 2 か所').toBe(2);
 
     for (const id of ['last7', 'last90'] as const) {
       await periodButton(page, id).click();
@@ -197,19 +199,19 @@ test.describe('期間の切り替えと URL（E-06、E-20）', () => {
       expect.soft(await referrer.innerText(), `${id} でリンク元は変わらない`).toBe(before.referrer);
       expect.soft(await city.innerText(), `${id} で市別は変わらない`).toBe(before.city);
       const text = await mainText(page);
-      expect.soft(text, `${id} の見出し（リンク元）`).toContain(referrerHeading);
-      expect.soft(text, `${id} の見出し（市別）`).toContain(cityHeading);
-      expect.soft(text.split(noteTail).length - 1, `${id} の連動しない注記`).toBe(2);
+      expect.soft(text, `${id} の見出し（リンク元）`).toMatch(referrerHeading);
+      expect.soft(text, `${id} の見出し（市別）`).toMatch(cityHeading);
+      expect.soft(text.split(note).length - 1, `${id} の連動しない注記`).toBe(2);
     }
   });
 
-  test('E-20: S-03 のリンク元は、期間を変えても値と「公開後 30 日時点の集計です」が変わらない', async ({
+  test('E-20: S-03 のリンク元は、期間を変えても値と「公開から 30 日間の集計です」が変わらない', async ({
     page,
   }) => {
     await openScreen(page, '/articles/111');
     const table = referrerTable(page);
     const note = t('s03.referrer.note');
-    expect(note).toContain('公開後 30 日時点の集計です');
+    expect(note).toContain('公開から 30 日間の集計です');
     await expect(table).toHaveCount(1);
     await expect(page.getByText(note, { exact: true })).toHaveCount(1);
     const before = await table.innerText();

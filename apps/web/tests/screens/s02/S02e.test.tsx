@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { sortArticleRows } from '@/components/ArticleTable';
+import { t } from '@/lib/ui-text';
 import { S02eScreen } from '@/screens/s02/S02eScreen';
 
 import { makePost } from '../../components/fixtures';
@@ -20,6 +21,13 @@ function queryParam(name: string): string | null {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+/** 検索語の URL への書き戻し（打つのをやめて 300 ミリ秒後）を進める。 */
+function flushWrite(): void {
+  act(() => {
+    vi.advanceTimersByTime(300);
+  });
+}
+
 /** 検索の確かめ用。タイトルの英字と仮名に、全角と半角、大文字と小文字を混ぜてある。 */
 function searchData() {
   return makeListData({
@@ -35,6 +43,12 @@ function searchData() {
 
 beforeEach(() => {
   setUrl('/articles');
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('S-02e 記事を探す', () => {
@@ -196,15 +210,18 @@ describe('S-02e 記事を探す', () => {
       const input = screen.getByLabelText('タイトルに含む語');
       fireEvent.change(input, { target: { value: '朝' } });
       expect(rowTitles(container)).toEqual(['カフェの朝', '溝の口の朝市']);
+      flushWrite();
       expect(queryParam('q')).toBe('朝');
       expect(screen.getByRole('status').textContent).toBe('2 件');
 
       fireEvent.change(input, { target: { value: '朝市' } });
       expect(rowTitles(container)).toEqual(['溝の口の朝市']);
+      flushWrite();
       expect(queryParam('q')).toBe('朝市');
 
       fireEvent.change(input, { target: { value: '' } });
       expect(rowTitles(container)).toHaveLength(4);
+      flushWrite();
       expect(window.location.search).toBe('');
     });
 
@@ -228,9 +245,67 @@ describe('S-02e 記事を探す', () => {
 
       fireEvent.change(input, { target: { value: 'cafe ' } });
       expect(input.value).toBe('cafe ');
+      flushWrite();
       expect(queryParam('q')).toBe('cafe');
       fireEvent.change(input, { target: { value: 'cafe め' } });
       expect(rowTitles(container)).toEqual(['Cafe めぐり']);
+    });
+
+    it('打っている間は URL に書かず、打つのをやめて 300 ミリ秒たってから書く', () => {
+      render(<S02eScreen data={searchData()} />);
+      const input = screen.getByLabelText('タイトルに含む語');
+      fireEvent.change(input, { target: { value: '朝' } });
+      act(() => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(queryParam('q')).toBeNull();
+      flushWrite();
+      expect(queryParam('q')).toBe('朝');
+    });
+
+    it('変換中に 51 文字以上になっても落とさず、先頭 50 文字で切って絞り込む', () => {
+      const long = `カフェ${'あ'.repeat(60)}`;
+      const { container } = render(
+        <S02eScreen
+          data={makeListData({
+            posts: [makePost({ id: 501, title: long, publishedOn: '2026-10-04' })],
+            pvByPeriod: { last28: [10] },
+          })}
+        />,
+      );
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      fireEvent.change(input, { target: { value: `${long}い` } });
+      expect([...input.value]).toHaveLength(50);
+      expect(input.value).toBe(long.slice(0, 50));
+      expect(rowTitles(container)).toEqual([long]);
+      flushWrite();
+      expect(queryParam('q')).toBe(long.slice(0, 50));
+    });
+
+    it('history.replaceState が例外を投げても、入力欄と絞り込みは壊れない', () => {
+      const { container } = render(<S02eScreen data={searchData()} />);
+      vi.spyOn(window.history, 'replaceState').mockImplementation(() => {
+        throw new DOMException('回数の上限', 'SecurityError');
+      });
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      fireEvent.change(input, { target: { value: '朝' } });
+      expect(() => flushWrite()).not.toThrow();
+      expect(input.value).toBe('朝');
+      expect(rowTitles(container)).toEqual(['カフェの朝', '溝の口の朝市']);
+      fireEvent.change(input, { target: { value: '朝市' } });
+      flushWrite();
+      expect(rowTitles(container)).toEqual(['溝の口の朝市']);
+    });
+
+    it('「条件を消す」は、書き戻し待ちの検索語を取り消す', () => {
+      const { container } = render(<S02eScreen data={searchData()} />);
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      fireEvent.change(input, { target: { value: '朝' } });
+      fireEvent.click(screen.getByRole('button', { name: t('s02e.filter.clear') }));
+      flushWrite();
+      expect(window.location.search).toBe('');
+      expect(input.value).toBe('');
+      expect(rowTitles(container)).toHaveLength(4);
     });
 
     it('条件に合う記事がなければ、その旨の文を出す', () => {

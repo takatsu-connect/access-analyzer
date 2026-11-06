@@ -2,6 +2,7 @@ import a11y from '@/components/a11y.module.css';
 import { Details } from '@/components/Details';
 import { KpiCard, KpiGrid } from '@/components/KpiCard';
 import { Notice, StateMessage } from '@/components/Notice';
+import { absentCompareText, type PeriodChoice } from '@/components/usePeriod';
 import { FRESHNESS_BUCKETS, RATIO_MIN_DENOMINATOR } from '@/lib/config';
 import { formatDuration, formatNumber } from '@/lib/format';
 import type { DashboardData, Period, SitePeriodValue } from '@/lib/page-data';
@@ -13,7 +14,8 @@ import { pick } from './series';
 
 export type MoreSectionProps = {
   data: DashboardData;
-  period: Period;
+  /** resolvePeriod の結果。 */
+  choice: PeriodChoice & { period: Period };
   site: SitePeriodValue;
 };
 
@@ -27,12 +29,20 @@ function secondsPerView(site: SitePeriodValue | undefined): number | null {
  * 「もっと見る」（閉じた状態から始まる）: 訪問回数 M-02、読まれていた時間 M-06、
  * 公開した時期ごとの読まれ方 M-25（FR-10）。
  */
-export function MoreSection({ data, period, site }: MoreSectionProps) {
-  const prevSite = pick(data.sitePeriod, period.prevId);
-  const yoySite = pick(data.sitePeriod, period.yoyId);
+export function MoreSection({ data, choice, site }: MoreSectionProps) {
+  const { period } = choice;
+  const prevSite = pick(data.sitePeriod, choice.prevId);
+  const yoySite = pick(data.sitePeriod, choice.yoyId);
   const duration = secondsPerView(site);
   const prevDuration = secondsPerView(prevSite);
   const freshness = data.freshness[period.id];
+  // 前の期間はあるが、読まれた回数が 20 未満で目安を出せないときは、その理由を書く。
+  const prevDurationText =
+    prevDuration !== null
+      ? t('s01.engagement.prev', { value: formatDuration(prevDuration) })
+      : prevSite !== undefined
+        ? t('s01.engagement.prev.ratio20')
+        : absentCompareText(choice.withheld, 'prev');
 
   return (
     <Details summary={t('s01.more.summary')} className={styles.block}>
@@ -42,7 +52,7 @@ export function MoreSection({ data, period, site }: MoreSectionProps) {
           value={site.sessions}
           comparison={
             <ComparisonLines
-              period={period}
+              choice={choice}
               current={site.sessions}
               prev={prevSite?.sessions}
               yoy={yoySite?.sessions}
@@ -53,11 +63,7 @@ export function MoreSection({ data, period, site }: MoreSectionProps) {
         <KpiCard
           label={metricLabel('M06')}
           value={duration === null ? t('absent.ratio20') : formatDuration(duration)}
-          comparison={
-            prevDuration === null
-              ? t('s01.absent.prev')
-              : t('s01.engagement.prev', { value: formatDuration(prevDuration) })
-          }
+          comparison={prevDurationText}
           note={metricNote('M06')}
         />
       </KpiGrid>

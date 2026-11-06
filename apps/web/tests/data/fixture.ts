@@ -132,7 +132,7 @@ export function addPagelessAuthor(cache: PubCache): PubCache {
     display_name: AUTHOR_X_NAME,
     author_url: `${SITE}/author/${AUTHOR_X}/`,
   });
-  cache.posts.push(post(107, [AUTHOR_X, AUTHOR_X_NAME], '2026-10-20', 14, 'mid'));
+  cache.posts.push(post(107, [AUTHOR_X, AUTHOR_X_NAME], '2026-10-20', 15, 'mid'));
   cache.articleSummary.push(summary(107, { pv_7d: 20, pv_total: 33 }));
   cache.articlePeriod.push(...articlePeriods('last28', { 107: 33 }));
   cache.authorPeriod.push({
@@ -143,6 +143,19 @@ export function addPagelessAuthor(cache: PubCache): PubCache {
     long_post_count: 0,
     long_pageviews: 0,
   });
+  return cache;
+}
+
+/** 公開当日の記事 108。基準日（2026-11-03）に公開し、age_days = 1、累積は 1 日目の 1 行だけ。 */
+export const SAME_DAY_POST_ID = 108;
+
+/** 公開当日の記事 108（たなかさん）を足す。渡した cache を書き換えて返す。 */
+export function addSameDayPost(cache: PubCache): PubCache {
+  cache.posts.push(post(SAME_DAY_POST_ID, [TANAKA, 'たなか たろう'], '2026-11-03', 1, 'new'));
+  cache.articleSummary.push(summary(SAME_DAY_POST_ID, { pv_total: 4, freshness: 'new' }));
+  cache.articleDaily.push({ post_id: SAME_DAY_POST_ID, day: '2026-11-03', pageviews: 4 });
+  cache.articleCumulative.push({ post_id: SAME_DAY_POST_ID, n: 1, cumulative_pv: 4 });
+  cache.articlePeriod.push(...articlePeriods('last7', { [SAME_DAY_POST_ID]: 4 }));
   return cache;
 }
 
@@ -179,13 +192,14 @@ export function makeCache(): PubCache {
       },
     ],
     // わざと post_id の順を崩してある。
+    // age_days は「基準日 − 公開日 + 1」（公開した日が 1 日目。04 §3.4）。基準日は 2026-11-03。
     posts: [
-      post(106, tanaka, '2026-03-01', 247, 'long'),
-      post(101, sato, '2025-06-01', 520, 'long'),
-      post(102, sato, '2026-01-15', 292, 'long'),
-      post(103, tanaka, '2026-10-10', 24, 'mid'),
-      post(104, tanaka, '2026-11-01', 2, 'new'),
-      post(105, sato, '2026-09-01', 63, 'mid', true),
+      post(106, tanaka, '2026-03-01', 248, 'long'),
+      post(101, sato, '2025-06-01', 521, 'long'),
+      post(102, sato, '2026-01-15', 293, 'long'),
+      post(103, tanaka, '2026-10-10', 25, 'mid'),
+      post(104, tanaka, '2026-11-01', 3, 'new'),
+      post(105, sato, '2026-09-01', 64, 'mid', true),
     ],
     categories: [
       { category_id: 1, name: '記事', parent_id: null, path: '記事' },

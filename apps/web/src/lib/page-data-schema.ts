@@ -255,8 +255,9 @@ export const authorPageDataSchema = z.strictObject({
     band30: band.nullable(),
   }),
   posts: z.array(postRowSchema),
+  categoryPaths: z.array(z.strictObject({ id, path: text })),
   pvByPeriod: byPeriod(z.array(count)),
-  topChannelByPeriod: byPeriod(z.array(channel.nullable())),
+  topChannelByPeriod: byPeriod(z.array(z.union([channel, z.literal('none')]).nullable())),
   milestones: z.array(z.strictObject({ postId: id, milestone, reachedOn: day })),
   benchmark: benchmarkPointSchema.nullable(),
 }) satisfies z.ZodType<AuthorPageData>;
@@ -284,6 +285,7 @@ export const seasonalDataSchema = z.strictObject({
   ...common,
   axes: z.array(categoryAxisSchema),
   months: z.array(monthId),
+  yoyMonths: z.array(monthId),
   pvByMonth: byId(z.partialRecord(monthId, count)),
 }) satisfies z.ZodType<SeasonalData>;
 
@@ -305,7 +307,13 @@ export const tagPageDataSchema = z.strictObject({
 
 export const activityDataSchema = z.strictObject({
   ...common,
-  monthly: z.array(z.strictObject({ month: z.string().regex(/^\d{4}-\d{2}$/), postCount: count })),
+  monthly: z.array(
+    z.strictObject({
+      month: z.string().regex(/^\d{4}-\d{2}$/),
+      postCount: count,
+      yoyPostCount: count.nullable(),
+    }),
+  ),
   posting: byPeriod(z.strictObject({ postCount: count })),
   authorCounts: byPeriod(
     z.array(z.strictObject({ name: text, slug: text.nullable(), postCount: count.min(1) })),

@@ -45,6 +45,20 @@ describe('S-07b シリーズの記事', () => {
     expect(container.textContent).toContain('+25（+63%）');
   });
 
+  it('月の途中（2026 年 11 月）は ▲▼ と % を出さず、「月が終わると…」を出す', () => {
+    setQuery('?p=m2026-11');
+    const data = built();
+    const last7 = data.period.last7 ?? {};
+    const { container } = render(
+      <TagPageScreen
+        data={{ ...data, period: { ...data.period, 'm2026-11': last7, 'm2026-10': last7 } }}
+      />,
+    );
+    expect(screen.getByText('月が終わると、前の月と比べた数字が出ます')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/[▲▼]/);
+    expect(container.textContent).not.toContain('前の期間の数字なし');
+  });
+
   it('記事は公開日の新しい順で、読まれた回数は記事ごとに合っている', () => {
     setQuery('?p=last7');
     render(<TagPageScreen data={built()} />);

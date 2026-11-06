@@ -35,7 +35,8 @@ export function DashboardScreen({ data }: DashboardScreenProps) {
     [data.periods],
   );
   const { state, update } = useQueryState(allow);
-  const { period } = resolvePeriod(data.periods, state.p);
+  const choice = resolvePeriod(data.periods, state.p, data.meta.measureStart);
+  const { period } = choice;
   const site = period === null ? undefined : data.sitePeriod[period.id];
 
   return (
@@ -53,8 +54,8 @@ export function DashboardScreen({ data }: DashboardScreenProps) {
         <StateMessage kind="empty" />
       ) : (
         <>
-          <KpiSection data={data} period={period} site={site} />
-          <MoreSection data={data} period={period} site={site} />
+          <KpiSection data={data} choice={{ ...choice, period }} site={site} />
+          <MoreSection data={data} choice={{ ...choice, period }} site={site} />
           <DailySection
             data={data}
             period={period}

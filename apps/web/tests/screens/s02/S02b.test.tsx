@@ -15,7 +15,7 @@ describe('S-02b 新着記事の立ち上がり', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
       'この期間に公開された記事は、どう読まれ始めた？',
     );
-    expect(screen.getByText(/並びは公開日順で、帯で並べ替えません。$/)).toBeTruthy();
+    expect(screen.getByText(/並びは公開日順で、読まれた回数では並べ替えません。$/)).toBeTruthy();
     expect(screen.getByText(/成績ではなく、位置です。$/)).toBeTruthy();
     expect(headers(container)).toEqual([
       '記事',
@@ -39,12 +39,12 @@ describe('S-02b 新着記事の立ち上がり', () => {
 
   it('まだ日数がたっていない列は「◯日目: ◯回」と書く', () => {
     const { container } = render(<S02bScreen data={listData('new')} />);
-    // 記事 103 は 24 日目。1 週間は確定、1 か月はまだ。
+    // 記事 103 は 25 日目（公開した日を 1 日目と数える）。1 週間は確定、1 か月はまだ。
     expect(cellText(container, '記事 103', '最初の 1 週間')).toBe('80');
-    expect(cellText(container, '記事 103', '最初の 1 か月')).toBe('24 日目: 150 回');
-    // 記事 104 は 2 日目。
-    expect(cellText(container, '記事 104', '最初の 1 週間')).toBe('2 日目: 12 回');
-    expect(cellText(container, '記事 104', '最初の 1 か月')).toBe('2 日目: 12 回');
+    expect(cellText(container, '記事 103', '最初の 1 か月')).toBe('25 日目: 150 回');
+    // 記事 104 は 3 日目。
+    expect(cellText(container, '記事 104', '最初の 1 週間')).toBe('3 日目: 12 回');
+    expect(cellText(container, '記事 104', '最初の 1 か月')).toBe('3 日目: 12 回');
   });
 
   it('公開から 3 日未満の記事は「まだ比較できません」と書き、帯を描かない', () => {

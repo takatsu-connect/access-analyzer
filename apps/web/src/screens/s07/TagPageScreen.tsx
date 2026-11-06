@@ -7,7 +7,7 @@ import { ArticleTable } from '@/components/ArticleTable';
 import type { ArticleColumnId, ArticleTableRow } from '@/components/ArticleTable';
 import { StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
-import { usePeriod } from '@/components/usePeriod';
+import { absentCompareText, usePeriod } from '@/components/usePeriod';
 import { formatNumber } from '@/lib/format';
 import type { TagPageData } from '@/lib/page-data';
 import { metricLabel, t } from '@/lib/ui-text';
@@ -23,7 +23,10 @@ const COLUMNS: readonly ArticleColumnId[] = ['title', 'author', 'publishedOn', '
  * 複数の著者が混ざる一覧なので、並べ替えの UI は置かない（FR-24）。
  */
 export function TagPageScreen({ data }: { data: TagPageData }) {
-  const { period, prevId, prevLabel, setPeriod } = usePeriod(data.periods);
+  const { period, prevId, prevLabel, withheld, prevPartialDay, setPeriod } = usePeriod(
+    data.periods,
+    data.meta.measureStart,
+  );
   const periodId = period?.id ?? null;
   const total = periodId === null ? undefined : data.period[periodId]?.[data.tag.id];
   const prevTotal = prevId === null ? undefined : data.period[prevId]?.[data.tag.id];
@@ -74,7 +77,8 @@ export function TagPageScreen({ data }: { data: TagPageData }) {
                 <PrevDelta
                   current={total.pageviews}
                   previous={prevTotal?.pageviews}
-                  absentText={t('s07.absent.prev')}
+                  absentText={absentCompareText(withheld, 'prev')}
+                  partialDay={prevPartialDay}
                 />
               ),
             },

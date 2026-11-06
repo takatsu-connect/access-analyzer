@@ -30,6 +30,8 @@ function monthOfIndex(index: number): string {
 /**
  * 月ごとの公開本数。基準日の月までの直近 24 か月で、行のない月は 0 本。
  * 最初の行より前の月は作らない。
+ * 去年の同じ月の本数（yoyPostCount）は、24 か月の外（13〜24 か月前の月の去年）も同じ表から引く。
+ * 最初の行より前の月なら null（「去年の同じ月の数字なし」）。
  */
 function monthlyOf(cache: PubCache): ActivityData['monthly'] {
   const countByIndex = new Map(
@@ -37,11 +39,18 @@ function monthlyOf(cache: PubCache): ActivityData['monthly'] {
   );
   if (countByIndex.size === 0) return [];
   const last = monthIndex(cache.meta.base_date);
-  const first = Math.max(Math.min(...countByIndex.keys()), last - ACTIVITY_MONTHS + 1);
+  const earliest = Math.min(...countByIndex.keys());
+  const first = Math.max(earliest, last - ACTIVITY_MONTHS + 1);
+  const countAt = (index: number): number | null =>
+    index < earliest ? null : (countByIndex.get(index) ?? 0);
 
   const monthly: ActivityData['monthly'] = [];
   for (let index = first; index <= last; index += 1) {
-    monthly.push({ month: monthOfIndex(index), postCount: countByIndex.get(index) ?? 0 });
+    monthly.push({
+      month: monthOfIndex(index),
+      postCount: countByIndex.get(index) ?? 0,
+      yoyPostCount: countAt(index - 12),
+    });
   }
   return monthly;
 }

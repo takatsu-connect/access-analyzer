@@ -168,6 +168,11 @@
   padding-inline: var(--space-1);
 }
 
+/* 360px の幅でも「詳し / く」と折れないようにする。 */
+.table .narrowCell summary {
+  white-space: nowrap;
+}
+
 /* --- 画面の幅で出し分けるもの --- */
 
 .wideCell,

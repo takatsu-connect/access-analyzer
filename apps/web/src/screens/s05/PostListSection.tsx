@@ -24,12 +24,12 @@ export type PostListSectionProps = {
 
 /**
  * 列。著者の列（全員同じ）と、読まれていた時間の列は持たない（05 §6.2）。
- * カテゴリの列も持たない: 著者ページのデータには、記事ごとのカテゴリが入っていない
- * （PostRow.categoryIds は S-02e だけ。categoryMix は記事と結び付かない）。
+ * カテゴリの名前は、posts の categoryIds を categoryPaths で引く。狭い画面では「詳しく」に入る。
  */
 const COLUMNS: readonly ArticleColumnId[] = [
   'title',
   'publishedOn',
+  'category',
   'pageviews',
   'pv7',
   'pv30',
@@ -52,13 +52,21 @@ export function PostListSection({ data, periodId, sort, onSortChange }: PostList
   const topChannels = periodId === null ? undefined : data.topChannelByPeriod[periodId];
   // 行の配列は、期間が変わったときだけ作り直す（表が「さらに表示」の件数を保てるように）。
   const { rows, measured, preMeasure } = useMemo(() => {
+    const pathById = new Map(data.categoryPaths.map((category) => [category.id, category.path]));
     const all = data.posts.map((post, index): ArticleTableRow => {
       const pv = pageviews?.[index];
       const channel = topChannels?.[index];
+      const categories = post.categoryIds.flatMap((id) => {
+        const path = pathById.get(id);
+        return path === undefined ? [] : [path];
+      });
       return {
         post,
+        categories,
         ...(pv === undefined ? {} : { pageviews: pv }),
-        ...(channel === undefined ? {} : { topChannel: channel }),
+        // 'none'（訪問がない）は topChannel を渡さない。ArticleTable は undefined を「該当なし」と書く。
+        // null（伏せ値）はそのまま渡し、「— 伏せ値」と書かせる。
+        ...(channel === undefined || channel === 'none' ? {} : { topChannel: channel }),
       };
     });
     return {
@@ -70,7 +78,7 @@ export function PostListSection({ data, periodId, sort, onSortChange }: PostList
         'published',
       ),
     };
-  }, [data.posts, pageviews, topChannels]);
+  }, [data.posts, data.categoryPaths, pageviews, topChannels]);
 
   const { name } = data.author;
   const start = formatDate(data.meta.measureStart);

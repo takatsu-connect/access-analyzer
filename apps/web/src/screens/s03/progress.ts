@@ -32,13 +32,14 @@ export function benchmarkAt(
 
 /**
  * 公開 30 日未満の記事の「n 日目で pv 回」。n は post.ageDays（04 §3.4）。
- * 公開した当日（ageDays = 0）は 1 日目として扱う。その日の累積がなければ null。
+ * ageDays は「基準日 − 公開日 + 1」で、公開した当日が 1 日目（ageDays ≥ 1）。累積の添字は n − 1。
+ * 契約の外の値（1 未満、整数でない）と、その日の累積がないときは null。
  */
 export function youngProgress(
   ageDays: number,
   cumulative: ArticleDetailData['cumulative'],
 ): { n: number; pv: number } | null {
-  const n = Math.max(ageDays, 1);
-  const pv = cumulative[n - 1] ?? null;
-  return pv === null ? null : { n, pv };
+  if (!Number.isInteger(ageDays) || ageDays < 1) return null;
+  const pv = cumulative[ageDays - 1] ?? null;
+  return pv === null ? null : { n: ageDays, pv };
 }

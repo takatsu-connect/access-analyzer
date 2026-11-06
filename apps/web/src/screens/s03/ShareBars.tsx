@@ -1,3 +1,4 @@
+import a11y from '@/components/a11y.module.css';
 import { HBar } from '@/components/charts';
 import type { HBarItem } from '@/components/charts/types';
 import { Details } from '@/components/Details';
@@ -9,6 +10,7 @@ import type { Masked } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
 import styles from './s03.module.css';
+import { TableSummary } from './TableSummary';
 
 export type ShareBarsProps = {
   /** 図の説明（HBar の title）。 */
@@ -42,8 +44,9 @@ export function ShareBars({ title, columnLabel, items, total }: ShareBarsProps) 
         valueWithShare={(count, ratio) => t('hbar.valueWithShare', { n: count, share: ratio })}
       />
       {hasMasked ? <Notice>{t('legend.masked')}</Notice> : null}
-      <Details summary={t('s03.table.summary')}>
+      <Details summary={<TableSummary name={title} />}>
         <table className={styles.table}>
+          <caption className={a11y.srOnly}>{t('s03.share.caption', { name: title })}</caption>
           <thead>
             <tr>
               <th scope="col">{columnLabel}</th>

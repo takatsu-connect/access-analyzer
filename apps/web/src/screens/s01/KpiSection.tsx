@@ -1,4 +1,5 @@
 import { KpiCard, KpiGrid } from '@/components/KpiCard';
+import { absentCompareText, type PeriodChoice } from '@/components/usePeriod';
 import { formatNumber } from '@/lib/format';
 import type { DashboardData, Period, SitePeriodValue } from '@/lib/page-data';
 import { metricLabel, metricNote, t } from '@/lib/ui-text';
@@ -9,7 +10,8 @@ import { pick } from './series';
 
 export type KpiSectionProps = {
   data: DashboardData;
-  period: Period;
+  /** resolvePeriod の結果。月の途中の月では prevId と yoyId が null（比較を止める）。 */
+  choice: PeriodChoice & { period: Period };
   site: SitePeriodValue;
 };
 
@@ -17,9 +19,10 @@ export type KpiSectionProps = {
  * KPI 3 枚（読まれた回数 M-01、公開した記事の本数 M-30、読んだ人の数 M-03）と、
  * 多くの記事の帯の 1 文（M-27。FR-10、FR-17）。
  */
-export function KpiSection({ data, period, site }: KpiSectionProps) {
-  const prevSite = pick(data.sitePeriod, period.prevId);
-  const yoySite = pick(data.sitePeriod, period.yoyId);
+export function KpiSection({ data, choice, site }: KpiSectionProps) {
+  const { period } = choice;
+  const prevSite = pick(data.sitePeriod, choice.prevId);
+  const yoySite = pick(data.sitePeriod, choice.yoyId);
   const posting = data.posting[period.id];
   const benchmark = data.benchmark30;
 
@@ -32,7 +35,7 @@ export function KpiSection({ data, period, site }: KpiSectionProps) {
           value={site.pageviews}
           comparison={
             <ComparisonLines
-              period={period}
+              choice={choice}
               current={site.pageviews}
               prev={prevSite?.pageviews}
               yoy={yoySite?.pageviews}
@@ -46,13 +49,14 @@ export function KpiSection({ data, period, site }: KpiSectionProps) {
           value={posting === undefined ? t('s01.absent.value') : posting.postCount}
           comparison={
             posting === undefined ? (
-              t('s01.absent.prev')
+              absentCompareText(choice.withheld, 'prev')
             ) : (
               <ComparisonLines
-                period={period}
+                choice={choice}
                 current={posting.postCount}
-                prev={pick(data.posting, period.prevId)?.postCount}
-                yoy={pick(data.posting, period.yoyId)?.postCount}
+                prev={pick(data.posting, choice.prevId)?.postCount}
+                yoy={pick(data.posting, choice.yoyId)?.postCount}
+                partialAware={false}
               />
             )
           }
@@ -64,7 +68,7 @@ export function KpiSection({ data, period, site }: KpiSectionProps) {
           value={site.activeUsers}
           comparison={
             <ComparisonLines
-              period={period}
+              choice={choice}
               current={site.activeUsers}
               prev={prevSite?.activeUsers}
               yoy={yoySite?.activeUsers}

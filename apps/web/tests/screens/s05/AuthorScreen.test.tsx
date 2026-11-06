@@ -130,36 +130,26 @@ describe('S-05 見出しと全体', () => {
 
   test('期間を選ぶと、まとめが切り替わり、URL に書き戻す', () => {
     show(pageData(SATO));
-    expect(sectionOf(SUMMARY_H2).textContent).toContain('この期間に 1 本公開し');
+    expect(sectionOf(SUMMARY_H2).textContent).toContain('この期間に公開した記事は 1 本です。');
     fireEvent.click(screen.getByRole('button', { name: '直近 7 日' }));
     expect(window.location.search).toBe('?p=last7');
-    expect(sectionOf(SUMMARY_H2).textContent).toContain('新しく公開した記事はありません');
+    expect(sectionOf(SUMMARY_H2).textContent).toContain(
+      'どれも、この期間より前に公開した記事です。',
+    );
   });
 
   test('期間のデータがないときは、まとめを出さずに「まだありません」と書く', () => {
     show(pageData(SATO), '?p=m2026-10');
     const text = sectionOf(SUMMARY_H2).textContent;
     expect(text).toContain('この期間の数字はまだありません。');
-    expect(text).not.toContain('公開し');
+    expect(text).not.toContain('公開した記事は');
     expect(text).not.toContain('くらい読まれています');
     expect(sectionOf(REFERRER_H2).textContent).toContain('この期間の数字はまだありません。');
   });
 });
 
-describe('S-05 (a) 公開した本数と読まれた回数', () => {
-  test('期間内の公開が 0 本なら、以前に書いた記事を主文にし、(c) の行を出さない', () => {
-    show(pageData(SATO), '?p=last7');
-    const text = sectionOf(SUMMARY_H2).textContent;
-    expect(text).toContain(
-      'この期間に新しく公開した記事はありません。以前に書いた 2 本の記事が 45 回読まれました。',
-    );
-    expect(text).not.toContain('0 本公開し');
-    expect(text).not.toContain('この期間にも');
-    // 前の期間との比較は差だけ。
-    expect(text).toContain('前の 7 日と比べて');
-    expect(text).toContain('+5');
-    expect(text).not.toContain('%');
-  });
+describe('S-05 (a) 読まれた回数の合計と、公開した本数', () => {
+  // 0 本のとき、合計を出すことと (c) の行は tests/screens/s05/review.test.tsx（助言 B-3）。
 
   test('前の期間との比較は差だけで、% を出さない（分母が 20 以上でも）', () => {
     const data = pageData(TANAKA);
@@ -167,10 +157,10 @@ describe('S-05 (a) 公開した本数と読まれた回数', () => {
     show(data);
     const text = sectionOf(SUMMARY_H2).textContent;
     expect(text).toContain(
-      'この期間に 2 本公開し、合計 362 回読まれました（前の 28 日と比べて 本数 +1、読まれた回数 +62）。',
+      `${TANAKA_NAME}さんの記事は、この期間に合計 362 回読まれました（前の 28 日と比べて +62）。この期間に公開した記事は 2 本です（前の 28 日は 1 本）。`,
     );
     // (c) も差だけ。
-    expect(text).toContain('以前に書いた 1 本の記事は、この期間にも 200 回読まれました。');
+    expect(text).toContain('そのうち、公開から 3 か月以上たった 1 本の記事が 200 回読まれました。');
     expect(text).toContain('+50');
     expect(text).not.toContain('%');
   });
@@ -178,33 +168,38 @@ describe('S-05 (a) 公開した本数と読まれた回数', () => {
   test('前の期間の数字がなければ、比較を付けない', () => {
     show(pageData(TANAKA));
     const text = sectionOf(SUMMARY_H2).textContent;
-    expect(text).toContain('この期間に 2 本公開し、合計 362 回読まれました。');
+    expect(text).toContain(
+      `${TANAKA_NAME}さんの記事は、この期間に合計 362 回読まれました。この期間に公開した記事は 2 本です。`,
+    );
     expect(text).not.toContain('と比べて');
   });
 
-  test('月を選んだときは「前の月と比べて」と書く', () => {
+  test('月を選んだときは「前の月と比べて」「前の月は」と書く', () => {
+    // 終わった月（2026 年 10 月）。前の月の値を足す。月の途中の月は比較を止める（usePeriod）。
     const data = pageData(TANAKA);
-    data.period['m2026-11'] = { postCount: 1, pageviews: 49, longPostCount: 1, longPageviews: 25 };
     data.period['m2026-10'] = {
       postCount: 1,
       pageviews: 328,
       longPostCount: 1,
       longPageviews: 190,
     };
-    show(data, '?p=m2026-11');
+    data.period['m2026-09'] = {
+      postCount: 2,
+      pageviews: 300,
+      longPostCount: 1,
+      longPageviews: 150,
+    };
+    // フィクスチャには 2026 年 9 月の期間がないので、10 月の比較の相手を 9 月にする。
+    data.periods = data.periods.map((item) =>
+      item.id === 'm2026-10' ? { ...item, prevId: 'm2026-09' } : item,
+    );
+    show(data, '?p=m2026-10');
     const text = sectionOf(SUMMARY_H2).textContent;
-    expect(text).toContain('（前の月と比べて 本数 ±0、読まれた回数 −279）');
+    expect(text).toContain(
+      '（前の月と比べて +28）。この期間に公開した記事は 1 本です（前の月は 2 本）。',
+    );
     expect(text).not.toMatch(/前の\s*\d+\s*日/);
     expect(text).not.toContain('%');
-  });
-
-  test('0 本で、3 か月以上たった記事もないときは「0 本が 0 回」と書かない', () => {
-    const data = pageData(SATO);
-    data.period.last7 = { postCount: 0, pageviews: 65, longPostCount: 0, longPageviews: 0 };
-    show(data, '?p=last7');
-    const text = sectionOf(SUMMARY_H2).textContent;
-    expect(text).toContain('これまでに書いた記事が、この期間に合計 65 回読まれました。');
-    expect(text).not.toContain('0 本');
   });
 });
 
@@ -220,7 +215,7 @@ describe('S-05 (b) これまでの記事と、多くの記事の範囲', () => {
       `${SATO_NAME}さんの記事は、公開から 30 日で 230 回くらい読まれています。多くの記事は 100〜300 回（真ん中は 200 回）です。`,
     );
     expect(section.textContent).toContain('成績ではなく、位置です。');
-    expect(section.textContent).toContain('2025 年 10 月 8 日以降に公開した記事で見ています。');
+    expect(section.textContent).toContain('直近 1 年に公開し、30 日たった記事で見ています。');
   });
 
   test('帯の点は 3 つの固定位置のどれかで、値に比例しない', () => {
@@ -243,10 +238,12 @@ describe('S-05 (b) これまでの記事と、多くの記事の範囲', () => {
     expect(new Set(positions).size).toBe(3);
   });
 
-  test('数え始めてから公開した記事が 5 本未満なら、不在の文を出し、帯を描かない', () => {
+  test('当てはまる記事が 5 本未満なら、不在の文を出し、帯を描かない', () => {
     show(pageData(TANAKA));
     const section = sectionOf(SUMMARY_H2);
-    expect(section.textContent).toContain('数え始めてから公開した記事が 5 本以上になると出ます');
+    expect(section.textContent).toContain(
+      '直近 1 年に公開して 30 日たった記事が 5 本以上になると出ます',
+    );
     expect(section.textContent).not.toContain('くらい読まれています');
     expect(section.querySelector('circle[data-part="dot"]')).toBeNull();
   });
@@ -355,31 +352,35 @@ describe('S-05 読者はどこから来たか', () => {
     expect(block?.textContent).not.toContain('伏せ値');
   });
 
-  test('伏せ値の区分は「— 伏せ値」で、伏せ値があるときは前置きも % も出さない', () => {
+  test('伏せ値があるときは前置きも % も出さず、表の伏せ値は「— 伏せ値」', () => {
     // 直近 7 日のさとうさん: 流入チャネルの SNS と、SNS の種類の Instagram が伏せ値。
+    // 文にする形（助言 B-4）は tests/screens/s05/review.test.tsx。
     show(pageData(SATO), '?p=last7');
     const section = sectionOf(REFERRER_H2);
-    const masked = section.querySelector('g[data-key="social"] [data-part="masked"]');
-    expect(masked?.textContent).toBe('—伏せ値');
-    expect(section.querySelector('g[data-key="instagram"] [data-part="masked"]')).not.toBeNull();
+    const table = within(section).getByRole('table', {
+      name: `${SATO_NAME}さんの記事への訪問回数（どこから来たか）`,
+    });
+    const social = [...table.querySelectorAll('tbody tr')].find((row) =>
+      row.textContent.startsWith('SNS'),
+    );
+    expect(social?.textContent).toContain('伏せ値');
     expect(section.textContent).not.toContain('回のうち');
     expect(section.textContent).not.toContain('%');
-    // 数だけにする。棒も、サイト全体の輪郭も凡例も出さない。
-    expect(section.querySelector('g[data-key="search"]')?.textContent).toContain('30');
+    // 棒も、サイト全体の輪郭も凡例も出さない。
     expect(section.querySelector('[data-part="bar"]')).toBeNull();
     expect(section.querySelector('[data-part="compare"]')).toBeNull();
     expect(section.textContent).not.toContain('サイト全体');
   });
 });
 
-describe('S-05 どんなカテゴリを書いたか', () => {
-  test('カテゴリのパス、記事数、読まれた回数を、読まれた回数の多い順に出す', () => {
+describe('S-05 どのカテゴリの記事を書いたか', () => {
+  test('カテゴリのパス、これまでの記事数、この期間の読まれた回数を、読まれた回数の多い順に出す', () => {
     show(pageData(SATO), '?p=last7');
     const table = screen.getByRole('table', {
       name: `${SATO_NAME}さんの記事の、カテゴリごとの記事数と読まれた回数`,
     });
     const headers = [...table.querySelectorAll('thead th')].map((cell) => cell.textContent);
-    expect(headers).toEqual(['カテゴリ', '記事数', '読まれた回数']);
+    expect(headers).toEqual(['カテゴリ', 'これまでの記事数', '読まれた回数（この期間）']);
     const rows = [...table.querySelectorAll('tbody tr')].map((row) =>
       [...row.children].map((cell) => cell.textContent),
     );
@@ -408,11 +409,17 @@ describe('S-05 最近よく読まれている記事 / 久しぶりに読まれ�
     expect(screen.getByText('目安です。公開直後の記事は対象外です。')).toBeTruthy();
   });
 
-  test('該当する記事がなければ、その旨の文を出す', () => {
+  test('どちらの記事もなければ、h3 と表を出さず、1 文だけ出す', () => {
     const data = pageData(SATO);
     data.posts = data.posts.map((post) => ({ ...post, isRecentHot: false, isRevival: false }));
     show(data);
-    expect(screen.getAllByText('今週は該当する記事がありません').length).toBe(2);
+    const section = sectionOf('いま読まれている記事');
+    expect(section.textContent).toBe(
+      'いま読まれている記事ふだんよりはっきり多く読まれた記事があると、ここに出ます（直近 7 日で見ています）。',
+    );
+    expect(section.querySelector('h3')).toBeNull();
+    expect(section.querySelector('table')).toBeNull();
+    expect(section.textContent).not.toContain('今週は該当する記事がありません');
   });
 
   test('5 件までにする', () => {
@@ -441,10 +448,10 @@ describe('S-05 記事の一覧', () => {
     const container = show(pageData(SATO));
     const table = screen.getByRole('table', { name: POSTS_CAPTION });
     const headers = [...table.querySelectorAll('thead th')].map((cell) => cell.textContent);
-    // カテゴリの列は、記事ごとのカテゴリがデータに入っていないので出していない。
     expect(headers).toEqual([
       '記事',
       '公開日',
+      'カテゴリ',
       '読まれた回数（この期間）',
       '最初の 1 週間',
       '最初の 1 か月',
@@ -506,9 +513,10 @@ describe('S-05 記事の一覧', () => {
     const table = screen.getByRole('table', { name: POSTS_CAPTION });
     const row = within(table).getByRole('link', { name: '記事 101' }).closest('tr');
     const cells = [...(row?.querySelectorAll('td') ?? [])].map((cell) => cell.textContent);
-    // 公開日、読まれた回数（この期間）、最初の 1 週間、最初の 1 か月、多くの記事と比べて、どこから来たか。
-    expect(cells.slice(0, 5)).toEqual([
+    // 公開日、カテゴリ、読まれた回数（この期間）、最初の 1 週間、最初の 1 か月、多くの記事と比べて、どこから来たか。
+    expect(cells.slice(0, 6)).toEqual([
       '2025/06/01',
+      '記事 > グルメ',
       '150',
       '数え始める前',
       '数え始める前',

@@ -149,6 +149,34 @@ export function formatRatio(ratio: number): string {
   return `${withSign(toInteger(ratio * 100))}%`;
 }
 
+/** 前の期間との比較で、比率をどう書くか（05 §2.2）。 */
+export type ChangeKind = 'flat' | 'ratio' | 'times';
+
+/**
+ * 比率が丸めて 0% になるのに、差が 0 でない（「ほぼ同じ」と書き、▲▼ を付けない）か。
+ * 差が 0 のときは「±0」なので、ここには入れない。
+ */
+export function isFlatChange(diff: number, ratio: number): boolean {
+  return diff !== 0 && toInteger(ratio * 100) === 0;
+}
+
+/**
+ * 前の期間との比較の比率の書き方（05 §2.2）。
+ * - 丸めて 0% で差が 0 でない → 「ほぼ同じ」
+ * - +100% 以上 → 倍で「約 6.4 倍」。小数第 1 位まで（.0 は省く）。10 倍以上は整数。
+ * - それ以外（−100% 側を含む） → 「+8%」「−13%」
+ */
+export function formatChange(diff: number, ratio: number): string {
+  if (!Number.isFinite(ratio)) throw new RangeError('比率は有限の値で渡します。');
+  if (isFlatChange(diff, ratio)) return t('compare.ratio.flat');
+  if (ratio >= 1) {
+    const times = 1 + ratio;
+    const n = times >= 10 ? String(Math.round(times)) : String(Math.round(times * 10) / 10);
+    return t('compare.ratio.times', { n });
+  }
+  return formatRatio(ratio);
+}
+
 /** 構成比。0.42 → 「42%」。符号は付けない。 */
 export function formatShare(share: number): string {
   if (!Number.isFinite(share) || share < 0) {

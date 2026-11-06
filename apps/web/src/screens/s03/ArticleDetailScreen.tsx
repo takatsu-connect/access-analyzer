@@ -51,12 +51,7 @@ export function ArticleDetailScreen({ data }: ArticleDetailScreenProps) {
         isPreMeasure={post.isPreMeasure}
       />
       {post.isPreMeasure ? null : (
-        <OwnSection
-          post={post}
-          cumulative={data.cumulative}
-          ownMedian30d={data.ownMedian30d}
-          measureStart={meta.measureStart}
-        />
+        <OwnSection post={post} cumulative={data.cumulative} ownMedian30d={data.ownMedian30d} />
       )}
 
       <p className={styles.divider}>{t('s03.periodPart.lead')}</p>

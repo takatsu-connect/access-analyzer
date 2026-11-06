@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import a11y from '@/components/a11y.module.css';
 import { LineChart } from '@/components/charts';
 import type { LineChartPoint } from '@/components/charts/types';
 import { Details } from '@/components/Details';
@@ -12,6 +13,7 @@ import type { ArticleDetailData, Period } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
 import styles from './s03.module.css';
+import { TableSummary } from './TableSummary';
 
 export type DailySectionProps = {
   /** 選んだ期間。 */
@@ -112,8 +114,9 @@ export function DailySection({
             weekly={weekly}
             fixedRowText={weekly ? weeklyRow : undefined}
           />
-          <Details summary={t('s03.table.summary')}>
+          <Details summary={<TableSummary name={t('s03.daily.h2')} />}>
             <table className={styles.table}>
+              <caption className={a11y.srOnly}>{t('s03.daily.caption')}</caption>
               <thead>
                 <tr>
                   <th scope="col">{t('s03.daily.table.day')}</th>

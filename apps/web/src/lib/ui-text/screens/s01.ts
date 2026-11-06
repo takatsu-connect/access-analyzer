@@ -12,12 +12,14 @@ import type { ScreenTexts } from './types';
 
 export const S01_TEXT = {
   // --- 比較の相手や値がまだないとき ---
-  's01.absent.prev': '前の期間のデータなし',
+  // 前の期間の不在は共通の absent.prev を使う。
   's01.absent.value': 'まだ数字がありません',
 
   // --- もっと見る（訪問回数、読まれていた時間、公開した時期ごとの読まれ方） ---
-  's01.more.summary': 'もっと見る',
+  's01.more.summary': 'ほかの数字を見る（訪問回数、読まれていた時間など）',
   's01.engagement.prev': '前の期間は {value}',
+  // 前の期間はあるが、読まれた回数が 20 回未満で目安を出せないとき（absent.ratio20 と同じ形）。
+  's01.engagement.prev.ratio20': '前の期間の読まれた回数が 20 回以上のときに出ます',
   's01.freshness.column': '公開した時期',
   's01.freshness.note':
     '上の「読まれた回数」には、トップページなど記事以外のページも含まれるため、この表の合計とは一致しません。',
@@ -27,9 +29,9 @@ export const S01_TEXT = {
   's01.daily.title': '日ごとの{label}',
   's01.daily.title.week': '週ごとの{label}',
   's01.daily.metric.aria': 'グラフに出す数字',
-  's01.daily.grain.aria': '日のまとめ方',
-  's01.daily.grain.week': '週別',
-  's01.daily.grain.day': '日別',
+  's01.daily.grain.aria': 'グラフのまとめ方',
+  's01.daily.grain.week': '週ごと',
+  's01.daily.grain.day': '日ごと',
   's01.daily.fixedRow.week.published': '。この週に {n} 本公開',
   's01.daily.table.date': '日付',
   's01.daily.table.week': '週',
@@ -48,11 +50,13 @@ export const S01_TEXT = {
     'AI アシスタント（AI Assistant）、メール（Email）、動画（Organic Video）、広告（Paid 系）、分類できなかったもの（Unassigned）など、ほかの 4 つに入らないものをまとめています。',
 
   // --- 月ごとに集計する表（リンク元のサイト、市別） ---
-  's01.monthly.heading': '{label}（前月までの集計です）',
-  's01.monthly.note.latest':
-    '{month}の数字です。月ごとの集計のため、上で選んだ期間には連動しません。',
-  's01.monthly.note.selected': '{month}の数字です。',
+  's01.monthly.heading': '{label}（{month}）',
+  's01.monthly.note': '月ごとに集計しています。上で期間を選び直しても変わりません。',
+  // 比べる月の表そのものがないとき。
   's01.monthly.noPrev': '前の月の数字なし',
+  // 比べる月の表はあるが、その行がないとき（バッチは月ごとに上位 10 行だけを持つ）。
+  's01.monthly.prevNotListed': '前の月は表にありません',
+  's01.monthly.yoyNotListed': '去年の同じ月は表にありません',
   's01.city.label': '市別',
   's01.city.region': '都道府県',
   's01.city.city': '市',
@@ -68,5 +72,6 @@ export const S01_TEXT = {
     '「1 日あたりの平均」は、期間の合計を期間の日数（{days} 日）で割った値です。',
   's01.device.h3': 'どんな端末で読まれたか',
   's01.device.sessions.summary': '詳しく（訪問回数で見る）',
+  's01.device.sessions.title': 'どんな端末で読まれたか（訪問回数）',
   's01.newReturning.h3': '初めての人とまた来た人',
 } as const satisfies ScreenTexts<'s01'>;

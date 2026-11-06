@@ -111,16 +111,29 @@ export function buildSeasonal(cache: PubCache, builtAt: Date): SeasonalData {
     .sort()
     .slice(-SEASONAL_MONTHS);
   const monthSet = new Set<string>(months);
+  // 13〜24 か月前の月の「去年の同じ月」。24 か月の外でも、数字があれば比較の相手として持つ。
+  const presentMonths = new Set<string>(cache.categoryPeriod.map((row) => row.period_id));
+  const yoyMonths: MonthId[] = months
+    .map((month): MonthId => `m${Number(month.slice(1, 5)) - 1}-${month.slice(-2)}`)
+    .filter((month) => !monthSet.has(month) && presentMonths.has(month))
+    .sort();
+  const wanted = new Set<string>([...months, ...yoyMonths]);
 
   const pvByMonth: SeasonalData['pvByMonth'] = {};
   for (const row of cache.categoryPeriod) {
-    if (!monthSet.has(row.period_id) || !isMonthId(row.period_id)) continue;
+    if (!wanted.has(row.period_id) || !isMonthId(row.period_id)) continue;
     const byMonth = pvByMonth[row.category_id] ?? {};
     byMonth[row.period_id] = row.pageviews;
     pvByMonth[row.category_id] = byMonth;
   }
 
-  const data: SeasonalData = { ...common, axes: categoryAxes(cache), months, pvByMonth };
+  const data: SeasonalData = {
+    ...common,
+    axes: categoryAxes(cache),
+    months,
+    yoyMonths,
+    pvByMonth,
+  };
   return seasonalDataSchema.parse(data);
 }
 

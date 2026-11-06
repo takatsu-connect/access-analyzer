@@ -31,25 +31,29 @@ function windowDays(id: string): number | null {
 }
 
 /**
- * (a) の文（FR-31 (a)）。事実だけで、ほかの著者とも、著者の本数の分布とも比べない。
- * 前の期間との比較は差だけ（% を出さない。05 §6.2）。
+ * (a) の文（FR-31 (a)）。合計が先、本数が後（助言 B-3）。事実だけで、ほかの著者とも、
+ * 著者の本数の分布とも比べない。読まれた回数の比較は差だけ（% を出さない。05 §6.2）。
+ * 本数には印も差も付けず、前の期間の本数を並べる（助言 A-2）。
  */
 function publishedText(
+  name: string,
   period: Period,
   current: AuthorPeriodValue,
   prev: AuthorPeriodValue | undefined,
 ): string {
   const n = formatNumber(current.postCount);
   const pv = formatNumber(current.pageviews);
-  if (prev === undefined) return t('s05.summary.a.single', { n, pv });
+  if (prev === undefined) return t('s05.summary.a.single', { name, n, pv });
 
-  const diffCount = formatDiff(compare(current.postCount, prev.postCount).diff);
+  const prevCount = formatNumber(prev.postCount);
   const diffPv = formatDiff(compare(current.pageviews, prev.pageviews).diff);
-  if (period.kind === 'month') return t('s05.summary.a.month', { n, pv, diffCount, diffPv });
+  if (period.kind === 'month') {
+    return t('s05.summary.a.month', { name, n, pv, diffPv, prevCount });
+  }
 
   const days = windowDays(period.id);
-  if (days === null) return t('s05.summary.a.single', { n, pv });
-  return t('s05.summary.a', { n, pv, days, diffCount, diffPv });
+  if (days === null) return t('s05.summary.a.single', { name, n, pv });
+  return t('s05.summary.a', { name, n, pv, days, diffPv, prevCount });
 }
 
 /** 「前の 28 日と比べて ▲ +40」。差だけを出す（まとめの中は差にそろえる）。 */
@@ -80,49 +84,40 @@ type PeriodValues = {
 };
 
 /**
- * (a) 公開した本数と読まれた回数（M-30、M-01）。
- * 期間内の公開が 0 本のときは、(c)（以前に書いた記事）を主文にして 1 つにまとめる。
+ * (a) 読まれた回数の合計と、公開した本数（M-01、M-30）。
+ * 期間内の公開が 0 本のときも、期間の合計を出す（公開から 3 か月未満の記事の分を落とさない。助言 B-3）。
+ * 0 本の文には本数の比較がないので、読まれた回数の差を下の行に添える（比較の相手を 1 つ。NFR-95）。
  */
-function Published({ period, current, prev, prevLabel }: PeriodValues & { period: Period }) {
+function Published({
+  name,
+  period,
+  current,
+  prev,
+  prevLabel,
+}: PeriodValues & { name: string; period: Period }) {
   if (current.postCount > 0) {
     return (
       <div className={styles.summaryItem}>
-        <p className={styles.statement}>{publishedText(period, current, prev)}</p>
+        <p className={styles.statement}>{publishedText(name, period, current, prev)}</p>
       </div>
     );
   }
-
-  // 公開から 3 か月以上たった記事がまだない著者には、「0 本が 0 回」と書かない。
-  const hasLong = current.longPostCount > 0;
   return (
     <div className={styles.summaryItem}>
       <p className={styles.statement}>
-        {hasLong
-          ? t('s05.summary.a.zero', {
-              n: formatNumber(current.longPostCount),
-              pv: formatNumber(current.longPageviews),
-            })
-          : t('s05.summary.a.zero.total', { pv: formatNumber(current.pageviews) })}
+        {t('s05.summary.a.zero', { name, pv: formatNumber(current.pageviews) })}
       </p>
-      {hasLong ? (
-        <PrevDiff label={prevLabel} current={current.longPageviews} prev={prev?.longPageviews} />
-      ) : (
-        <PrevDiff label={prevLabel} current={current.pageviews} prev={prev?.pageviews} />
-      )}
+      <PrevDiff label={prevLabel} current={current.pageviews} prev={prev?.pageviews} />
     </div>
   );
 }
 
-/** (c) 以前に書いた記事が、この期間に読まれた回数（M-25）。(a) が 0 本のときは出さない。 */
+/**
+ * (c) 公開から 3 か月以上たった記事が、この期間に読まれた回数（M-25）。(a) の合計の内訳として、別の行に出す。
+ * 3 か月以上の記事がまだない著者には、行ごと出さない（不在の説明は (b) の 1 文だけ。助言 A-1）。
+ */
 function LongRead({ current, prev, prevLabel }: PeriodValues) {
-  if (current.postCount === 0) return null;
-  if (current.longPostCount === 0) {
-    return (
-      <div className={styles.summaryItem}>
-        <p className={styles.small}>{t('s05.summary.c.absent')}</p>
-      </div>
-    );
-  }
+  if (current.longPostCount === 0) return null;
   return (
     <div className={styles.summaryItem}>
       <p>
@@ -184,7 +179,7 @@ function OwnMedian({ data }: { data: AuthorPageData }) {
           <Notice>{t('band.note')}</Notice>
         </>
       )}
-      <Notice>{t('notes.ownMedian.scope', { start })}</Notice>
+      <Notice>{t('notes.ownMedian.scope')}</Notice>
     </div>
   );
 }
@@ -240,9 +235,16 @@ export function SummarySection({ data, period, choice }: SummarySectionProps) {
         <StateMessage kind="empty" />
       ) : (
         <div className={styles.summary}>
-          <Published period={period} current={current} prev={prev} prevLabel={choice.prevLabel} />
-          <OwnMedian data={data} />
+          <Published
+            name={data.author.name}
+            period={period}
+            current={current}
+            prev={prev}
+            prevLabel={choice.prevLabel}
+          />
+          {/* (c) は「そのうち」で (a) の合計を受けるので、(a) の直後に置く。 */}
           <LongRead current={current} prev={prev} prevLabel={choice.prevLabel} />
+          <OwnMedian data={data} />
           <Milestones data={data} period={period} />
         </div>
       )}

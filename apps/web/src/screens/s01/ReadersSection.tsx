@@ -92,15 +92,18 @@ function HeatmapBlock({ cells, period, site, heat, onHeatChange }: HeatmapBlockP
 
   return (
     <>
-      <Segment
-        label={t('s01.heat.mode.aria')}
-        options={[
-          { value: 'avg', label: t('heat.avg') },
-          { value: 'sum', label: t('heat.sum') },
-        ]}
-        value={heat}
-        onChange={onHeatChange}
-      />
+      {site.days === 0 ? null : (
+        // 日数が 0 のときは「1 日あたりの平均」を出せないので、切り替えを出さない（合計だけ）。
+        <Segment
+          label={t('s01.heat.mode.aria')}
+          options={[
+            { value: 'avg', label: t('heat.avg') },
+            { value: 'sum', label: t('heat.sum') },
+          ]}
+          value={heat}
+          onChange={onHeatChange}
+        />
+      )}
       <div className={styles.wideOnly} data-part="heatmap-wide">
         <Heatmap
           key={chartKey}
@@ -164,7 +167,7 @@ export function ReadersSection({ data, period, site, heat, onHeatChange }: Reade
             <Notice>{metricNote('M13')}</Notice>
             <Details summary={t('s01.device.sessions.summary')}>
               <Breakdown
-                title={t('s01.device.h3')}
+                title={t('s01.device.sessions.title')}
                 lead={t('lead.sessions', { n: formatNumber(site.sessions) })}
                 valueHeader={metricLabel('M02')}
                 items={DEVICE_BUCKETS.map((bucket) => ({
@@ -201,8 +204,10 @@ export function ReadersSection({ data, period, site, heat, onHeatChange }: Reade
             <Notice>{t('metric.M14.local.note')}</Notice>
           </>
         )}
-        <h4 className={styles.h4}>{t('s01.monthly.heading', { label: t('s01.city.label') })}</h4>
         <MonthTable
+          label={t('s01.city.label')}
+          headingLevel={4}
+          measureStart={data.meta.measureStart}
           caption={t('s01.city.label')}
           groupHeader={t('s01.city.region')}
           nameHeader={t('s01.city.city')}

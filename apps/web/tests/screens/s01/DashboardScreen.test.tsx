@@ -162,11 +162,20 @@ describe('S-01 全体ダッシュボード: 見出しと KPI', () => {
 
   it('前の期間の値が 20 のときは % も出す', () => {
     const data = build();
+    siteOf(data, 'last28').pageviews = 30;
     siteOf(data, 'prev28').pageviews = 20;
     const container = renderScreen(data);
     const line = part(kpiCard(container, t('metric.M01.label.first')), '[data-compare="prev"]');
-    expect(line.textContent).toContain('+3,080');
-    expect(line.textContent).toContain('%');
+    expect(line.textContent).toContain('+10（+50%）');
+  });
+
+  it('+100% 以上は倍で書く（3,100 と 20 は「約 155 倍」）', () => {
+    const data = build();
+    siteOf(data, 'prev28').pageviews = 20;
+    const container = renderScreen(data);
+    const line = part(kpiCard(container, t('metric.M01.label.first')), '[data-compare="prev"]');
+    expect(line.textContent).toContain('+3,080（約 155 倍）');
+    expect(line.textContent).not.toContain('%');
   });
 
   it('期間を切り替えると KPI の値が変わる', () => {
@@ -180,23 +189,66 @@ describe('S-01 全体ダッシュボード: 見出しと KPI', () => {
     expect(window.location.search).toBe('?p=last7');
   });
 
-  it('月を選ぶと、去年の同じ月との比較が並ぶ', () => {
+  it('月を選ぶと、去年の同じ月の行が並ぶ。相手が数え始めた月（2025-10、8 日から）なら差を出さず数字を並べる', () => {
     const container = renderScreen(build());
     const label = t('metric.M01.label.first');
     expect(kpiCard(container, label).querySelector('[data-compare="yoy"]')).toBeNull();
 
     selectMonth('m2026-10');
     const line = part(kpiCard(container, label), '[data-compare="yoy"]');
+    expect(line.textContent).toBe('去年の同じ月は 2,000（8 日からの数字）');
+    expect(line.textContent).not.toMatch(/[▲▼%]/);
+    // 公開本数は WordPress から数えるので、数え始めた日に関係なく差を出す。
+    const posting = part(kpiCard(container, metricLabel('M30')), '[data-compare="yoy"]');
+    expect(posting.textContent).toContain(t('compare.yoy'));
+  });
+
+  it('終わった月（集計中）で、去年の同じ月が数え始めた月でなければ、差と % を出す', () => {
+    const data = build();
+    const container = renderScreen({
+      ...data,
+      meta: { ...data.meta, measureStart: '2025-10-01' },
+    });
+    selectMonth('m2026-10');
+    const line = part(kpiCard(container, t('metric.M01.label.first')), '[data-compare="yoy"]');
     expect(line.textContent).toContain(t('compare.yoy'));
     expect(line.textContent).toContain('+1,500');
     expect(line.textContent).toContain('+75%');
   });
 
-  it('前年がない月は「前年のデータなし」', () => {
+  it('去年の同じ月の数字がない月は「去年の同じ月の数字なし」', () => {
+    const data = build();
+    const sitePeriod = { ...data.sitePeriod };
+    delete sitePeriod['m2025-10'];
+    const container = renderScreen({ ...data, sitePeriod });
+    selectMonth('m2026-10');
+    const line = part(kpiCard(container, t('metric.M01.label.first')), '[data-compare="yoy"]');
+    expect(line.textContent).toBe('去年の同じ月の数字なし');
+  });
+
+  it('月の途中（2026 年 11 月、未確定）は ▲▼ と % を出さず、「月が終わると…」を出す', () => {
     const container = renderScreen(build());
     selectMonth('m2026-11');
-    const line = part(kpiCard(container, t('metric.M01.label.first')), '[data-compare="yoy"]');
-    expect(line.textContent).toBe('前年のデータなし');
+    const kpi = part(container, '[data-section="kpi"]');
+    const prevLines = [...kpi.querySelectorAll('[data-compare="prev"]')].map(
+      (line) => line.textContent,
+    );
+    const yoyLines = [...kpi.querySelectorAll('[data-compare="yoy"]')].map(
+      (line) => line.textContent,
+    );
+    expect(prevLines.length).toBe(3);
+    for (const line of prevLines) expect(line).toBe(t('compare.inProgress'));
+    for (const line of yoyLines) expect(line).toBe(t('compare.inProgress.yoy'));
+    expect(kpi.textContent).not.toMatch(/[▲▼%]/);
+  });
+
+  it('読まれていた時間: 前の期間はあるが読まれた回数が 20 未満なら、その理由を書く', () => {
+    const data = build();
+    siteOf(data, 'prev28').pageviews = 19;
+    const container = renderScreen(data);
+    const card = headingByText(container, 'h3', metricLabel('M06')).parentElement;
+    expect(card?.textContent).toContain(t('s01.engagement.prev.ratio20'));
+    expect(card?.textContent).not.toContain(t('absent.prev'));
   });
 
   it('帯の 1 文を出し、benchmark30 が null のときは「まだ比較できません」', () => {
@@ -284,8 +336,15 @@ describe('S-01 全体ダッシュボード: 日ごとの図', () => {
     clickPeriod('period.last90');
     const daily = part(container, '[data-section="daily"]');
     const group = within(daily).getByRole('group', { name: t('s01.daily.grain.aria') });
-    const week = within(group).getByRole('button', { name: '週別' });
-    const day = within(group).getByRole('button', { name: '日別' });
+    // S-03 とそろえた語と順（日ごと / 週ごと）。
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['日ごと', '週ごと']);
+    expect(t('s01.daily.grain.aria')).toBe('グラフのまとめ方');
+    const week = within(group).getByRole('button', { name: '週ごと' });
+    const day = within(group).getByRole('button', { name: '日ごと' });
     expect(week.getAttribute('aria-pressed')).toBe('true');
     // 90 日を 7 日ずつにまとめると 13 個の点になる。
     expect(daily.querySelectorAll('[data-part="hit"]')).toHaveLength(13);
@@ -343,7 +402,7 @@ describe('S-01 全体ダッシュボード: 読者はどこから来たか', () 
     expect(part(sns, 'g[data-key="instagram"]').textContent).not.toContain('%');
   });
 
-  it('リンク元と市別の表は、期間を変えても値が変わらず、「前月までの集計です」とある', () => {
+  it('リンク元と市別の表は、期間を変えても値が変わらず、見出しに月の名前がある', () => {
     const container = renderScreen(build());
     const referrer = part(container, '[data-part="referrer"]');
     const region = part(container, '[data-part="region"]');
@@ -360,13 +419,15 @@ describe('S-01 全体ダッシュボード: 読者はどこから来たか', () 
     expect(referrerBefore).toContain('instagram.com');
     expect(cityBefore).toContain('川崎市');
     expect(cityBefore).toContain('300');
-    const monthlyHeadings = [...container.querySelectorAll('h3, h4')].filter((heading) =>
-      (heading.textContent ?? '').includes('前月までの集計です'),
+    // 見出し「リンク元のサイト（2026 年 10 月）」と、その直下の注記。
+    expect(headingByText(container, 'h3', `${metricLabel('M12')}（2026 年 10 月）`)).toBeDefined();
+    const cityHeading = headingByText(container, 'h4', '市別（2026 年 10 月）');
+    expect(cityHeading.nextElementSibling?.textContent).toBe(t('s01.monthly.note'));
+    expect(t('s01.monthly.note')).toBe(
+      '月ごとに集計しています。上で期間を選び直しても変わりません。',
     );
-    expect(monthlyHeadings).toHaveLength(2);
-    const note = t('s01.monthly.note.latest', { month: '2026 年 10 月' });
-    expect(within(referrer).getByText(note)).toBeDefined();
-    expect(within(region).getByText(note)).toBeDefined();
+    expect(within(referrer).getByText(t('s01.monthly.note'))).toBeDefined();
+    expect(container.textContent).not.toContain('前月までの集計');
 
     clickPeriod('period.last7');
     expect(tableText(referrer)).toBe(referrerBefore);
@@ -377,11 +438,39 @@ describe('S-01 全体ダッシュボード: 読者はどこから来たか', () 
     const container = renderScreen(build());
     selectMonth('m2026-10');
     const referrer = part(container, '[data-part="referrer"]');
-    expect(
-      within(referrer).getByText(t('s01.monthly.note.selected', { month: '2026 年 10 月' })),
-    ).toBeDefined();
-    // 比べる月の表に行がないので、差の数は出さず、文字で書く。
+    expect(headingByText(container, 'h3', `${metricLabel('M12')}（2026 年 10 月）`)).toBeDefined();
+    // 比べる月の表そのものがない（9 月、去年の 10 月）ので、差の数は出さず、文字で書く。
+    expect(within(referrer).getAllByText(t('s01.monthly.noPrev')).length).toBeGreaterThan(0);
     expect(within(referrer).getAllByText(t('absent.yoy')).length).toBeGreaterThan(0);
+  });
+
+  it('比べる月の表はあるがその行がない（上位 10 の外）ときは「前の月は表にありません」', () => {
+    const data = build();
+    const container = renderScreen({
+      ...data,
+      periods: data.periods.map((period) =>
+        period.id === 'm2026-10' ? { ...period, prevId: 'm2026-09' as const } : period,
+      ),
+      monthReferrer: {
+        ...data.monthReferrer,
+        'm2026-09': [{ domain: 'google.com', sessions: 400 }],
+      },
+    });
+    selectMonth('m2026-10');
+    const referrer = part(container, '[data-part="referrer"]');
+    const rowOf = (name: string): string =>
+      [...referrer.querySelectorAll('tbody tr')].find((row) =>
+        (row.textContent ?? '').includes(name),
+      )?.textContent ?? '';
+    expect(rowOf('google.com')).toContain('+100');
+    expect(rowOf('instagram.com')).toContain('前の月は表にありません');
+    expect(rowOf('instagram.com')).not.toContain(t('s01.monthly.noPrev'));
+  });
+
+  it('月の表の「詳しく」は折り返さない（360px で「詳し / く」にならない）', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync('src/screens/s01/s01.module.css', 'utf8');
+    expect(css).toMatch(/\.narrowCell summary\s*\{\s*white-space: nowrap;/);
   });
 });
 
@@ -396,6 +485,22 @@ describe('S-01 全体ダッシュボード: 読者はどんな人？', () => {
     expect(details?.querySelector('[data-part="device"]')).not.toBeNull();
     expect(details?.querySelector('[data-part="region"]')).not.toBeNull();
     expect(details?.querySelector('[data-part="new-returning"]')).not.toBeNull();
+  });
+
+  it('端末の 2 つ目の図（訪問回数）は、title に指標名がある', () => {
+    const container = renderScreen(build(), '?p=last7');
+    const device = part(container, '[data-part="device"]');
+    const titles = [...device.querySelectorAll('svg title')].map((title) => title.textContent);
+    expect(titles).toContain(t('s01.device.h3'));
+    expect(titles).toContain('どんな端末で読まれたか（訪問回数）');
+  });
+
+  it('期間の日数が 0 のときは、ヒートマップの切り替えを出さない', () => {
+    const data = build();
+    siteOf(data, 'last7').days = 0;
+    const container = renderScreen(data, '?p=last7');
+    const heatmap = part(container, '[data-part="heatmap"]');
+    expect(within(heatmap).queryByRole('group', { name: t('s01.heat.mode.aria') })).toBeNull();
   });
 
   it('ヒートマップは 1 日あたりの平均が既定で、合計に切り替えられる', () => {
