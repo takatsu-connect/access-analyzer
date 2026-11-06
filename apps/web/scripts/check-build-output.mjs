@@ -9,12 +9,13 @@
 //   2. NEXT_PUBLIC_ で始まる環境変数名がない
 //   3. HTML にインラインのイベント属性（onclick= など）がない
 //   4. どの HTML も同じ時点のデータで作られている（DataStatus の文が 1 種類）
-//   5. HTML の大きさが 04 §6 の目安以内（未圧縮。S-01 120 KB、S-02e 150 KB、S-03 60 KB）
+//   5. HTML の大きさが 04 §6 の目安以内（gzip 後。S-01 40 KB、S-02e 50 KB、S-03 20 KB。未圧縮の値も参考に出す）
 //
 // 値は process.env か .env.local から読む。値そのものは出力しない（見つかったか、とファイル名だけ）。
 // 失敗は終了コード 1、検査の準備が足りないとき（ビルドがない、値がない）は 2。
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,13 +26,15 @@ const APP_DIR = path.join(NEXT_DIR, 'server', 'app');
 // ブラウザに配信される形の出力（HTML、RSC のデータ、robots.txt などの本文）。
 const SERVED_EXTENSIONS = ['.html', '.rsc', '.body'];
 const KB = 1024;
-// 04 §6 の目安（未圧縮の HTML。埋め込みの JSON を含む）。
+// 04 §6 の目安（gzip 後の HTML。埋め込みの JSON を含む）。NFR-10 は表示の速さの要件で、
+// 効くのは転送量なので、未圧縮ではなく gzip 後の大きさで見る（2026-11-06。未圧縮は表と図の
+// マークアップで膨らむが、繰り返しが多く 1/8 前後に縮む）。
 const SIZE_LIMITS = [
-  { name: 'S-01（/）', limitKb: 120, match: (file) => file === 'index.html' },
-  { name: 'S-02e（/articles）', limitKb: 150, match: (file) => file === 'articles.html' },
+  { name: 'S-01（/）', limitKb: 40, match: (file) => file === 'index.html' },
+  { name: 'S-02e（/articles）', limitKb: 50, match: (file) => file === 'articles.html' },
   {
     name: 'S-03（/articles/[postId]）',
-    limitKb: 60,
+    limitKb: 20,
     match: (file) => /^articles\/\d+\.html$/.test(file),
   },
 ];
@@ -159,16 +162,20 @@ for (const limit of SIZE_LIMITS) {
     fail(`${limit.name} の HTML がない`, '.next/server/app');
     continue;
   }
-  const sized = targets.map((file) => ({ file, bytes: statSync(file).size }));
+  const sized = targets.map((file) => ({
+    file,
+    bytes: gzipSync(readFileSync(file)).length,
+    raw: statSync(file).size,
+  }));
   const largest = sized.reduce((a, b) => (b.bytes > a.bytes ? b : a));
   sizeLines.push(
-    `  ${limit.name}: 最大 ${(largest.bytes / KB).toFixed(1)} KB（${relative(largest.file)}、${targets.length} 個）/ 目安 ${limit.limitKb} KB`,
+    `  ${limit.name}: gzip 後 最大 ${(largest.bytes / KB).toFixed(1)} KB（未圧縮 ${(largest.raw / KB).toFixed(1)} KB。${relative(largest.file)}、${targets.length} 個）/ 目安 ${limit.limitKb} KB`,
   );
   // 超えたファイルは、数と、いちばん大きいものだけを出す。
   const over = sized.filter((item) => item.bytes > limit.limitKb * KB);
   if (over.length > 0) {
     fail(
-      `${limit.name} の HTML が目安（${limit.limitKb} KB）を超えている（${targets.length} 個のうち ${over.length} 個。最大 ${(largest.bytes / KB).toFixed(1)} KB）`,
+      `${limit.name} の HTML が gzip 後で目安（${limit.limitKb} KB）を超えている（${targets.length} 個のうち ${over.length} 個。最大 ${(largest.bytes / KB).toFixed(1)} KB）`,
       relative(largest.file),
     );
   }
@@ -177,7 +184,7 @@ for (const limit of SIZE_LIMITS) {
 process.stdout.write(
   `check-build-output: .next/static ${staticFiles.length} 個、HTML・RSC ${servedFiles.length} 個（うち HTML ${htmlFiles.length} 個）を検査\n`,
 );
-process.stdout.write(`HTML の大きさ（未圧縮）:\n${sizeLines.join('\n')}\n`);
+process.stdout.write(`HTML の大きさ（gzip 後）:\n${sizeLines.join('\n')}\n`);
 
 if (failures.length > 0) {
   process.stderr.write(`ビルド出力の検査に失敗（${failures.length} 件）:\n`);

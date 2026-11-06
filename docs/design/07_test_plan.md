@@ -1,7 +1,7 @@
 # 07 テスト計画
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-05
+- 更新日: 2026-11-06
 - 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0006、ADR 0008、ADR 0009
 - 読者: qa-engineer（テストの実装と受入の実施）、backend-engineer / frontend-engineer（単体テストの実装）、devops-engineer（CI の検査）
 - 変更履歴:
@@ -146,7 +146,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | E-14 | 共通説明文 | 全画面（404 を含む）に CommonNotes がある | NFR-99 |
 | E-15 | 著者一覧 | S-04 に数字（`\d`）を含むセルがない。リンクの href に slug があり、テキストノードに slug がない。S-05 の本文にも slug が現れない | FR-30、NFR-35 |
 | E-16 | 外部リンク | 全画面の `a[href^="http"]` が `https://takatsu-connect.com/` 配下だけ | FR-04、NFR-91 |
-| E-17 | 初期表示 | Lighthouse（モバイル、Slow 4G）の LCP ≤ 3.0 秒、HTML サイズ（埋め込み JSON 込み）が 04 §6 の目安以内（S-01 ≤ 120 KB、S-02e ≤ 150 KB、S-03 ≤ 60 KB、未圧縮）。超えたら 04 §6 の案を適用 | NFR-10、NFR-12 |
+| E-17 | 初期表示 | Lighthouse（モバイル、Slow 4G）の LCP ≤ 3.0 秒、HTML サイズ（埋め込み JSON 込み）が 04 §6 の目安以内（gzip 後で S-01 ≤ 40 KB、S-02e ≤ 50 KB、S-03 ≤ 20 KB。`pnpm run check:build`）。超えたら 04 §6 の案を適用 | NFR-10、NFR-12 |
 | E-18 | データ更新の遅れ | フィクスチャの `pub_meta.is_stale = true` で DataStatus に「更新が遅れています」 | FR-02、NFR-90 |
 | E-19 | 日別推移 | 切り替えが「読まれた回数」「訪問回数」の 2 つだけ。読んだ人の数の選択肢がない。未確定 3 日が薄いクラスで、前期間の線は点線（`stroke-dasharray`）と別のクラス。公開日の点がフィクスチャの公開日に一致。90 日を選ぶと週別が既定で日別に切り替えられる。固定行が初期表示から埋まり、行頭に「グラフの日付をタップすると」の文がある。S-03 の日別推移に前期間の線がない | FR-11、M-26、Q-35 |
 | E-20 | 参照元・市別・リンク元の非連動 | 期間を変えても S-01 のリンク元・市別、S-03 のリンク元の値と「前月までの集計です」「公開後 30 日時点の集計です」の注記が変わらない。30 日未満の記事は「公開後 30 日で集計します」 | FR-13、FR-15、FR-23 |
@@ -310,7 +310,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 ## 11. 未確定
 
 - Preview（Vercel）のビルドが読む Supabase（本番 anon か、ステージングプロジェクトか）。devops-engineer の決定事項（docs/operations/）。本計画は Preview に対しては構造だけを検査する前提。
-- E-17 のサイズの上限値（S-01 120 KB など）は 04 §6 の見積もりから置いた仮の値。初回ビルドの実測で見直す。
+- E-17 のサイズの上限値は、構築 3 の実測（2026-11-06）で、未圧縮から gzip 後の値に見直した（04 §6）。本番のデータでもう一度測る。
 - CSP の `script-src`（ADR 0008「結果」）が確定したら E-01 と S-11 の期待値を更新する。
 - FR-05（CSV）、FR-61（シェア）を初回に含めるかで、U / E の項目を追加する。
 - Q-36 は確定（2026-11-03）。I-DB-07 の対象（`pub_site_period_breakdown` の channel / device_pv / device_sessions）と U-22（G19、G20）に反映済み。E-05 の S-01 の期待値は 05 §3 の確定した構成に従う。
