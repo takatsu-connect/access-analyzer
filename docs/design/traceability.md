@@ -27,7 +27,7 @@
 | M-09 最後まで読まれた割合 | article_period.scroll_count | G12 | ― | 04 §3.4 period.scrollCount。05 S-03 目安「10 人中 ◯人」。07 U-16、U-22 |
 | M-10 流入チャネル | site_daily_channel、site_period_breakdown(channel)（Q-36 確定）、article_period_breakdown(channel)、author_period_breakdown(channel) | G2、G19、G13、§5.2 のチャネル対応 | ADR 0003 判断 2・3・6 | 04 §3.2 breakdown.channel（期間値）、§3.4 / §3.5 breakdown.channel、topChannelByPeriod。05 S-01、S-03、S-05 の HBar × 5、S-05 記事一覧「流入の主な経路」。07 U-03、I-DB-07 |
 | M-11 SNS 種別 | site_period_breakdown(sns)、article_period_breakdown(sns)、author_period_breakdown(sns)、sns_source_unmapped | G7、G14、§5.2（D-02） | ADR 0003 判断 2・3 | 04 §3.2 / §3.4 / §3.5 breakdown.sns。05 S-01、S-03、S-05 の「SNS の種類」。07 U-02、U-05、I-DB-07 |
-| M-12 参照元ドメイン | site_month_referrer（確定月、上位 10）、article_referrer_30d（上位 3） | G16、G17、§3 | ADR 0003 判断 3 | 04 §3.2 monthReferrer、§3.4 referrer30d。05 S-01「リンク元のサイト（前月までの集計です）」、S-03「リンク元のサイト（公開後 30 日時点）」。07 I-DB-10、E-20 |
+| M-12 参照元ドメイン | site_month_referrer（確定月、上位 10）、article_referrer_30d（上位 3） | G16、G17、§3 | ADR 0003 判断 3 | 04 §3.2 monthReferrer、§3.4 referrer30d。05 S-01「リンク元のサイト（2026 年 9 月）」の形（集計した月を見出しに入れる）、S-03「リンク元のサイト」（公開から 30 日間の集計）。07 I-DB-10、E-20 |
 | M-13 デバイス | site_daily_device、site_period_breakdown(device_pv、device_sessions)（Q-36 確定）、article_period_breakdown(device) | G3、G20、G15 | ADR 0003 判断 2・6 | 04 §3.2 breakdown.device（期間値）、§3.4 breakdown.device。05 S-01、S-03「どんな端末で読まれたか」。07 U-05、I-DB-07 |
 | M-14 地域 | site_period_breakdown(local)、site_month_city（確定月、上位 10） | G9 | ADR 0003 判断 3、06 §4（市まで） | 04 §3.2 breakdown.local、monthCity。05 S-01「おおよその地域」。07 I-DB-09、I-DB-10、E-20 |
 | M-15 初めて / また来た | site_period_breakdown(new_returning) | G6 | ADR 0003 判断 2 | 04 §3.2 breakdown.newReturning。05 S-01。07 U-05 |

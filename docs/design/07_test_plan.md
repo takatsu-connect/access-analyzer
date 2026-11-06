@@ -15,6 +15,7 @@
   - 2026-11-05: 構築 1 のコードレビューと監査（audits/2026-11-05-build1-review.md）を反映（依頼者の決定）。U-01、U-09〜U-11、I-DB-01、I-DB-08、I-DB-15、I-DB-17、I-DB-18 を修正
   - 2026-11-05: 構築 2 の実装を反映。U-23、I-B-01、S-06 を 03 §4 の著者の取り方（個別の `users/<id>`）に合わせた。I-DB-17 に `pub_article_cumulative` を足した。I-B-11 (b) の `batch_run` の状態、§2 のローカルでの実行、§5 のフィクスチャの置き場所を実装に合わせた。S-06、S-16、S-17 の pytest での検査を追記
   - 2026-11-05: 構築 2 のコードレビューと監査（audits/2026-11-05-build2-review.md）を反映。§2: テストから外部へ接続しない歯止めと、結合テストの接続先の検査（監査 M-1、L-1）。I-DB-17: 統計が 0 行の状態での性能
+  - 2026-11-06: 構築 3 の実装に合わせた（§2 と §6 から E2E の spec の対応表 `apps/web/e2e/README.md` を参照。§3 に画面の部品のテスト `tests/screens/**`、U-20 を列の集合の突き合わせに。E-08 の判定、E-17 の LCP 未実施、E-20 の文言、E-21 の実行方法と WebKit の fixme。S-11、S-14 を実装済みに、`build` の最初に fetch-cache を消す。§11 に残りを追加）
 
 ## 1. 方針
 
@@ -31,7 +32,7 @@
 | 単体（U） | `apps/batch` の純関数、`apps/web/src/lib` の関数と部品 | Python（バッチ）、Node.js（BI。jsdom は部品のみ） | pytest（バッチ）、Vitest、@testing-library/react（BI） | PR ごと、ローカル |
 | 結合 DB（I-DB） | マイグレーション、公開ビュー、RLS、grant | Supabase ローカル（`supabase start`、Docker） | pytest + psycopg で SQL を実行（`apps/batch/tests/db/`）。PostgREST 層は httpx。anon / `batch_writer` / 管理の 3 接続 | PR ごと（CI）、ローカル |
 | 結合バッチ（I-B） | `apps/batch` の `daily` / `backfill` / `publish_only` を端から端まで | Supabase ローカル + 偽物とモック（GA4 は固定応答の偽クライアント、WP と Deploy Hook は respx） | pytest、respx | PR ごと（CI） |
-| E2E（E） | ビルドした BI の画面・ヘッダ・404・URL パラメータ | CI 内: フィクスチャを入れた Supabase ローカルに対して `next build` → `next start` → Playwright。加えて Vercel の Preview URL に対するスモーク（ヘッダ、noindex、404、主要画面の存在） | Playwright（Chromium、WebKit、Firefox。モバイルは Pixel 5 / iPhone 12 のエミュレーション） | PR ごと（CI）。Preview スモークはデプロイ後 |
+| E2E（E） | ビルドした BI の画面・ヘッダ・404・URL パラメータ | CI 内: フィクスチャを入れた Supabase ローカルに対して `next build` → `next start` → Playwright。加えて Vercel の Preview URL に対するスモーク（ヘッダ、noindex、404、主要画面の存在） | Playwright（Chromium、WebKit、Firefox。モバイルは Pixel 5 / iPhone 12 のエミュレーション）。spec は `apps/web/e2e/*.spec.ts`、07 の ID との対応表は `apps/web/e2e/README.md`（構築 3） | PR ごと（CI）。Preview スモークはデプロイ後（未実施。§11） |
 | CI の静的検査（S） | ソース、設定、ワークフロー、依存 | GitHub Actions | ESLint の独自ルール、ruff、`grep`、`pip-audit`、`pnpm audit`、gitleaks、actionlint | PR ごと |
 | 手動の受入（A） | 06_acceptance.md の「目視」「照合」 | 本番相当（Preview または初回の本番） | 人 | 初回公開前、要件変更時 |
 
@@ -42,7 +43,7 @@
 
 ## 3. 単体テスト（pytest: apps/batch、Vitest: apps/web）
 
-`apps/batch/src/takatsu_batch` と `apps/web/src/lib` は行カバレッジ 90% 以上を目標（公開範囲に関わる関数は 100%）。U-01〜U-13、U-22、U-23、U-27〜U-29 は pytest、それ以外は Vitest。関数名は Python では snake_case（`normalize_page_path`、`apply_mask`、`apply_secondary_mask`、`own_median_30d`、`apply_author_hierarchy_mask`、`classify_error`、`log_error` など）。
+`apps/batch/src/takatsu_batch` と `apps/web/src/lib` は行カバレッジ 90% 以上を目標（公開範囲に関わる関数は 100%）。BI 側には、下の U の表のほかに、画面の部品のテスト（`apps/web/tests/screens/**`。画面ごとのフォルダ s01〜s08。jsdom と @testing-library/react）がある（構築 3）。U-01〜U-13、U-22、U-23、U-27〜U-29 は pytest、それ以外は Vitest。関数名は Python では snake_case（`normalize_page_path`、`apply_mask`、`apply_secondary_mask`、`own_median_30d`、`apply_author_hierarchy_mask`、`classify_error`、`log_error` など）。
 
 | ID | 対象（関数） | 検査 | 受入基準 |
 | --- | --- | --- | --- |
@@ -65,7 +66,7 @@
 | U-17 | `fold6(heatmap168)` | 24 時間 → 6 区分、合計と平均。null を含む区分の扱い（null が 1 つでもあれば区分は null） | NFR-99 |
 | U-18 | `parseQuery(search, allow)` | 04 §8 の表の全行。正常値、形式違い、許可リスト外、`sort` の条件（絞り込みなし / 親カテゴリのみ / 子カテゴリ / 著者 / 公開年月）、1 つの不正値が他に影響しない、未知パラメータの除去 | FR-03、FR-24、NFR-91、NFR-98 |
 | U-19 | `ui-text.ts` の完全性 | すべての指標 ID（M-01〜M-34、M-41）に label と note がある。05 §2.1 の表のキー（`band.*`、`notes.*`、`absent.*`、`lead.*`、`s01.*`〜`s08.*`）がすべて存在する。禁止語（偏り、下位、読まれなかった、少ない、順位、ランキング、あなた）を含まない。「出ません」で終わる文がない（不在の文言は「〜になると出ます」の形。05 §2.3）。GA4 の API 名は括弧の中にだけ現れる | NFR-97、NFR-99 |
-| U-20 | `pub-types.ts` と `supabase gen types` の突き合わせ | 公開ビューの列名・型が一致（CI の Supabase ローカルから生成した型と Vitest の型テストで比較） | 01 §3 |
+| U-20 | `pub-types.ts` と公開ビューの列の突き合わせ | 公開ビューの列名・型が一致。構築 3 の実装では `supabase gen types` を使わず、リポジトリ直下の `tests/snapshots/pub-columns.json`（I-DB-16 のスナップショット）と `apps/web/src/data/pub/schemas.ts` の zod スキーマの列の集合の一致を `apps/web/tests/data/pub-types.test.ts` で確かめ、`pub-types.ts` の型とスキーマのずれはコンパイル時に検出する（schemas.ts の `PubSchemaChecks`） | 01 §3 |
 | U-21 | `page-data` の zod スキーマ | 各 `*Data` のサンプルが通る。`null` は伏せ値の列にだけ許される | 04 §3 |
 | U-22 | バッチの GA4 リクエスト組み立て | 問い合わせ G1〜G17、G19、G20 の `metrics` / `dimensions` に禁止名（newUsers、totalUsers、engagedSessions、engagementRate、averageSessionDuration、bounceRate、pageReferrer、pageLocation、`customEvent:`）がない。eventName フィルタは scroll だけ（AddToAnyShare は初回対象外。M-4）。地域は country / region / city まで。G19 は sessionDefaultChannelGroup × sessions、G20 は deviceCategory × screenPageViews・sessions で dateRanges が期間集合（Q-36） | M-04〜M-08（廃止）、NFR-32、NFR-37、NFR-38、M-10、M-13 |
 | U-23 | バッチの WP リクエスト組み立て | `/wp-json/wp/v2/` 配下だけ。`status` を広げるパラメータがない。`comments` と著者の一覧（`/users`）を呼ばない。著者は個別の `users/<id>` を `_fields=name,slug,link` で取り、メールなど他の項目を求めない（03 §4 の 5）。ID を指定した記事の取得（03 §4 の 4b）も `status=publish` と同じ `_fields` だけ | NFR-34、NFR-35、FR-72、M-42（廃止） |
@@ -126,7 +127,9 @@
 
 ## 6. E2E（Playwright、プレビュー環境）
 
-CI 内の `next build`（Supabase ローカルのフィクスチャ）に対して実行する。Preview URL には E-01〜E-05 だけ（スモーク）。
+CI 内の `next build`（Supabase ローカルのフィクスチャ）に対して実行する。Preview URL には E-01〜E-05 だけ（スモーク。デプロイ工程で行う。§11）。
+
+各 ID を実装した spec ファイル（`apps/web/e2e/*.spec.ts`）とスクリプト、件数、fixme は `apps/web/e2e/README.md` の対応表を正とする（本書には写さない）。動かし方は `apps/web/README.md`。Chromium は `pnpm run e2e`、WebKit と Firefox は `pnpm run e2e:browsers`（E-21）。
 
 | ID | 検査 | 合格条件 | 受入基準 |
 | --- | --- | --- | --- |
@@ -137,7 +140,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | E-05 | 主要画面の存在 | S-01〜S-08 が 200 で開き、h1 が §1 の問いの文言 | NFR-94 |
 | E-06 | 期間切り替えと URL | `?p=last7` などで表示が変わり、URL が同期する。別のコンテキストで同じ URL を開くと同じ表示。`?p=prev28`、`?p=m1999-01`、`?p=<script>` は既定（直近 28 日）になりエラーが出ない | FR-01、FR-06、FR-03、NFR-91 |
 | E-07 | 並べ替えの制限 | S-02e で絞り込みなし・親カテゴリのみのとき並び UI がなく、`?sort=pv` を付けても公開日順。著者 / 子カテゴリ / 公開年月で絞ると多い順の UI が出る。少ない順の UI がどこにもない。S-05 は常に並べ替え可 | FR-24、NFR-98 |
-| E-08 | 順位の数字がない、0 本の著者がない | S-02a〜S-02e、S-05、S-07b、S-08 の表に連番の列・先頭の数字がない（`^\d+\.?\s` に一致するセルがない）。S-08 のライターの表に本数 0 の行がなく（フィクスチャの「期間内に公開なし」の著者が載らない）、見出しが「この期間に記事を公開したライター（名前の順）」 | NFR-36、FR-51 |
+| E-08 | 順位の数字がない、0 本の著者がない | S-02a〜S-02e、S-05、S-07b、S-08 の表に連番の列・先頭の数字がない。判定は、見出しに連番・順位の列（`#`、`No.`、「順」「位」「順位」「ランク」）がない、行の先頭のセルが 3 桁までの数（`^\d{1,3}\.?(\s|$)`）でない、「◯ 位」のセルがない、の 3 つ（構築 3 で直した。旧案の `^\d+\.?\s` は「2 日目: 30 回」や「2026 年 11 月」にも当たるため）。S-08 のライターの表に本数 0 の行がなく（フィクスチャの「期間内に公開なし」の著者が載らない）、見出しが「この期間に記事を公開したライター（名前の順）」 | NFR-36、FR-51 |
 | E-09 | 伏せ値の表示 | フィクスチャで伏せ値になる区分（一次・二次とも）が「—」と「伏せ値」で、両者の DOM が同じクラス・文言。セルに「5 回未満」の文言がない（説明文の文言は NFR-99） | FR-73、NFR-33、NFR-96 |
 | E-10 | 比率の分母 | 分母 19 のフィクスチャで % が出ず差だけ、20 で % が出る | NFR-96、FR-01 |
 | E-11 | 色 | 記事・著者の数値要素の computed color が設計トークン（基調色の濃淡とグレー）のいずれかで、赤・緑系の色（hue 0〜20、100〜160）がない。帯の 3 区分が同じ色 | NFR-97 |
@@ -146,12 +149,12 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | E-14 | 共通説明文 | 全画面（404 を含む）に CommonNotes がある | NFR-99 |
 | E-15 | 著者一覧 | S-04 に数字（`\d`）を含むセルがない。リンクの href に slug があり、テキストノードに slug がない。S-05 の本文にも slug が現れない | FR-30、NFR-35 |
 | E-16 | 外部リンク | 全画面の `a[href^="http"]` が `https://takatsu-connect.com/` 配下だけ | FR-04、NFR-91 |
-| E-17 | 初期表示 | Lighthouse（モバイル、Slow 4G）の LCP ≤ 3.0 秒、HTML サイズ（埋め込み JSON 込み）が 04 §6 の目安以内（gzip 後で S-01 ≤ 40 KB、S-02e ≤ 50 KB、S-03 ≤ 20 KB。`pnpm run check:build`）。超えたら 04 §6 の案を適用 | NFR-10、NFR-12 |
+| E-17 | 初期表示 | Lighthouse（モバイル、Slow 4G）の LCP ≤ 3.0 秒、HTML サイズ（埋め込み JSON 込み）が 04 §6 の目安以内（gzip 後で S-01 ≤ 40 KB、S-02e ≤ 50 KB、S-03 ≤ 20 KB。`pnpm run check:build`）。超えたら 04 §6 の案を適用。構築 3 では大きさの検査だけを実装した。LCP は未実施（Lighthouse を入れていない。§11） | NFR-10、NFR-12 |
 | E-18 | データ更新の遅れ | フィクスチャの `pub_meta.is_stale = true` で DataStatus に「更新が遅れています」 | FR-02、NFR-90 |
 | E-19 | 日別推移 | 切り替えが「読まれた回数」「訪問回数」の 2 つだけ。読んだ人の数の選択肢がない。未確定 3 日が薄いクラスで、前期間の線は点線（`stroke-dasharray`）と別のクラス。公開日の点がフィクスチャの公開日に一致。90 日を選ぶと週別が既定で日別に切り替えられる。固定行が初期表示から埋まり、行頭に「グラフの日付をタップすると」の文がある。S-03 の日別推移に前期間の線がない | FR-11、M-26、Q-35 |
-| E-20 | 参照元・市別・リンク元の非連動 | 期間を変えても S-01 のリンク元・市別、S-03 のリンク元の値と「前月までの集計です」「公開後 30 日時点の集計です」の注記が変わらない。30 日未満の記事は「公開後 30 日で集計します」 | FR-13、FR-15、FR-23 |
-| E-21 | ブラウザ | E-05〜E-09 を Chromium、WebKit、Firefox で実行 | NFR-80 |
-| E-22 | 画面レビューの反映（責めない形） | S-03: 本文に ▲▼ と「前の 28 日と比べて」がなく、「公開からの合計は」がある。h1 が「この記事はどう読まれた？」。`PeriodPicker` が「公開からの読まれ方」「到達のお知らせ」「◯◯さんのこれまでの記事と比べて」の後ろにある。S-05: 「1 人あたり」「真ん中です」（著者の本数の中央値）がなく、(b) の文が「◯◯さんの記事は、公開から 30 日で」で始まり、旧 (e) の文が別行にない。期間内の公開が 0 本のフィクスチャで「新しく公開した記事はありません」が出て「0 本公開し」が出ない。到達がない期間で「到達のお知らせ」の見出しがない。S-02b・S-05 の `BandDot` の点の `cx` が 3 つの固定値のいずれか。S-01: 「読者はどんな人？」の `<details>` が幅 1280 で `open`、360 で閉。各 HBar の節に「〜のうち」の前置きがある。全画面で「〜になると出ます」の形以外の不在文（「〜のため出ません」）がない | FR-23、FR-31、FR-51、NFR-36、NFR-94〜NFR-99（advice/2026-11-03-screens-review.md 高 1〜5、中） |
+| E-20 | 参照元・市別・リンク元の非連動 | 期間を変えても S-01 のリンク元・市別、S-03 のリンク元の値と注記（05 §3・§5 の「月ごとに集計しています。上で期間を選び直しても変わりません。」「公開から 30 日間の集計です。期間を選び直しても変わりません。」）が変わらない。30 日未満の記事は「公開から 30 日たつと出ます」（05 §5 と実装に合わせた。要件の文言との食い違いは §11） | FR-13、FR-15、FR-23 |
+| E-21 | ブラウザ | E-05〜E-09 を Chromium、WebKit、Firefox で実行（`pnpm run e2e:browsers` が WebKit と Firefox）。WebKit だけ、E-06 の CSP 違反の検査で期間の select に `style-src-attr` の違反が 1 件出るので fixme にしている（§11） | NFR-80 |
+| E-22 | 画面レビューの反映（責めない形） | S-03: 本文に ▲▼ と「前の 28 日と比べて」がなく、「公開からの合計は」がある。h1 が「この記事はどう読まれた？」。`PeriodPicker` が「公開からの読まれ方」「到達のお知らせ」「◯◯さんのこれまでの記事と比べて」の後ろにある。S-05: 「1 人あたり」「真ん中です」（著者の本数の中央値）がなく、(b) の文が「◯◯さんの記事は、公開から 30 日で」で始まり、旧 (e) の文が別行にない。期間内の公開が 0 本のフィクスチャで「どれも、この期間より前に公開した記事です。」（`s05.summary.a.zero`。構築 3 で 05 §6.2 に合わせた）が出て「0 本公開し」が出ない。到達がない期間で「到達のお知らせ」の見出しがない。S-02b・S-05 の `BandDot` の点の `cx` が 3 つの固定値のいずれか。S-01: 「読者はどんな人？」の `<details>` が幅 1280 で `open`、360 で閉。各 HBar の節に「〜のうち」の前置きがある。全画面で「〜になると出ます」の形以外の不在文（「〜のため出ません」）がない | FR-23、FR-31、FR-51、NFR-36、NFR-94〜NFR-99（advice/2026-11-03-screens-review.md 高 1〜5、中） |
 
 ## 7. CI の検査
 
@@ -169,10 +172,10 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | S-08 | 依存の脆弱性 | `pip-audit --require-hashes -r apps/batch/requirements.txt`（例外は `--ignore-vuln` に理由つきで。`--disable-pip` は要確認 ADR 0009 V-6）と `pnpm audit --audit-level=high`（`apps/web`。例外は `pnpm audit` の ignore に理由つきで）。失敗で止める。同じ検査を週 1 の `audit.yml`（`schedule`）でも流し、失敗を通知する（W-9）。本番の `requirements.txt` に `colorama` がない（経路監査 L-7） | 06 §10、NFR-45 |
 | S-09 | 秘密の検出 | gitleaks（全履歴は初回、以後は差分）。Supabase のキーの形（`eyJ…` の JWT）、Postgres の接続文字列（`postgresql://` の後に `:` と `@` を含むもの。`pooler.supabase.com` を含むもの）、Deploy Hook URL（`api.vercel.com/v1/integrations/deploy/`）、GCP の鍵（`"type": "service_account"`）のパターンを追加 | NFR-40、NFR-41 |
 | S-10 | ワークフローの規律 | actionlint。`permissions:` が全ワークフローにあり、`id-token: write` は GCP 認証ジョブだけ、`pull_request_target` がない、`uses:` がすべて 40 桁 SHA（`grep -E 'uses: .+@[0-9a-f]{40}'` と一致しない行があれば失敗）、schedule のジョブに `if: github.ref == 'refs/heads/main'`。heartbeat の分離（M-3）: `contents: write` が現れるのは `heartbeat.yml` だけ（`grep -l 'contents: write' .github/workflows/*` の結果が `heartbeat.yml` のみ）。`heartbeat.yml` の `uses:` が `actions/checkout` だけで、`run:` に `pnpm`・`npm`・`node`・`pip`・`python` がなく、`secrets.` の参照がなく、`id-token` がない。`daily.yml` の最上位 `permissions` が `contents: read`。`daily.yml` の `uses:` が `actions/checkout`、`actions/setup-python`、`google-github-actions/auth` だけで、`astral-sh/` がどのワークフローにもない。`SUPABASE_BATCH_DB_URL` の参照が `daily` と `backfill` の取得・書き込みのステップだけ。`SUPABASE_BATCH_DB_URL` と `VERCEL_DEPLOY_HOOK_URL` を参照するジョブに `environment: production` がある。`environment:` は `daily.yml` だけに現れる（W-3。ブランチ制限そのものは YAML に現れないので A-11 で確認）。`daily.yml` の `pip install` に `--require-hashes --only-binary :all:` がある（W-9）。`audit.yml` が週 1 の `schedule` を持ち、`permissions` が `contents: read` だけで、`secrets.` の参照と `id-token` がない。自動 merge がない（`gh pr merge`、`--auto`、`automerge` がワークフローに現れない）。`.github/dependabot.yml` に `cooldown` がある（W-9。設定の形は要確認 ADR 0009 V-6）。ワークフローに `PG` で始まる環境変数の設定がない（ADR 0009「TLS」） | NFR-45、ADR 0009 |
-| S-11 | 応答ヘッダ | `next build` → `next start` → 全ルートに対して `curl -I` し、E-01 の値を検査（E2E と二重。Playwright が落ちても単独で分かるように） | NFR-91 |
+| S-11 | 応答ヘッダ | `next build` → `next start` → 全ルートに対して `curl -I` し、E-01 の値を検査（E2E と二重。Playwright が落ちても単独で分かるように）。実装済み: `apps/web/scripts/check-headers.mjs`（`pnpm run check:headers`） | NFR-91 |
 | S-12 | 型検査と lint | バッチ: `ruff check`、`ruff format --check`、`mypy --strict`。BI: `tsc --noEmit`、ESLint、Prettier | ― |
 | S-13 | マイグレーションと公開ビュー | §4 の I-DB-01〜I-DB-18（スキーマの usage、列のスナップショット、`batch_writer` の権限を含む） | NFR-43 |
-| S-14 | ビルド出力の検査 | E-04（`.next/static` と HTML に `SUPABASE_URL` の値と anon キーの先頭 20 文字がない。L-5）と E-17 のサイズ | NFR-42、NFR-10 |
+| S-14 | ビルド出力の検査 | E-04（`.next/static` と HTML に `SUPABASE_URL` の値と anon キーの先頭 20 文字がない。L-5）と E-17 のサイズ（gzip 後）。実装済み: `apps/web/scripts/check-build-output.mjs`（`pnpm run check:build`）。`pnpm run build` は最初に `.next/cache/fetch-cache` を消す（`scripts/clean-fetch-cache.mjs`。前のビルドの古いデータのページが混ざる不具合の対策） | NFR-42、NFR-10 |
 | S-15 | `.env.example` の形 | 各行が `NAME=` だけ（値がない）。本番の名前の一覧（03 §16、06 §3）と一致 | NFR-40 |
 
 | S-16 | 言語をまたぐ定数の一致 | `contracts/constants.json`（`SITE_ORIGIN`、チャネル 5 区分、SNS 5 区分、axis、鮮度区分、移動窓の期間 ID）と、Python の定数、TypeScript の定数が一致することを pytest（`tests/test_contracts.py`）と Vitest の両方で検査 | ADR 0004、FR-04 |
@@ -317,3 +320,9 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 - 複数の Python 版や OS での `requirements.txt` の扱い（ADR 0004）、pooler の TLS と `executemany`（ADR 0009）は実装時と A-11 で確認する。
 - U-30 の期待値、I-B-11 (h) と S-10 の Dependabot の検査は、ADR 0009 の V-1、V-6 の確認結果で調整する。Dependabot が pip-compile のハッシュを再生成するかは初回の PR で確かめる（自動化しない）。
 - 「Standard Protection」（06 §2.1、M-6）が Hobby で設定できるかの確認結果により、Preview スモーク（E-01〜E-05）の実行方法（Vercel Authentication のバイパストークンの要否）を決める。
+- 構築 3 の残り（2026-11-06）:
+  - E-20 の文言: 要件（04_functional.md、06_acceptance.md）は「公開後 30 日で集計します」、05 §5 と実装は「公開から 30 日たつと出ます」。本書は 05 に合わせた。要件側を合わせるかは requirements-analyst が判断する（E-20 の該当の検査は fixme）。
+  - E-10: 前の期間の値がちょうど 20 の場面がフィクスチャにない（fixme）。フィクスチャを足すか、単体（U-14）で足りるとするかを決める。
+  - E-17: LCP は未実施（Lighthouse を入れていない）。入れるか、受入の手動（§8）で測るかを決める。
+  - E-21: WebKit だけ期間の select で `style-src-attr` の違反 1 件（fixme）。原因の切り分けは未了。
+  - Preview URL のスモーク（E-01〜E-05）はデプロイ工程で行う。

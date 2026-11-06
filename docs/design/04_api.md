@@ -8,6 +8,7 @@
   - 2026-11-03: `packages/shared` の廃止に伴いパスを `apps/web/src/lib/` に変更（ADR 0004）。契約の内容は変わらない
   - 2026-11-03: analytics-advisor の画面レビュー（advice/2026-11-03-screens-review.md）と security-auditor の再確認（audits/2026-11-03-design-review-recheck.md）の残りを反映（ArticleDetailData の period から prev* を外す、AuthorPageData の siteMedianPostCount を削除、PostRow の band7 を埋め込まない、一覧の benchmark を n = 30 だけに、ActivityData.authorCounts は 1 本以上の著者だけ。N-1: pub_benchmark_curve と帯の列はビューが可視記事から計算するが列集合は変わらない）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。契約のコメントから除外後と除外込みの区別を外した（型は変えない）
+  - 2026-11-06: 構築 3 の実装に合わせた（§3.9 に `yoyPostCount`、`yoyMonths`、`categoryIds` / `categoryPaths`、`topChannelByPeriod` の `'none'`、月の状態 `monthProgress` を追加。§5 に参照元ドメインの絞り込みとページのデータの検査の例外。§6 の実測を更新。§8 の ID の形と検索語の切り詰め）
   - 2026-11-05: 構築 3 の実装を反映（§3.9 にまとめた）。型の正は `apps/web/src/lib/page-data.ts`。区分の名前を `contracts/constants.json` に合わせ、数え始める前に公開した記事の印（`isPreMeasure`、`measureStart`）、著者ページのない著者（`authorSlug` が null）、読み出しの方法（§5）、JSON の大きさの実測（§6）を追記
 
 ## 1. 方針（HTTP API はない）
@@ -205,7 +206,7 @@ type AuthorPageData = PageCommon & {
   summary: { ownMedian30d: number | null; eligibleCount: number; band30: Band | null };   // FR-31 (b)（(e) を統合）。band30 は pub_author_summary.band_30d（ビューが計算。02 §4.1）
   posts: PostRow[];                                                  // 著者の記事
   pvByPeriod: Record<PeriodId, number[]>;                            // posts と同じ順
-  topChannelByPeriod: Record<PeriodId, (Channel | null)[]>;          // FR-32 の「流入の主な経路」。全区分が伏せなら null
+  topChannelByPeriod: Record<PeriodId, (Channel | null | 'none')[]>; // FR-32 の「流入の主な経路」。null は伏せ値、'none' は訪問なし（§3.9）
   milestones: { postId: number; milestone: number; reachedOn: string }[];
   benchmark: { p25: number; p50: number; p75: number } | null;       // n = 30 の 1 行（(b) の文言用）。母集団不足は null
 };
@@ -276,6 +277,14 @@ type Band = 'upper' | 'middle' | 'lower';
 - カテゴリの軸の順は、広告の軸（`category_id` が設定値 `AD_CATEGORY_ID` の親カテゴリ）を最後に、ほかの親は `category_id` の昇順。
 - `pub_meta.last_status` は読むが、埋め込まない（画面で使わない）。
 
+2026-11-06 に追加（画面の比較の決まり 05 §2.2.1 と、S-05・S-06b・S-08 の表示のため）:
+
+- `ActivityData.monthly[].yoyPostCount: number | null`: 去年の同じ月の公開本数。24 か月より前の月も引く。数字がない（公開の記録より前の）月は null（伏せ値ではない）。
+- `SeasonalData.yoyMonths: MonthId[]`: 24 か月の外にある、去年の同じ月（13〜24 か月前の月の「去年の同じ月と比べて」に使う。古い順）。図には描かない。カテゴリごとの読まれた回数は `months` と `yoyMonths` の両方の月について持つ。
+- `AuthorPageData.posts[].categoryIds: number[]` と `AuthorPageData.categoryPaths: { id: number; path: string }[]`: 記事の一覧のカテゴリの列のため。`categoryPaths` は著者の記事に付いたカテゴリだけ（ID の順）。`categoryIds` を持つのは S-02e と S-05 だけで、ほかの画面では空の配列。
+- `AuthorPageData.topChannelByPeriod` の値は `Channel | null | 'none'`。`'none'` は訪問がない（その期間の行がないか、全区分が 0）で、画面は「該当なし」と書く。null は伏せ値（最多の区分が伏せ値の側にある）。§3.5 の旧記述「全区分が伏せなら null」より、こちらを正とする。
+- 月の状態（確定 / 集計中 / 月の途中）は JSON に持たない。`Period` の `end` と `isConfirmed` から `monthProgress()`（`apps/web/src/lib/derive/periods.ts`。値は `'confirmed' | 'settling' | 'inProgress'`）で導く。数え始めた月の開始日は `partialMonthStartDay()` で `meta.measureStart` から導く。
+
 ## 4. 型定義（apps/web/src/lib）
 
 - `apps/web/src/lib/pub-types.ts`: 公開ビューの行の型（`PubMeta`、`PubPeriod`、`PubPost`、`PubArticlePeriod`、…）。02 §4 の表と列名・型を一致させ、手書きで固定する。`supabase gen types` の出力と突き合わせるテストを置く（01 §4、07 §3）。
@@ -315,6 +324,8 @@ type Band = 'upper' | 'middle' | 'lower';
 - 画面で使うビューだけを読む。`pub_site_daily_channel`、`pub_site_daily_device`、`pub_batch_run` は読まない（行の型とスキーマは、公開ビューの契約の検査のために持つ）。
 - すべてのビューを、主キーの順で 1,000 行ずつ読み、空のページが返ったら終える。サーバー側の上限が 1,000 行より小さく設定されたときに、途中で切れたまま気づかないのを防ぐため。1 回の `loadAll()` は約 80 リクエストになる（§2 の目安の約 40 より多い）。
 - 行は `zod` で検証する。定義にない区分や軸の行があれば、捨てずにビルドを失敗させる。読み出しのエラーに入れるのはビュー名だけ（URL、キー、行の値を出さない）。
+- 組み立てたページのデータの検査（`zod` の `parse`）が失敗したときも、行の値を含まない固定の文の例外にする（監査 L-5）。
+- 参照元ドメイン（`monthReferrer`、`referrer30d`）は、ドメインの形でない行（括弧つきの値、空白や記号を含む値、長すぎる値）を表から落とす（監査 L-3）。完全な参照 URL や GA4 の特殊な値を表に出さないため。
 - 公開ビューの列の集合と型は、`tests/snapshots/pub-columns.json`（I-DB-16 のスナップショット）と Vitest で突き合わせる（07 U-20 の `supabase gen types` の代わり）。
 
 組み立て層（`apps/web/src/data/pages/*.ts`）。`PubCache` から各ページの JSON を作り、`zod` で検証して返す。
@@ -332,7 +343,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `buildActivity(cache)` | ― | `ActivityData` | §3.7 |
 | `buildReactions(cache)` | ― | `ReactionsData` | FR-61 を含めるときだけ |
 
-共通の派生計算（`apps/web/src/lib/derive/`。バッチとは別。表示用）: `compare(cur, prev)` → `{ diff, ratio | null }`（分母 20 未満は ratio = null）、`share(values)` → 構成比（伏せ値を含む行は分母を「表示している値の和」ではなく**合計列**にし、伏せ値セルの構成比は出さない）、`topChannel(record)`、`fold6(heatmap168)`（スマホの 6 区分）、`unconfirmedFrom(baseDate)`（直近 3 日）、`latestConfirmedDay(baseDate)`（グラフの固定行の既定日 = 基準日 − 3 日。05 §2.6）。`median(numbers)` は `siteMedianPostCount` の削除で使う場所がなくなったため置かない（`quantiles` / `band` は `apps/batch/tests/support/reference.py` にテスト用の参照実装として置く。07 U-07、U-08、I-DB-17）。
+共通の派生計算（`apps/web/src/lib/derive/`。バッチとは別。表示用）: `compare(cur, prev)` → `{ diff, ratio | null }`（分母 20 未満は ratio = null）、`share(values)` → 構成比（伏せ値を含む行は分母を「表示している値の和」ではなく**合計列**にし、伏せ値セルの構成比は出さない）、`topChannel(record)`（最多の区分。訪問がない = 行なしか全区分 0 なら `'none'`、最多が伏せ値の側なら null）、`fold6(heatmap168)`（スマホの 6 区分）、`unconfirmedFrom(baseDate)`（直近 3 日）、`latestConfirmedDay(baseDate)`（グラフの固定行の既定日 = 基準日 − 3 日。05 §2.6）。`median(numbers)` は `siteMedianPostCount` の削除で使う場所がなくなったため置かない（`quantiles` / `band` は `apps/batch/tests/support/reference.py` にテスト用の参照実装として置く。07 U-07、U-08、I-DB-17）。
 
 ## 6. サイズの見積もりと絞り込み
 
@@ -350,7 +361,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | S-05 著者（最大、120 本） | posts 120 × 150 B ≒ 18 KB、pvByPeriod 19 × 120 ≒ 9 KB、topChannel 19 × 120 ≒ 8 KB、breakdown / categoryMix ≒ 8 KB | 約 45 KB（典型は 10 KB） | 記事 +250 B / 本 |
 | S-06 / S-06b / S-07 / S-08 | 期間 × カテゴリ（約 30）またはタグ（約 50） | 各 10〜20 KB | 月 +1 KB |
 
-実測（2026-11-05、構築 3。架空の記事 42 本、選べる期間 17 のフィクスチャ）: どの画面も目安の中（S-01 35 KB、S-02e 21 KB、S-03 最大 11 KB、S-05 最大 29 KB）。ただし `PostRow` は 1 本あたり約 420 B（上の見積もりは 180 B。行ごとにキー名を繰り返すため）で、記事が 225 本になると S-02e は約 99 KB、S-02b は約 87 KB になる見込み。本番のデータで実測してから、下の案に加えて、`PostRow` を列指向にする、URL をパスだけにする、を検討する。
+実測（2026-11-05、構築 3。架空の記事 42 本、選べる期間 17 のフィクスチャ）: どの画面も目安の中（S-01 35 KB、S-02e 21 KB、S-03 最大 11 KB、S-05 最大 29 KB。2026-11-06 の構築 3 の修正後は S-05 最大 30.9 KB。`categoryIds` / `categoryPaths` の追加による。ほかの画面の値は 2026-11-05 のまま）。ただし `PostRow` は 1 本あたり約 420 B（上の見積もりは 180 B。行ごとにキー名を繰り返すため）で、記事が 225 本になると S-02e は約 99 KB、S-02b は約 87 KB になる見込み。本番のデータで実測してから、下の案に加えて、`PostRow` を列指向にする、URL をパスだけにする、を検討する。
 
 HTML 全体はこれに初期表示の DOM（既定期間 = 直近 28 日の描画分）が加わる。
 
@@ -377,10 +388,10 @@ HTML の大きさの目安（2026-11-06 に見直し）: 初期表示の DOM は
 | パラメータ | 形式（正規表現） | 許可リスト | 既定 | 使う画面 |
 | --- | --- | --- | --- | --- |
 | `p`（期間） | `^(last7\|last28\|last90\|m\d{4}-(0[1-9]\|1[0-2]))$` | かつ `periods[].id` に存在する（prev* は不可） | `last28` | 全画面 |
-| `cat`（カテゴリ） | `^\d{1,7}$` | かつ `categories[].id` に存在する | なし | S-02e |
-| `author`（著者） | `^[a-z0-9-]{1,64}$` | かつ `authors[].slug` に存在する | なし | S-02e |
+| `cat`（カテゴリ） | `^[1-9][0-9]{0,9}$`（`ID_PATTERN`） | かつ `categories[].id` に存在する | なし | S-02e |
+| `author`（著者） | `^[a-z0-9-]{1,64}$`（`SLUG_PATTERN`） | かつ `authors[].slug` に存在する | なし | S-02e |
 | `ym`（公開年月） | `^\d{4}-(0[1-9]\|1[0-2])$` | かつ `posts[].publishedOn` の年月のいずれか | なし | S-02e |
-| `q`（タイトル検索） | 長さ 1〜50（NFC 正規化、前後の空白を除く） | ―（埋め込んだタイトルに対する `includes` にだけ使う。描画は React のテキストノード） | なし | S-02e |
+| `q`（タイトル検索） | 長さ 1〜50（NFC 正規化、前後の空白を除く。50 文字を超える分は切る） | ―（埋め込んだタイトルに対する `includes` にだけ使う。描画は React のテキストノード） | なし | S-02e |
 | `sort` | `^(pv\|pv7\|pv30)$` | `author` / 子カテゴリの `cat` / `ym` のいずれかが有効なときだけ受け付ける。親カテゴリだけのとき、絞り込みなしのときは無視（FR-24、NFR-98） | 公開日順（降順） | S-02e、S-05（S-05 は常に受け付ける） |
 | `n`（件数） | `^(20\|50)$` | ― | `20` | S-02a、S-02c |
 | `line` | `^(pv\|sessions)$` | ― | `pv` | S-01（FR-11） |
@@ -388,6 +399,8 @@ HTML の大きさの目安（2026-11-06 に見直し）: 初期表示の DOM は
 | `axis`（カテゴリ軸の展開） | `^(parent\|child)$` | ― | `parent` | S-06b（FR-41） |
 
 - 「子カテゴリ」の判定は `categories[].parentId !== null`。
+- ID の形（`ID_PATTERN` = `^[1-9][0-9]{0,9}$`。カテゴリ、記事、タグ）と著者の slug の形（`SLUG_PATTERN` = `^[a-z0-9-]{1,64}$`）は `src/lib/query.ts` の 1 か所で定義し、ほかの場所はこれを使う（構築 3）。
+- `q` は入力欄の文字で絞り込み、URL への書き戻しは打つのをやめて 300 ミリ秒後（05 §4.5）。
 - 期間 `p` が無効なときは既定（`last28`）に戻すだけで、他のパラメータは個別に判定する（1 つの不正値で全部を捨てない）。
 - `parseQuery` は純関数で、Vitest で表の全行を検査する（07 §3）。E2E では不正値を URL に与えて既定表示になることを確認する（07 §6）。
 - 動的ルートのパラメータ（`[postId]`、`[slug]`、`[id]`）は `generateStaticParams` と `dynamicParams = false` で閉じるので、クライアント側の検証対象にならない（06 §7）。
