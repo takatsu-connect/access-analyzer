@@ -100,10 +100,23 @@ const PARAM_SCREENS: Readonly<Record<Exclude<ParamName, 'p'>, readonly QueryScre
   axis: ['s06b'],
 };
 
+/**
+ * 著者の slug と、記事・カテゴリ・タグの ID の形。リンクを作る側（SiteLinks、画面）、
+ * 動的なパスの入口（src/app の page.tsx）、URL のクエリ、データの組み立てで同じ定義を使う
+ * （監査 2026-11-05-build3-review.md L-2。場所ごとに違うと、リンクは出るのに 404 になる）。
+ */
+export const SLUG_PATTERN = /^[a-z0-9-]{1,64}$/;
+export const ID_PATTERN = /^[1-9][0-9]{0,9}$/;
+
+/** ID_PATTERN の形に合う正の整数か（リンクを作る前に確かめる）。 */
+export function isValidId(id: number): boolean {
+  return Number.isSafeInteger(id) && ID_PATTERN.test(String(id));
+}
+
 // 04 §8 の「形式」の列。
 const PERIOD_PATTERN = /^(last7|last28|last90|m\d{4}-(0[1-9]|1[0-2]))$/;
-const CATEGORY_PATTERN = /^\d{1,7}$/;
-const AUTHOR_PATTERN = /^[a-z0-9-]{1,64}$/;
+const CATEGORY_PATTERN = ID_PATTERN;
+const AUTHOR_PATTERN = SLUG_PATTERN;
 const YEAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const SORT_PATTERN = /^(pv|pv7|pv30)$/;
 const COUNT_PATTERN = /^(20|50)$/;

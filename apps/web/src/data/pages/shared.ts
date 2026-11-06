@@ -5,6 +5,7 @@
  */
 import { MAX_MONTHS, MEASURE_START } from '@/lib/config';
 import { formatPeriodLabel } from '@/lib/format';
+import { SLUG_PATTERN } from '@/lib/query';
 import type {
   BenchmarkPoint,
   ByPeriod,
@@ -31,7 +32,7 @@ const PREV_OF: Record<WindowId, PrevWindowId> = {
 const MONTH_ID_PATTERN = /^m(\d{4})-(0[1-9]|1[0-2])$/;
 
 /** 著者ページを作る slug の形（06 §7）。 */
-export const SLUG_PATTERN = /^[a-z0-9-]+$/;
+export { SLUG_PATTERN };
 
 export function isMonthId(id: string): id is MonthId {
   return MONTH_ID_PATTERN.test(id);

@@ -14,7 +14,7 @@ export {
 } from './dates';
 export type { YmdParts } from './dates';
 export { fold6, HEATMAP_DAYS, HEATMAP_HOURS, HEATMAP_SLOTS } from './heatmap';
-export { safeExternalUrl } from './links';
+export { isDisplayableDomain, safeExternalUrl } from './links';
 export { compare, share, shareOf, tenOf } from './numbers';
 export type { Comparison } from './numbers';
 export { monthProgress, partialMonthStartDay } from './periods';

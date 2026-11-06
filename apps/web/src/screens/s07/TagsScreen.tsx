@@ -11,13 +11,14 @@ import { PeriodPicker } from '@/components/PeriodPicker';
 import { absentCompareText, usePeriod } from '@/components/usePeriod';
 import { formatNumber } from '@/lib/format';
 import type { TagIndexData } from '@/lib/page-data';
+import { isValidId } from '@/lib/query';
 import { metricLabel, metricNote, t } from '@/lib/ui-text';
 import styles from '@/screens/s06/shared/parts.module.css';
 import { PrevDelta } from '@/screens/s06/shared/parts';
 
 /** シリーズの記事（S-07b）へのリンク。ID が正の整数でなければリンクにしない。 */
 function TagLink({ id, children }: { id: number; children: ReactNode }) {
-  if (!Number.isSafeInteger(id) || id <= 0) return <>{children}</>;
+  if (!isValidId(id)) return <>{children}</>;
   return (
     <Link href={`/tags/${id}`} prefetch={false} className={styles.link}>
       {children}

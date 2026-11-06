@@ -123,7 +123,7 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 ## 7. 入力の検証
 
 - 静的サイトなので、サーバーが実行時に利用者の入力を処理することはない。検証はビルド時とクライアント側で行う。
-- ビルド時: `generateStaticParams` は `pub_post.post_id`（整数）と `pub_author.author_slug`（`^[a-z0-9-]+$`）だけからパスを作る。`dynamicParams = false`。
+- ビルド時: `generateStaticParams` は `pub_post.post_id`（整数）と `pub_author.author_slug`（`^[a-z0-9-]{1,64}$`。形の定義は `apps/web/src/lib/query.ts` の 1 か所）だけからパスを作る。`dynamicParams = false`。
 - クライアント側: URL のクエリ（期間、フィルタ、選択）は許可リストで検証する（期間は `last7` / `last28` / `last90` / `mYYYY-MM` の形、カテゴリ・タグは埋め込んだ一覧にある ID、著者は埋め込んだ一覧にある slug）。許可されない値は既定値（直近 28 日、フィルタなし）に戻し、エラーを出さない。
 - 文字列を問い合わせに埋め込む箇所はない（ビルド時の Supabase 読み出しは supabase-js のパラメータ化された API を使い、フィルタ値は上記の検証済みの値だけ）。
 - 外部リンクは `pub_post.post_url`、`pub_author.author_url` の値だけを使い、バッチが `https://takatsu-connect.com/` 配下であることを検証済み（03 §4）。BI 側でも描画前に同じ検証をし、違えばリンクにしない。

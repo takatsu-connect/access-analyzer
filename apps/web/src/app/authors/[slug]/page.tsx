@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { getAuthorPageData, getAuthorSlugs } from '@/data';
+import { SLUG_PATTERN } from '@/lib/query';
 import { t } from '@/lib/ui-text';
 import { AuthorScreen } from '@/screens/s05/AuthorScreen';
 
 type AuthorPageProps = { params: Promise<{ slug: string }> };
 
 /** 著者の slug の形（04 §8、06 §7）。合わない値では、データを引かずに 404 にする。 */
-const SLUG_PATTERN = /^[a-z0-9-]{1,64}$/;
 
 // ビルド時に作ったページだけを返す。一覧にない slug は 404（05 §10）。
 export const dynamicParams = false;

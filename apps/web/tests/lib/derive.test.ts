@@ -6,6 +6,7 @@ import {
   diffDays,
   fold6,
   isDelayed,
+  isDisplayableDomain,
   latestConfirmedDay,
   monthProgress,
   monthStart,
@@ -296,5 +297,25 @@ describe('safeExternalUrl（U-26）', () => {
   it('文字列でなければ null', () => {
     expect(safeExternalUrl(null)).toBeNull();
     expect(safeExternalUrl(undefined)).toBeNull();
+  });
+});
+
+describe('isDisplayableDomain（監査 L-3）', () => {
+  it('ドメインの形のものだけを通す', () => {
+    expect(isDisplayableDomain('google.com')).toBe(true);
+    expect(isDisplayableDomain('l.instagram.com')).toBe(true);
+    expect(isDisplayableDomain('t.co')).toBe(true);
+    expect(isDisplayableDomain('xn--eckwd4c7c.xn--zckzah')).toBe(true);
+  });
+
+  it('括弧、空白、記号、長すぎるものは落とす', () => {
+    expect(isDisplayableDomain('(direct)')).toBe(false);
+    expect(isDisplayableDomain('今すぐ登録 example.com')).toBe(false);
+    expect(isDisplayableDomain('<img src=x>')).toBe(false);
+    expect(isDisplayableDomain('example.com/path')).toBe(false);
+    expect(isDisplayableDomain('-bad.com')).toBe(false);
+    expect(isDisplayableDomain('')).toBe(false);
+    expect(isDisplayableDomain(`${'a'.repeat(64)}.com`)).toBe(false);
+    expect(isDisplayableDomain(`${'a.'.repeat(130)}com`)).toBe(false);
   });
 });

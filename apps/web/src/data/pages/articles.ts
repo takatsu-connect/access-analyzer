@@ -38,6 +38,7 @@ import {
   toPostRow,
 } from './shared';
 import { checkPage } from './check';
+import { isDisplayableDomain } from '@/lib/derive';
 
 /** 一覧に載せる件数の上限。 */
 export type ListLimits = { top: number; recent: number };
@@ -280,6 +281,7 @@ export function buildArticleDetail(
             status: 'ready',
             rows: [...rowsOf(cache.articleReferrer30d, 'post_id', postId)]
               .sort((a, b) => a.rank - b.rank)
+              .filter((referrer) => isDisplayableDomain(referrer.source_domain))
               .map((referrer) => ({ domain: referrer.source_domain, sessions: referrer.sessions })),
           },
     milestones: [...rowsOf(cache.articleMilestone, 'post_id', postId)]

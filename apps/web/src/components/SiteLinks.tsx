@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { isValidId } from '@/lib/query';
 
 export type ArticleLinkProps = {
   /** 記事の ID（PostRow.id）。正の整数でなければリンクにしない。 */
@@ -13,7 +14,7 @@ export type ArticleLinkProps = {
  * 一覧に何十件も並ぶので、先読みはしない。
  */
 export function ArticleLink({ postId, children, className }: ArticleLinkProps) {
-  if (!Number.isSafeInteger(postId) || postId <= 0) return <>{children}</>;
+  if (!isValidId(postId)) return <>{children}</>;
   return (
     <Link href={`/articles/${postId}`} prefetch={false} className={className}>
       {children}

@@ -15,6 +15,7 @@ import { AD_CATEGORY_ID } from '@/lib/config';
 import { monthProgress } from '@/lib/derive';
 import { formatNumber } from '@/lib/format';
 import type { CategoryAxis, CategoryData, CategoryPeriodValue, Period } from '@/lib/page-data';
+import { isValidId } from '@/lib/query';
 import { metricLabel, t } from '@/lib/ui-text';
 
 import styles from './shared/parts.module.css';
@@ -24,7 +25,7 @@ type PeriodValues = Readonly<Record<number, CategoryPeriodValue>>;
 
 /** 子カテゴリで絞った「記事を探す」（S-02e）へのリンク。クエリには ID の数だけを入れる。 */
 function CategoryLink({ id, children }: { id: number; children: ReactNode }) {
-  if (!Number.isSafeInteger(id) || id <= 0) return <>{children}</>;
+  if (!isValidId(id)) return <>{children}</>;
   return (
     <Link
       href={{ pathname: '/articles', query: { cat: String(id) } }}

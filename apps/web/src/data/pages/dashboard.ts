@@ -25,6 +25,7 @@ import {
   rowsOf,
 } from './shared';
 import { checkPage } from './check';
+import { isDisplayableDomain } from '@/lib/derive';
 
 const HEATMAP_CELLS = 7 * 24;
 
@@ -135,6 +136,7 @@ export function buildDashboard(cache: PubCache, builtAt: Date): DashboardData {
       if (rows.length === 0) return undefined;
       return [...rows]
         .sort((a, b) => a.rank - b.rank)
+        .filter((row) => isDisplayableDomain(row.source_domain))
         .map((row) => ({ domain: row.source_domain, sessions: row.sessions }));
     }),
     monthCity: byPeriod(ids, (id) => {
