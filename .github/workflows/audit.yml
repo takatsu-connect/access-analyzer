@@ -24,7 +24,8 @@ jobs:
         with:
           python-version: "3.13"
       - name: pip-audit を入れる（ハッシュ固定、wheel だけ）
-        run: python -m pip install --require-hashes --only-binary :all: -r .github/requirements/audit.txt
+        run: >-
+          python -m pip install --require-hashes --only-binary :all: -r .github/requirements/audit.txt
       - name: pip-audit（apps/batch/requirements.txt）
         run: bash .github/scripts/pip-audit.sh
 
