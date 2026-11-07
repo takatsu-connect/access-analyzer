@@ -1,0 +1,193 @@
+# CI（07 §7 の S-01〜S-18、§3〜§6 の U、I-DB、I-B、E）。PR と main への push で動く。
+# Secrets と Environment を参照しない（06 §9）。本番の Supabase、GA4、WordPress に接続しない（07 §1）。
+# ジョブの役割は docs/operations/environments.md §2.2 にある。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # 道具の版。上げるときは公開から 14 日たった版にし、チェックサムも同時に変える。
+  ACTIONLINT_VERSION: "1.7.12"
+  ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  # Supabase CLI（npm の supabase パッケージ）。版は docs/operations/environments.md §8 で要確認
+  SUPABASE_CLI_VERSION: "3.0.0"
+  PNPM_VERSION: "10.6.5"
+
+jobs:
+  # ---- バッチ: lint、型検査、単体テスト（U）。DATABASE_URL がないので結合テストは skip される ----
+  batch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/batch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            apps/batch/requirements.txt
+            apps/batch/requirements-dev.txt
+      - name: 依存を入れる（ハッシュ固定、wheel だけ）
+        run: python -m pip install --require-hashes --only-binary :all: -r requirements.txt -r requirements-dev.txt
+      - name: ruff check
+        run: python -m ruff check .
+      - name: ruff format --check
+        run: python -m ruff format --check .
+      - name: mypy
+        run: python -m mypy
+      - name: pytest（単体）
+        # GITHUB_RUN_ID を外す: 子プロセスのテストが batch_run に Actions の実行記録を書かないように（07 §2 の歯止め (3)）
+        run: env -u GITHUB_RUN_ID python -m pytest --tb=short
+
+  # ---- BI: lint、Prettier、型検査、Vitest、公開の環境変数名、禁止語 ----
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: 依存を入れる
+        run: pnpm install --frozen-lockfile
+      - name: pnpm run check
+        run: pnpm run check
+
+  # ---- 結合（I-DB、I-B）と E2E（E）。Supabase ローカルにフィクスチャを入れて BI をビルドする ----
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            apps/batch/requirements.txt
+            apps/batch/requirements-dev.txt
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - name: バッチの依存を入れる（ハッシュ固定、wheel だけ）
+        working-directory: apps/batch
+        run: python -m pip install --require-hashes --only-binary :all: -r requirements.txt -r requirements-dev.txt
+      - name: BI の依存を入れる
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+      - name: Supabase ローカルを起動する（マイグレーションと supabase/seed/test を適用）
+        # 使わないコンテナは起動しない。名前が版で違うものは両方の綴りを書く（不正な名前は警告だけで続行する）
+        run: npx --yes "supabase@${SUPABASE_CLI_VERSION}" start -x studio,imgproxy,mailpit,logflare,vector,realtime,storage-api,storage,edge-runtime,edgeRuntime,postgres-meta,pgMeta,supavisor
+      - name: ローカルの接続情報を環境に入れる（値はローカル専用。batch_writer のパスワードはこのジョブで使い捨て）
+        run: bash .github/scripts/supabase-local-env.sh
+      - name: pytest（結合 DB と結合バッチ）
+        working-directory: apps/batch
+        run: env -u GITHUB_RUN_ID python -m pytest --tb=short tests/db tests/integration
+      - name: E2E のフィクスチャを読み込む
+        working-directory: apps/batch
+        run: env -u GITHUB_RUN_ID PYTHONPATH=src:tests python -m support.load_e2e_fixture
+      - name: BI をビルドする（最初に fetch-cache を消す）
+        working-directory: apps/web
+        run: pnpm run build
+      - name: ビルド出力の検査（S-14、E-04、E-17）
+        working-directory: apps/web
+        run: pnpm run check:build
+      - name: 応答ヘッダの検査（S-11）
+        working-directory: apps/web
+        run: pnpm run check:headers
+      - name: Playwright のブラウザを入れる
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+      - name: E2E（Chromium）
+        working-directory: apps/web
+        run: pnpm run e2e
+      - name: 失敗したときの Playwright の報告を残す（フィクスチャの架空のデータだけ）
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Supabase ローカルを止める
+        if: always()
+        run: npx --yes "supabase@${SUPABASE_CLI_VERSION}" stop --no-backup
+
+  # ---- 静的検査: actionlint（S-10）、gitleaks（S-09）、ワークフローの規律（S-10）、.env.example（S-15）、S-01 ----
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: actionlint と gitleaks を入れる（版とチェックサムを固定）
+        run: bash .github/scripts/install-tools.sh
+      - name: actionlint
+        run: '"$RUNNER_TEMP/bin/actionlint" -color'
+      - name: gitleaks（全履歴。値は伏せて出す）
+        run: '"$RUNNER_TEMP/bin/gitleaks" git --config .gitleaks.toml --redact --no-banner --exit-code 1 .'
+      - name: ワークフローの規律と .env.example の形
+        run: python3 .github/scripts/check_repo_rules.py
+
+  # ---- 依存の脆弱性（S-08）。同じ検査を audit.yml が週 1 で流す ----
+  deps-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: pip-audit を入れる（ハッシュ固定、wheel だけ）
+        run: python -m pip install --require-hashes --only-binary :all: -r .github/requirements/audit.txt
+      - name: pip-audit（apps/batch/requirements.txt）
+        run: bash .github/scripts/pip-audit.sh
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+      - name: pnpm audit（高以上で失敗）
+        working-directory: apps/web
+        run: pnpm audit --audit-level=high

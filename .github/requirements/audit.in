@@ -1,0 +1,4 @@
+# CI と audit.yml で使う依存の監査の道具（06 §10、07 S-08）。apps/batch の依存とは別のロック。
+# 生成（Linux の Python 3.13 向け。公開から 14 日たった版だけを使う）:
+#   uv pip compile --generate-hashes --python-version 3.13 --python-platform x86_64-unknown-linux-gnu --exclude-newer <14 日前の日付> -o audit.txt audit.in
+pip-audit

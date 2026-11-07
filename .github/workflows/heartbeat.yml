@@ -1,0 +1,43 @@
+# 60 日無活動で schedule が止まるのを防ぐ（03 §12、06 §9、設計レビュー M-3）。
+# contents: write を持つのはこのワークフローだけ。中身は actions/checkout と git だけにし、
+# 依存のインストール、プロジェクトのコード、サードパーティの Action、Secrets の参照を置かない（07 S-10 が検査する）。
+# main の最新コミットが 45 日以上前のときだけ ops/heartbeat.txt に日付を書いてコミットする。
+name: heartbeat
+
+on:
+  schedule:
+    # 毎週月曜 UTC 03:00。月 1 回だと、45 日のしきい値の直前に来た回のあと次の回が 60 日を
+    # 過ぎてしまい、heartbeat 自身を含む schedule が止まる（監査 2026-11-07-workflows-review.md M-1）。
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  heartbeat:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: ops/
+          fetch-depth: 1
+      - name: 45 日以上コミットがなければ記録してコミットする
+        run: |
+          set -euo pipefail
+          last="$(git log -1 --format=%ct)"
+          now="$(date +%s)"
+          days=$(( (now - last) / 86400 ))
+          echo "days_since_last_commit=${days}"
+          if [ "${days}" -lt 45 ]; then
+            exit 0
+          fi
+          mkdir -p ops
+          date -u +%F > ops/heartbeat.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ops/heartbeat.txt
+          git commit -m "heartbeat: 定期実行の維持"
+          git push origin HEAD:main

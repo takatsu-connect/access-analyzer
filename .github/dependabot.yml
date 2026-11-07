@@ -1,0 +1,46 @@
+# Dependabot（06 §10、W-9）。自動 merge はしない。PR は人が中身を見て merge する。
+# cooldown: 公開から 7 日たった版だけを提案させる（version updates だけに効き、security updates には効かない。
+# GitHub Docs「Dependabot options reference」、2026-11-07 確認）。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+
+  # バッチの本番と開発の依存（pip-compile のハッシュつき requirements.txt、requirements-dev.txt）
+  - package-ecosystem: pip
+    directory: /apps/batch
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+
+  # CI の道具（pip-audit）のロック
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule:
+      interval: monthly
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 2
+
+  # BI（pnpm-lock.yaml）。npm のエコシステムが pnpm のロックを扱う
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5

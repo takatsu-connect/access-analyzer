@@ -1,0 +1,46 @@
+# gitleaks の設定（07 S-09）。既定のルールに、このリポジトリの秘密の形を足す。
+# CI（.github/workflows/ci.yml の static ジョブ）が全履歴に対して --redact つきで流す。
+# 誤検知を足すときは、理由をコメントに書き、値そのものを書かない。
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-jwt"
+description = "Supabase の anon / service role キーの形（JWT）"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["eyj"]
+
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase の新しい形式の秘密鍵"
+regex = '''sb_secret_[A-Za-z0-9_-]{10,}'''
+keywords = ["sb_secret_"]
+
+[[rules]]
+id = "postgres-url-with-password"
+description = "パスワードを含む Postgres の接続文字列（batch_writer のパスワードは英数字 32 文字以上。ADR 0009）"
+regex = '''postgres(?:ql)?://[A-Za-z0-9_.-]+:[A-Za-z0-9]{16,}@'''
+keywords = ["postgres"]
+
+[[rules]]
+id = "supabase-pooler-url"
+description = "Supabase の pooler を指す接続文字列"
+regex = '''postgres(?:ql)?://[^\s'"`]+@[a-z0-9.-]*pooler\.supabase\.com'''
+keywords = ["pooler.supabase.com"]
+
+[[rules]]
+id = "vercel-deploy-hook"
+description = "Vercel の Deploy Hook の URL"
+regex = '''api\.vercel\.com/v1/integrations/deploy/[A-Za-z0-9_]+/[A-Za-z0-9_]+'''
+keywords = ["integrations/deploy"]
+
+[[rules.allowlists]]
+# テストの偽の URL（apps/batch/tests の prj_fake）
+regexes = ['''prj_fake''']
+
+[[rules]]
+id = "gcp-service-account-key"
+description = "GCP のサービスアカウントの JSON 鍵（文書の説明文には当たらないよう、鍵の JSON の並びで判定する）"
+regex = '''"type":\s*"service_account",\s*"project_id"'''
+keywords = ["service_account"]
