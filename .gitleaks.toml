@@ -44,3 +44,10 @@ id = "gcp-service-account-key"
 description = "GCP のサービスアカウントの JSON 鍵（文書の説明文には当たらないよう、鍵の JSON の並びで判定する）"
 regex = '''"type":\s*"service_account",\s*"project_id"'''
 keywords = ["service_account"]
+
+# 全ルール共通の除外。秘密ではない識別子が、既定のルール（generic-api-key）に当たるもの。
+[allowlist]
+description = "秘密ではない識別子"
+# GCP のプロジェクト ID は、コンソールの URL などにも出る公開の識別子（docs/operations の手順に書く。
+# 監査 2026-11-07-workflows-review.md L-4）。鍵やトークンではない。
+regexes = ['''^affable-enigma-513514-q8$''']
