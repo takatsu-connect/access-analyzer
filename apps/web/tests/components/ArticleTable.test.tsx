@@ -263,17 +263,12 @@ describe('ArticleTable（U-24）', () => {
     expect(noPage?.querySelector('a')).toBeNull();
   });
 
-  it('タイトルは記事詳細へのリンク。記事ページへの外部リンクは、広い画面は「開く ↗」、狭い画面は「記事を開く ↗」（レビュー C-13）', () => {
+  it('タイトルは記事詳細へのリンクだけ。記事そのもの（高津コネクト）へのリンクは一覧に置かない', () => {
     const { container } = render(<ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} />);
     const anchors = [...(bodyRows(container)[0]?.cells[0]?.querySelectorAll('a') ?? [])];
-    expect(anchors.map((anchor) => anchor.getAttribute('href'))).toEqual([
-      '/articles/201',
-      'https://takatsu-connect.com/archives/101',
-    ]);
-    expect(anchors[1]?.querySelector('[class*="wideOnly"]')?.textContent).toBe('開く ↗');
-    expect(anchors[1]?.querySelector('[class*="narrowOnly"]')?.textContent).toBe('記事を開く ↗');
-    expect(anchors[1]?.getAttribute('target')).toBe('_blank');
-    expect(anchors[1]?.getAttribute('aria-label')).toContain('記事 A');
+    expect(anchors.map((anchor) => anchor.getAttribute('href'))).toEqual(['/articles/201']);
+    expect(container.querySelector('a[href^="http"]')).toBeNull();
+    expect(container.textContent).not.toContain('↗');
   });
 
   it('狭い画面の値のセルは、名前（上の段）と値（下の段）の 2 段。数の値は折れない形（レビュー C-4）', () => {

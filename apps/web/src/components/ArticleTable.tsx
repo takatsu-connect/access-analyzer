@@ -3,7 +3,7 @@
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { addDays, safeExternalUrl, splitYmd } from '@/lib/derive';
+import { addDays, splitYmd } from '@/lib/derive';
 import { formatDate, formatDateShort, formatMonthDay, formatNumber } from '@/lib/format';
 import type { Channel, Masked, PostRow } from '@/lib/page-data';
 import type { SortKey } from '@/lib/query';
@@ -13,7 +13,6 @@ import a11y from './a11y.module.css';
 import styles from './ArticleTable.module.css';
 import { cx } from './class-names';
 import { Details } from './Details';
-import { ExternalLink } from './ExternalLink';
 import { MaskedCell, MaskedMark } from './MaskedCell';
 import { Badge, StateMessage } from './Notice';
 import { ArticleLink, AuthorLink } from './SiteLinks';
@@ -332,20 +331,11 @@ export function ArticleTable({
             <ArticleLink postId={post.id} className={styles.titleLink}>
               {post.title}
             </ArticleLink>
-            {safeExternalUrl(post.url) === null ? null : (
-              <ExternalLink
-                href={post.url}
-                className={styles.external}
-                ariaLabel={t('link.external.article', { title: post.title })}
-              >
-                {/*
-                  狭い画面では題名の下に「記事を開く ↗」と言葉で出す（助言 B-10）。
-                  広い画面も「開く ↗」と言葉を添える（↗ だけでは斜線に見える。レビュー C-13）。
-                */}
-                <span className={styles.narrowOnly}>{t('link.external.label')}</span>
-                <span className={styles.wideOnly}>{t('link.external.short')}</span>
-              </ExternalLink>
-            )}
+            {/*
+              記事そのもの（高津コネクト）へのリンクは、一覧には置かない。題名（BI の記事詳細）と
+              並ぶと行き先の違いが分かりにくく、行ごとに場所を取るため（依頼者、2026-11-07）。
+              記事そのものへは、記事詳細の先頭の題名の横の ↗ から行く。
+            */}
             {names.length === 0 ? null : (
               <span className={styles.badges}>
                 {names.map((name) => (

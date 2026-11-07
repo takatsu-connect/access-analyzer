@@ -123,8 +123,7 @@
 }
 
 .titleLink,
-.link,
-.external {
+.link {
   color: var(--shade-5);
   text-underline-offset: 0.2em;
 }
@@ -132,7 +131,7 @@
 .titleLink {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: calc(100% - 4.5rem - var(--space-1));
+  max-width: 100%;
 }
 
 /* 日付と帯の文言が 1 文字ずつ折れないよう、列の幅の下限を決める。 */
@@ -155,17 +154,6 @@
 }
 
 /* 押す範囲は 44px 四方（レビュー C-13）。 */
-.external {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--tap-min);
-  min-height: var(--tap-min);
-  font-size: var(--font-size-sm);
-  white-space: nowrap;
-}
-
 .badges {
   display: flex;
   flex: 1 0 100%;
@@ -317,11 +305,4 @@
   }
 
   /* 「記事を開く ↗」。押せる大きさ（高さ 2.75rem）を保つ。 */
-  .external {
-    display: inline-flex;
-    align-items: center;
-    order: 1;
-    justify-content: flex-start;
-    min-height: var(--tap-min);
-  }
 }
