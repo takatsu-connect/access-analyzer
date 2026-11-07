@@ -111,12 +111,21 @@ describe('S-03 前置き（B-6）', () => {
 });
 
 describe('S-03 文言の直し（低）', () => {
-  it('許可外の URL では「↗」も出さない', () => {
+  it('許可外の URL では、新しいタブの印（アイコン）も出さない', () => {
     const base = detail(102);
     const container = show({ ...base, post: { ...base.post, url: 'https://example.com/x/' } });
     const title = container.querySelector('h1')?.nextElementSibling;
     expect(title?.textContent).toBe('記事 102');
     expect(title?.querySelector('a')).toBeNull();
+    expect(title?.querySelector('svg')).toBeNull();
+  });
+
+  it('記事のページへのリンクには、四角と矢印のアイコンを付ける', () => {
+    const container = show(detail(102));
+    const link = container.querySelector('h1')?.nextElementSibling?.querySelector('a');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    expect(link?.textContent).not.toContain('↗');
   });
 
   it('M-09 の注記に例の数字を入れない', () => {

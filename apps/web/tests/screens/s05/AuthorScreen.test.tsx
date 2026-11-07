@@ -87,7 +87,9 @@ describe('S-05 見出しと全体', () => {
     );
     expect(link.getAttribute('href')).toBe(`https://takatsu-connect.com/author/${SATO}/`);
     expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.textContent).toContain('↗');
+    // 新しいタブで開く印は、四角と矢印のアイコン（読み上げない SVG）。
+    expect(link.textContent).not.toContain('↗');
+    expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 
   test.each([

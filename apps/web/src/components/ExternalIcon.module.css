@@ -1,0 +1,7 @@
+/* 文字の並びに合わせて、少し下げて置く。 */
+.icon {
+  display: inline-block;
+  flex: none;
+  margin-inline-start: 0.25em;
+  vertical-align: -0.125em;
+}

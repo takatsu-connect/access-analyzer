@@ -362,7 +362,6 @@ const baseDictionary = {
   'table.more': 'さらに表示',
   'table.shown': '{total} 件のうち {shown} 件を表示しています',
   'list.separator': '、',
-  'link.external.mark': '↗',
   // 狭い画面の記事の表で、値のセルに添える名前（助言 B-10）。広い画面では列の見出しが名前になる。
   // 名前（上の段）と値（下の段）に分けて描く（レビュー C-4）。「最初の 1 週間 / 1 か月」の名前は column.pv7 / pv30。
   'list.cell.name.period': 'この期間',

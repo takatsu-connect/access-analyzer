@@ -322,7 +322,7 @@ describe('ArticleTable（U-24）', () => {
     expect(primaryCells(byDate.container)).toEqual([]);
   });
 
-  it('記事ページの URL が検証を通らなければ、「↗」を描かない', () => {
+  it('記事ページの URL が検証を通らなくても、一覧には外部リンクの印がない', () => {
     const rows = [{ post: makePost({ url: 'https://example.com/x' }), pageviews: 10 }];
     const { container } = render(<ArticleTable caption="記事" rows={rows} columns={['title']} />);
     expect(container.querySelector('a[target="_blank"]')).toBeNull();

@@ -15,10 +15,6 @@
   text-underline-offset: 0.15em;
 }
 
-.externalMark {
-  margin-inline-start: var(--space-1);
-}
-
 .attrs {
   display: flex;
   flex-wrap: wrap;

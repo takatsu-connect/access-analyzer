@@ -1,3 +1,4 @@
+import { ExternalIcon } from '@/components/ExternalIcon';
 import { ExternalLink } from '@/components/ExternalLink';
 import { AuthorLink } from '@/components/SiteLinks';
 import { safeExternalUrl } from '@/lib/derive';
@@ -30,7 +31,7 @@ export function ArticleHeader({ post, measureStart }: ArticleHeaderProps) {
     <>
       <h1>{t('s03.h1')}</h1>
       <p className={styles.title}>
-        {/* 許可外の URL ではリンクにしないので、外部リンクの印「↗」も出さない。 */}
+        {/* 許可外の URL ではリンクにしないので、外部リンクの印も出さない。 */}
         {safeExternalUrl(post.url) === null ? (
           post.title
         ) : (
@@ -40,9 +41,7 @@ export function ArticleHeader({ post, measureStart }: ArticleHeaderProps) {
             ariaLabel={t('link.external.article', { title: post.title })}
           >
             {post.title}
-            <span className={styles.externalMark} aria-hidden="true">
-              {t('link.external.mark')}
-            </span>
+            <ExternalIcon />
           </ExternalLink>
         )}
       </p>

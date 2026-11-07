@@ -7,7 +7,7 @@ export type ExternalLinkProps = {
   href: string | null | undefined;
   children: ReactNode;
   className?: string;
-  /** 読み上げ用の名前（中身が「↗」だけのリンクに付ける）。 */
+  /** 読み上げ用の名前（行き先と、新しいタブで開くことを言葉で書く）。 */
   ariaLabel?: string;
 };
 

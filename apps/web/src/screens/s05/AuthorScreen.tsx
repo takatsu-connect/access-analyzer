@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 
+import { ExternalIcon } from '@/components/ExternalIcon';
 import { ExternalLink } from '@/components/ExternalLink';
 import { StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
@@ -49,7 +50,8 @@ export function AuthorScreen({ data }: AuthorScreenProps) {
             className={styles.authorLink}
             ariaLabel={t('s05.authorLink.aria', { name })}
           >
-            {t('s05.authorLink')} {t('link.external.mark')}
+            {t('s05.authorLink')}
+            <ExternalIcon />
           </ExternalLink>
         )}
       </div>
