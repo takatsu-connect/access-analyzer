@@ -17,6 +17,7 @@
   - 2026-11-05: 構築 2 のコードレビューと監査（audits/2026-11-05-build2-review.md）を反映。§2: テストから外部へ接続しない歯止めと、結合テストの接続先の検査（監査 M-1、L-1）。I-DB-17: 統計が 0 行の状態での性能
   - 2026-11-06: 構築 3 の実装に合わせた（§2 と §6 から E2E の spec の対応表 `apps/web/e2e/README.md` を参照。§3 に画面の部品のテスト `tests/screens/**`、U-20 を列の集合の突き合わせに。E-08 の判定、E-17 の LCP 未実施、E-20 の文言、E-21 の実行方法と WebKit の fixme。S-11、S-14 を実装済みに、`build` の最初に fetch-cache を消す。§11 に残りを追加）
   - 2026-11-07: ADR 0010 の確定に合わせ、E-01 の CSP の期待値を確定した値にした
+  - 2026-11-07: 最後の改修（実装済み）に合わせた。E-14 を画面ごとの CommonNotes の項目に（05 §2.7）、E-16 を記事の一覧に外部リンクがないことと新しいタブのアイコンに、E-03 に画面のパスの形をした 404 で描き直しがないことを足した
 
 ## 1. 方針
 
@@ -136,7 +137,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | --- | --- | --- | --- |
 | E-01 | 応答ヘッダ | 全画面（S-01〜S-08、404）で `Content-Security-Policy`（指示の集合が `apps/web/next.config.ts` と ADR 0010 の一覧に完全に一致する。`'unsafe-inline'` は `script-src` の 1 か所だけで、`style-src 'self'`、`script-src-attr 'none'`、`object-src 'none'` を含む）、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、`X-Frame-Options: DENY` / `frame-ancestors 'none'`、`X-Robots-Tag: noindex, nofollow` | NFR-91、NFR-21、06 §6 |
 | E-02 | noindex | 全画面の `<meta name="robots">` が noindex, nofollow。`/robots.txt` が `Disallow: /` | NFR-21 |
-| E-03 | 404 | 存在しない記事 ID、存在しない slug、不正な形式（`/articles/abc`、`/authors/A%20B`）がすべて同じ状態コード 404 と同じ本文（CommonNotes を含む）。スタックトレース・内部 URL・SQL がない | FR-06、FR-23、FR-30、NFR-91 |
+| E-03 | 404 | 存在しない記事 ID、存在しない slug、不正な形式（`/articles/abc`、`/authors/A%20B`）がすべて同じ状態コード 404 と同じ本文（CommonNotes はない。05 §10）。スタックトレース・内部 URL・SQL がない。画面のパスの形をした 404（例 `/articles/999999`）でも、ブラウザのエラー（描き直し）がない（05 §2.7 の `useRenderedPathname`） | FR-06、FR-23、FR-30、NFR-91 |
 | E-04 | 配信される JS と HTML | ビルド出力（`.next/static`、HTML）に `SUPABASE_URL` の値、anon キーの先頭 20 文字、`supabase.co` の文字列が含まれない（CI のビルドではテスト用のダミー値を環境変数に入れ、その値で検索する。L-5）。`NEXT_PUBLIC_` で始まる環境変数がビルド出力に 1 つもない | NFR-42 |
 | E-05 | 主要画面の存在 | S-01〜S-08 が 200 で開き、h1 が §1 の問いの文言 | NFR-94 |
 | E-06 | 期間切り替えと URL | `?p=last7` などで表示が変わり、URL が同期する。別のコンテキストで同じ URL を開くと同じ表示。`?p=prev28`、`?p=m1999-01`、`?p=<script>` は既定（直近 28 日）になりエラーが出ない | FR-01、FR-06、FR-03、NFR-91 |
@@ -147,9 +148,9 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | E-11 | 色 | 記事・著者の数値要素の computed color が設計トークン（基調色の濃淡とグレー）のいずれかで、赤・緑系の色（hue 0〜20、100〜160）がない。帯の 3 区分が同じ色 | NFR-97 |
 | E-12 | 禁止語 | 全画面の本文に「偏り」「下位」「読まれなかった」「順位」「ランキング」「あなた」「鮮度」「（軸）」がない。「出ません」で終わる文がない | NFR-97、NFR-99 |
 | E-13 | スマホ幅と中間の幅 | viewport 360 × 740 で、各表が 4 列以下 + 「詳しく」、ヒートマップの列が 6、ページ全体の横スクロールが S-06b 以外で発生しない（記事の画面のサブナビの横送りは表ではないので対象外。05 §2.6）。加えて幅 800px と 1,024px で、全画面のページ全体が横にはみ出さない（details を開いても。記事の表のはみ出しは表の枠の中だけ）（`apps/web/e2e/narrow.spec.ts`、`apps/web/e2e/widths.spec.ts`） | NFR-81、NFR-99 |
-| E-14 | 共通説明文 | 全画面（404 を含む）に CommonNotes があり、閉じた `details` の中にある（見出し「このページの数字について」が `summary`。05 §2.7） | NFR-99 |
+| E-14 | 共通説明文 | 出す画面には CommonNotes が 1 つで、閉じた `details` の中にあり（見出し「このページの数字について」が `summary`）、項目はその画面の表のとおり（05 §2.7）。S-04 と 404 にはない。S-08 は 2 項目（公開本数、比率） | NFR-99 |
 | E-15 | 著者一覧 | S-04 に数字（`\d`）を含むセルがない。リンクの href に slug があり、テキストノードに slug がない。S-05 の本文にも slug が現れない | FR-30、NFR-35 |
-| E-16 | 外部リンク | 全画面の `a[href^="http"]` が `https://takatsu-connect.com/` 配下だけ。記事の一覧（`ArticleTable`。S-02a〜S-02e、S-05 の記事の一覧、S-07b）には外部リンクがなく、記事詳細（S-03 の先頭の題名）とライターのページ（S-05 の「高津コネクトの紹介ページ」）にある（05 §2.7） | FR-04、NFR-91 |
+| E-16 | 外部リンク | 全画面の `a[href^="http"]` が `https://takatsu-connect.com/` 配下だけ。記事の一覧（`ArticleTable`。S-02a〜e、S-07b、S-05 の記事の一覧）に外部リンクがない。記事詳細（S-03 の先頭の題名）とライターのページ（S-05 の「高津コネクトの紹介ページ」）に、新しいタブで開く外部リンクと四角と矢印のアイコンがある（05 §2.7） | FR-04、NFR-91 |
 | E-17 | 初期表示 | Lighthouse（モバイル、Slow 4G）の LCP ≤ 3.0 秒、HTML サイズ（埋め込み JSON 込み）が 04 §6 の目安以内（gzip 後で S-01 ≤ 40 KB、S-02e ≤ 50 KB、S-03 ≤ 20 KB。`pnpm run check:build`）。超えたら 04 §6 の案を適用。構築 3 では大きさの検査だけを実装した。LCP は未実施（Lighthouse を入れていない。§11） | NFR-10、NFR-12 |
 | E-18 | データ更新の遅れ | フィクスチャの `pub_meta.is_stale = true` で DataStatus に「更新が遅れています」 | FR-02、NFR-90 |
 | E-19 | 日別推移 | 切り替えが「読まれた回数」「訪問回数」の 2 つだけ。読んだ人の数の選択肢がない。未確定 3 日が薄いクラスで、前期間の線は点線（`stroke-dasharray`）と別のクラス。公開日の点がフィクスチャの公開日に一致。90 日を選ぶと週別が既定で日別に切り替えられる。固定行が初期表示から埋まり、行頭に「グラフの日付をタップすると」の文がある。S-03 の日別推移に前期間の線がない | FR-11、M-26、Q-35 |

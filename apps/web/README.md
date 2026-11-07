@@ -40,7 +40,7 @@ E2E のデータと手順:
 | `tests/`                 | Vitest。`lib`・`lint`・`data` は node、`components`・`screens` は jsdom                                                                                                                           |
 | `e2e/`                   | Playwright                                                                                                                                                                                        |
 
-`src/app/layout.tsx` が、ヘッダ、`DataStatus`（◯月◯日までのデータです）、`<main>`、`CommonNotes`（このページの数字について）、フッタを持つ。ページと画面の部品は `<main>`、`DataStatus`、`CommonNotes` を書かず、h1 から始まるフラグメントを返す。
+`src/app/layout.tsx` が、ヘッダ、`DataStatus`（◯月◯日までのデータです）、`<main>`、`CommonNotes`（このページの数字について）、フッタを持つ。ページと画面の部品は `<main>`、`DataStatus`、`CommonNotes` を書かず、h1 から始まるフラグメントを返す。`CommonNotes` の項目は画面ごとに `src/lib/common-notes.ts` の表で選ぶ（S-04 と 404 には出さない）。パスで中身を選ぶ部品（ヘッダのサブナビ、`CommonNotes`）は `usePathname` ではなく `useRenderedPathname` を使う（画面のパスの形をした 404 で、静的な HTML と食い違わないため）。
 
 ## 画面を作るときの決まり
 
