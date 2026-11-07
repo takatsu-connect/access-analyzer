@@ -23,7 +23,6 @@ env:
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
   # Supabase CLI（npm の supabase パッケージ）。版は docs/operations/environments.md §8 で要確認
   SUPABASE_CLI_VERSION: "3.0.0"
-  PNPM_VERSION: "10.6.5"
 
 jobs:
   # ---- バッチ: lint、型検査、単体テスト（U）。DATABASE_URL がないので結合テストは skip される ----
@@ -68,14 +67,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: apps/web/.nvmrc
-          cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+      # pnpm は Node に付いている corepack で、apps/web/package.json の packageManager の版を使う
+      # （pnpm/action-setup はリポジトリの Action の許可リストにないため使わない）。
+      - name: pnpm を有効にする（corepack）
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack enable
       - name: 依存を入れる
         run: pnpm install --frozen-lockfile
       - name: pnpm run check
@@ -96,14 +96,15 @@ jobs:
           cache-dependency-path: |
             apps/batch/requirements.txt
             apps/batch/requirements-dev.txt
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: apps/web/.nvmrc
-          cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+      # pnpm は Node に付いている corepack で、apps/web/package.json の packageManager の版を使う
+      # （pnpm/action-setup はリポジトリの Action の許可リストにないため使わない）。
+      - name: pnpm を有効にする（corepack）
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack enable
       - name: バッチの依存を入れる（ハッシュ固定、wheel だけ）
         working-directory: apps/batch
         run: >-
@@ -185,12 +186,15 @@ jobs:
           python -m pip install --require-hashes --only-binary :all: -r .github/requirements/audit.txt
       - name: pip-audit（apps/batch/requirements.txt）
         run: bash .github/scripts/pip-audit.sh
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: apps/web/.nvmrc
+      # pnpm は Node に付いている corepack で、apps/web/package.json の packageManager の版を使う
+      # （pnpm/action-setup はリポジトリの Action の許可リストにないため使わない）。
+      - name: pnpm を有効にする（corepack）
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack enable
       - name: pnpm audit（高以上で失敗）
         working-directory: apps/web
         run: pnpm audit --audit-level=high

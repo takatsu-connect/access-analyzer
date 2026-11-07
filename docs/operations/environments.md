@@ -120,7 +120,7 @@ GitHub Actions（daily.yml、main、Environment production）
 
 1. Vercel のプロジェクト名（= `<プロジェクト名>.vercel.app` の URL）。
 2. Supabase CLI の版。CI は `npx supabase@3.0.0` に固定した。3.0.0 はローカルの `supabase/.temp/cli-latest` に残っていた値で、npm に同じ版があるか、公開日（2 週間たっているか）、`start -x` の除外名と `status -o env` の出力の名前（`ANON_KEY` か `SUPA_ANON_KEY` か、anon キーが JWT か新しい publishable キーか）は確かめていない。context7（supabase/cli、2026-11-07）では、`-x` の不正な名前は警告だけで続行し、名前は版によって `storage-api` / `storage`、`edge-runtime` / `edgeRuntime` などと違う。
-3. `pnpm/action-setup` に `version: 10.6.5` を渡した。リポジトリ直下に package.json がないので `packageManager` との食い違いは起きない見込みだが、未確認。
+3. pnpm は Node に付いている corepack で入れる（`corepack enable`。版は apps/web/package.json の `packageManager`）。`pnpm/action-setup` はリポジトリの Action の許可リスト（GitHub 製、Marketplace の認証済み、`google-github-actions/*`）にないので使わない（2026-11-07、最初の CI で判明）。
 4. Vercel のビルドが `packageManager: pnpm@10.6.5` を使うか（corepack の扱い）。Node は `engines.node: 24.x` を読む見込み。
 5. Vercel の Git の設定で、fork からの PR のプレビューをビルドしない設定（06 §2.4）の名前と既定値。
 6. Standard Protection で `<プロジェクト名>.vercel.app` が「本番ドメイン」として公開のまま残ること（Vercel Docs「Deployment Protection」、2026-11-07 確認: Standard Protection は本番ドメイン以外をすべて保護し、本番の生成 URL も制限される）。
