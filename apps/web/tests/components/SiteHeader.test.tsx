@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { CommonNotes } from '@/components/CommonNotes';
+import { CommonNotesView } from '@/components/CommonNotes';
+import { NOTE_ROUTES, notesFor } from '@/lib/common-notes';
+import type { NoteId } from '@/lib/common-notes';
 import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeaderView, centerCurrentTab } from '@/components/SiteHeader';
 import { SkipLink } from '@/components/SkipLink';
+
+// 読まれた回数を出す画面のうち、帯と比率もある画面（S-01、S-03、S-05）の 6 項目。
+const ALL_NOTES: NoteId[] = notesFor('/');
 
 const mainNav = (): HTMLElement => screen.getByRole('navigation', { name: 'ページの移動' });
 const links = (root: HTMLElement): [string | null, string | null][] =>
@@ -114,7 +119,7 @@ describe('SiteFooter と CommonNotes', () => {
   });
 
   it('CommonNotes は閉じた折りたたみで、見出し（h2）が summary（レビュー C-6）', () => {
-    const { container } = render(<CommonNotes measureStart="2025-10-08" />);
+    const { container } = render(<CommonNotesView notes={ALL_NOTES} measureStart="2025-10-08" />);
     const outer = container.querySelector('section > details');
     expect(outer).not.toBeNull();
     expect(outer?.hasAttribute('open')).toBe(false);
@@ -126,8 +131,8 @@ describe('SiteFooter と CommonNotes', () => {
     expect(outer?.querySelector(':scope > ul')).not.toBeNull();
   });
 
-  it('CommonNotes は 05 §2.7 の行を全部持つ', () => {
-    const { container } = render(<CommonNotes measureStart="2025-10-08" />);
+  it('CommonNotes は、渡された項目を 05 §2.7 の順に描く（読まれた回数を出す画面の 6 項目）', () => {
+    const { container } = render(<CommonNotesView notes={ALL_NOTES} measureStart="2025-10-08" />);
     expect(container.querySelector('h2')?.textContent).toBe('このページの数字について');
     const items = [...container.querySelectorAll('ul > li')].map((item) => item.textContent ?? '');
     expect(items).toHaveLength(6);
@@ -145,5 +150,59 @@ describe('SiteFooter と CommonNotes', () => {
       '詳しく',
       '詳しく',
     ]);
+  });
+
+  it('CommonNotes は、S-08 では公開本数と比率の 2 項目だけ', () => {
+    const { container } = render(<CommonNotesView notes={notesFor('/activity')} />);
+    const items = [...container.querySelectorAll('ul > li')].map((item) => item.textContent ?? '');
+    expect(items).toEqual([
+      '公開本数は、高津コネクトで公開されている記事を数えています。',
+      '比率（%）は、元の数が 20 未満のときは出さず、差の数だけを出します。',
+    ]);
+    expect(container.textContent).not.toContain('読まれた回数');
+  });
+
+  it('CommonNotes は、項目が 0 のとき（S-04、404）折りたたみごと出さない', () => {
+    const { container } = render(<CommonNotesView notes={notesFor('/authors')} />);
+    expect(container.childElementCount).toBe(0);
+    expect(container.textContent).toBe('');
+  });
+});
+
+describe('画面ごとの CommonNotes の項目（src/lib/common-notes.ts。助言 A-2）', () => {
+  const PV = ['pageviews', 'measureStart', 'masked', 'source'];
+  it.each<[string, string, string[]]>([
+    ['S-01', '/', [...PV.slice(0, 3), 'band', 'ratio', 'source']],
+    ['S-02a', '/articles/top', PV],
+    ['S-02b', '/articles/new', [...PV.slice(0, 3), 'band', 'source']],
+    ['S-02c', '/articles/long', PV],
+    ['S-02d', '/articles/recent', PV],
+    ['S-02e', '/articles', PV],
+    ['S-03', '/articles/101', [...PV.slice(0, 3), 'band', 'ratio', 'source']],
+    ['S-04', '/authors', []],
+    ['S-05', '/authors/author-a', [...PV.slice(0, 3), 'band', 'ratio', 'source']],
+    ['S-06', '/categories', [...PV.slice(0, 3), 'ratio', 'source']],
+    ['S-06b', '/categories/seasonal', [...PV.slice(0, 3), 'ratio', 'source']],
+    ['S-07', '/tags', [...PV.slice(0, 3), 'ratio', 'source']],
+    ['S-07b', '/tags/51', [...PV.slice(0, 3), 'ratio', 'source']],
+    ['S-08', '/activity', ['posting', 'ratio']],
+    ['404', '/no-such-page', []],
+    ['404（形の違う ID）', '/articles/abc', []],
+    ['404（2 段より深い）', '/authors/a/b', []],
+  ])('%s（%s）', (_, pathname, expected) => {
+    expect(notesFor(pathname)).toEqual(expected);
+  });
+
+  it('末尾の / があっても同じ項目', () => {
+    expect(notesFor('/activity/')).toEqual(notesFor('/activity'));
+  });
+
+  it('S-08 以外に公開本数の項目はなく、読まれた回数を出す画面にはすべて数え方と出どころがある', () => {
+    for (const route of NOTE_ROUTES) {
+      if (route.screen !== 'S-08') expect(route.notes).not.toContain('posting');
+      if (route.notes.includes('pageviews')) {
+        expect(route.notes).toEqual(expect.arrayContaining(['measureStart', 'masked', 'source']));
+      }
+    }
   });
 });

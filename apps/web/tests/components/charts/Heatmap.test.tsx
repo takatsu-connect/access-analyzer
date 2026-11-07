@@ -68,9 +68,80 @@ describe('heatLevels', () => {
     expect(heatLevels([[5]])).toEqual([[3]]);
     expect(heatLevels([])).toEqual([]);
   });
+
+  // S-06b はカテゴリごとに濃淡を付ける（助言 A-2）。小さいカテゴリの季節の波も色に出る。
+  const BY_CATEGORY: Masked[][] = [
+    [1000, 2000, 3000, 4000, 5000],
+    [1, 2, 3, 4, 5],
+    [0, 0, 0, 0, 0],
+  ];
+
+  it("scale='row' は、行ごとに、その行の中の値で 5 段階に分ける。全部 0 の行はいちばん薄い", () => {
+    expect(heatLevels(BY_CATEGORY, 'row')).toEqual([
+      [1, 2, 3, 4, 5],
+      [1, 2, 3, 4, 5],
+      [1, 1, 1, 1, 1],
+    ]);
+    // 既定（表全体で 1 つの分位。S-01）は変わらない。
+    expect(heatLevels(BY_CATEGORY)).toEqual(heatLevels(BY_CATEGORY, 'all'));
+    expect(heatLevels(BY_CATEGORY)[0]).toEqual([4, 4, 5, 5, 5]);
+  });
+
+  it("scale='col' は、列ごとに分ける（行と列を入れ替えた図と同じ段階になる）", () => {
+    const transpose = <T,>(grid: readonly (readonly T[])[]): T[][] =>
+      (grid[0] ?? []).map((_, col) => grid.map((row) => row[col] as T));
+    expect(heatLevels(transpose(BY_CATEGORY), 'col')).toEqual(
+      transpose(heatLevels(BY_CATEGORY, 'row')),
+    );
+  });
+
+  it('行ごと・列ごとでも、伏せ値は null のまま、全部が伏せ値の行は null', () => {
+    expect(
+      heatLevels(
+        [
+          [null, 3, 9],
+          [null, null, null],
+        ],
+        'row',
+      ),
+    ).toEqual([
+      [null, 1, 5],
+      [null, null, null],
+    ]);
+    expect(
+      heatLevels(
+        [
+          [null, 3],
+          [7, null],
+          [9, 0],
+        ],
+        'col',
+      ),
+    ).toEqual([
+      [null, 5],
+      [1, null],
+      [5, 1],
+    ]);
+  });
 });
 
 describe('Heatmap（U-24）', () => {
+  it("scale='row' を渡すと、行ごとの段階でセルを塗る（既定は表全体）", () => {
+    const levelsOf = (container: HTMLElement): string[] =>
+      [...container.querySelectorAll('[data-part="cell"]')].map(
+        (item) => item.getAttribute('data-level') ?? '',
+      );
+    const grid: Masked[][] = [
+      [100, 200, 300],
+      [0, 0, 0],
+    ];
+    const whole = render(<Heatmap {...props({ values: grid })} />);
+    expect(levelsOf(whole.container)).toEqual(['4', '5', '5', '1', '1', '1']);
+    whole.unmount();
+    const byRow = render(<Heatmap {...props({ values: grid, scale: 'row' })} />);
+    expect(levelsOf(byRow.container)).toEqual(['1', '3', '5', '1', '1', '1']);
+  });
+
   it('セルは 5 段階の濃淡のクラスで、段階ごとにクラスが違う', () => {
     const { container } = render(<Heatmap {...props()} />);
     const cells = parts(container, 'cell');

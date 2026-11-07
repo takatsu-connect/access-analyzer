@@ -39,7 +39,7 @@ export const S06_TEXT = {
   // 格子の見出しに使う短い年月（2026/10）。
   's06b.month.short': '{year}/{month}',
   's06b.tap.hint': 'マスをタップすると、その月の数字に変わります',
-  's06b.legend': '読まれた回数が多いマスほど濃い色',
+  's06b.legend': 'カテゴリごとに、読まれた回数が多い月ほど濃い色',
   // 選んだマスの文。text に 's06b.cell' の文が入る。
   's06b.cell': '{month} {category}: {count} 回',
   's06b.cell.yoy': '{text}。{label} {diff}',

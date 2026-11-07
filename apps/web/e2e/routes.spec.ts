@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { notesFor } from '../src/lib/common-notes';
+import type { NoteId } from '../src/lib/common-notes';
 import { dictionary, t } from '../src/lib/ui-text';
 
 import { SCREENS, bodyText, mainText } from './support/screens';
@@ -65,20 +67,28 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     page,
   }) => {
     test.setTimeout(120_000);
-    // 本文（main と、その後ろの CommonNotes）と、ページ全体の文字。
+    // 本文（main）と、ページ全体の文字。
     const contents: string[] = [];
     const wholeByPrefix = new Map<string, { path: string; text: string }>();
+    // 画面のパスの形をした 404（/articles/999999）でも、ブラウザのパスと静的な HTML が食い違って
+    // 描き直し（ハイドレーションの不一致）にならない（src/components/useRenderedPathname.ts）。
+    const errors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+    page.on('pageerror', (error) => errors.push(String(error)));
     for (const path of NOT_FOUND_PATHS) {
-      const response = await page.goto(path);
+      const response = await page.goto(path, { waitUntil: 'networkidle' });
       expect.soft(response?.status(), `${path} の状態コード`).toBe(404);
       await expect.soft(page.locator('h1'), `${path} の h1`).toHaveText(t('notFound.h1'));
-      // 共通の説明文（CommonNotes）を含む。
+      // 共通の説明文（CommonNotes）は出さない（助言 A-2）。/articles/999999 のように、画面の
+      // パスの形をしていても、404 では画面の項目が出ない。
       await expect
         .soft(
           page.getByRole('heading', { name: t('notes.h2'), exact: true }),
-          `${path} の CommonNotes`,
+          `${path} に CommonNotes がない`,
         )
-        .toHaveCount(1);
+        .toHaveCount(0);
       const whole = await bodyText(page);
       const start = whole.indexOf(t('notFound.h1'));
       expect.soft(start, `${path} の本文の位置`).toBeGreaterThan(-1);
@@ -97,6 +107,8 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     }
     // 入力したパスを本文に写していない。
     expect.soft(contents[0]).not.toContain('999999');
+    // 404 の応答そのもの（状態コード 404 の読み込み）のエラー以外に、描き直しなどのエラーがない。
+    expect(errors.filter((text) => !/status of 404/.test(text))).toEqual([]);
   });
 
   test('E-03: 404 の応答に、スタックトレース、内部 URL、SQL がない', async ({ request }) => {
@@ -110,41 +122,65 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     }
   });
 
-  test('E-14: 全画面（404 を含む）に CommonNotes と DataStatus が 1 つずつあり、main の外にある', async ({
+  test('E-14: DataStatus は全画面（404 を含む）に 1 つ。CommonNotes は項目のある画面に 1 つで、S-04 と 404 にはない。どちらも main の外', async ({
     page,
   }) => {
     test.setTimeout(120_000);
     // DataStatus の文の、日付を差し込んだあとに続く部分。
     const statusTail = dictionary['status.asOf'].split(/\{[A-Za-z]+\}/).at(-1) ?? '';
     expect(statusTail.length).toBeGreaterThan(0);
+    // 項目ごとの、本文の先頭の文（measureStart は日付を差し込む前の部分）。
+    const noteHead: Record<NoteId, string> = {
+      pageviews: t('notes.pageviews'),
+      measureStart: dictionary['notes.measureStart'].split('{')[0] ?? '',
+      masked: t('notes.masked'),
+      band: t('notes.band'),
+      ratio: t('notes.ratio'),
+      source: t('notes.source'),
+      posting: t('notes.posting'),
+    };
+    // 画面ごとの決まり（助言 A-2）。表（src/lib/common-notes.ts）と食い違えば、ここで落ちる。
+    const expectedCount = (screen: (typeof SCREENS)[number]): number => {
+      if (screen.id === 'S-04' || screen.status === 404) return 0;
+      if (screen.id === 'S-08') return 2;
+      return notesFor(screen.path).length;
+    };
 
     for (const screen of SCREENS) {
       await page.goto(screen.path);
       const main = page.locator('main');
       const notes = page.getByRole('heading', { name: t('notes.h2'), exact: true });
+      const expected = notesFor(screen.path);
+      expect.soft(expected.length, `${screen.id} の項目の数`).toBe(expectedCount(screen));
       await expect.soft(main, `${screen.id} の main`).toHaveCount(1);
-      await expect.soft(notes, `${screen.id} の CommonNotes`).toHaveCount(1);
       await expect.soft(page.getByText(statusTail), `${screen.id} の DataStatus`).toHaveCount(1);
       await expect
         .soft(main.getByRole('heading', { name: t('notes.h2'), exact: true }))
         .toHaveCount(0);
-      // 説明文は閉じた折りたたみ（見出しが summary）で出す。中身（数え方、伏せ値、比率、出どころ）は
-      // その details の中にあり、見出しを押すと読める（レビュー C-6。依頼者の判断）。
       const fold = page.locator('details', {
         has: page.locator('summary').getByRole('heading', { name: t('notes.h2'), exact: true }),
       });
+      if (expected.length === 0) {
+        // 項目がなければ、折りたたみごと出さない。
+        await expect.soft(notes, `${screen.id} に CommonNotes がない`).toHaveCount(0);
+        await expect.soft(fold, `${screen.id} に CommonNotes の折りたたみがない`).toHaveCount(0);
+        continue;
+      }
+      await expect.soft(notes, `${screen.id} の CommonNotes`).toHaveCount(1);
+      // 説明文は閉じた折りたたみ（見出しが summary）で出す。中身はその details の中にあり、
+      // 見出しを押すと読める（レビュー C-6。依頼者の判断）。
       await expect.soft(fold, `${screen.id} の CommonNotes の折りたたみ`).toHaveCount(1);
       await expect
         .soft(fold, `${screen.id} の CommonNotes は閉じている`)
         .not.toHaveAttribute('open');
+      await expect
+        .soft(fold.locator(':scope > ul > li'), `${screen.id} の CommonNotes の項目の数`)
+        .toHaveCount(expected.length);
+      // その画面の項目だけがある（ほかの画面の項目が混ざっていない）。
       const body = (await fold.textContent()) ?? '';
-      for (const key of [
-        'notes.pageviews',
-        'notes.masked',
-        'notes.ratio',
-        'notes.source',
-      ] as const) {
-        expect.soft(body, `${screen.id} の ${key}`).toContain(t(key));
+      for (const id of Object.keys(noteHead) as NoteId[]) {
+        const shown = body.includes(noteHead[id]);
+        expect.soft(shown, `${screen.id} の notes.${id}`).toBe(expected.includes(id));
       }
     }
   });
@@ -201,6 +237,93 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     }
     // 記事と著者のページに、外部リンクが実際にある（0 件で通っていない）。
     expect(externalCount).toBeGreaterThan(0);
+  });
+
+  // 外部リンク: サイト内の / で始まるパスでも、ページ内の # でもない href。
+  const externalHrefs = (hrefs: string[]): string[] =>
+    hrefs.filter((href) => !(/^\/(?!\/)/.test(href) || href.startsWith('#')));
+
+  test('E-16: 記事の一覧（S-02a〜e、S-07b、S-05 の記事の一覧）に、外部リンクが 1 つもない', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    // 一覧の行の題名はサイト内の記事詳細（S-03）へ。記事そのもの（高津コネクト）へは記事詳細から開く。
+    for (const path of [
+      '/articles',
+      '/articles/top',
+      '/articles/new',
+      '/articles/long',
+      '/articles/recent',
+      '/tags/51',
+    ]) {
+      await page.goto(path);
+      const hrefs = await page
+        .locator('main a[href]')
+        .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href') ?? ''));
+      // 一覧があること（0 件で通っていない）。
+      expect
+        .soft(
+          hrefs.some((href) => href.startsWith('/articles/')),
+          `${path} の記事への行`,
+        )
+        .toBe(true);
+      expect.soft(externalHrefs(hrefs), `${path} の外部リンク`).toEqual([]);
+      await expect
+        .soft(page.locator('main a[target="_blank"]'), `${path} の新しいタブ`)
+        .toHaveCount(0);
+    }
+
+    // S-05: 記事の一覧の節（h2 から次の節まで）。紹介ページへのリンクは見出しの側にあり、一覧の外。
+    await page.goto('/authors/author-a');
+    const list = page.locator('main section', {
+      has: page.getByRole('heading', { level: 2, name: t('s05.posts.h2'), exact: true }),
+    });
+    await expect(list, 'S-05 の記事の一覧の節').toHaveCount(1);
+    const listHrefs = await list
+      .locator('a[href]')
+      .evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href') ?? ''));
+    expect
+      .soft(
+        listHrefs.some((href) => href.startsWith('/articles/')),
+        'S-05 の記事への行',
+      )
+      .toBe(true);
+    expect.soft(externalHrefs(listHrefs), 'S-05 の記事の一覧の外部リンク').toEqual([]);
+    await expect.soft(list.locator('a[target="_blank"]')).toHaveCount(0);
+  });
+
+  test('E-16: 記事詳細の題名と、ライターのページの紹介ページは、新しいタブで開く外部リンクで、四角と矢印のアイコンが付く', async ({
+    page,
+  }) => {
+    const cases: [string, string][] = [
+      ['/articles/101', 'main p a[target="_blank"]'],
+      ['/authors/author-a', 'main a[target="_blank"]'],
+    ];
+    for (const [path, selector] of cases) {
+      await page.goto(path);
+      const links = page.locator(selector);
+      await expect.soft(links, `${path} の新しいタブで開くリンク`).toHaveCount(1);
+      const link = links.first();
+      const href = (await link.getAttribute('href')) ?? '';
+      expect
+        .soft(href.startsWith('https://takatsu-connect.com/'), `${path} の行き先 ${href}`)
+        .toBe(true);
+      expect.soft((await link.getAttribute('rel')) ?? '', `${path} の rel`).toContain('noopener');
+      // 飾りのアイコン（読み上げない SVG）が、リンクの中に 1 つ。
+      await expect
+        .soft(link.locator('svg[aria-hidden="true"]'), `${path} のアイコン`)
+        .toHaveCount(1);
+      await expect.soft(link.locator('svg[aria-hidden="true"]').first()).toBeVisible();
+    }
+    // 記事詳細では、題名がリンクになっている。
+    await page.goto('/articles/101');
+    const title = page.locator('main p a[target="_blank"]').first();
+    expect.soft(((await title.textContent()) ?? '').trim().length).toBeGreaterThan(0);
+    // ライターのページでは、紹介ページへのリンクの文言。
+    await page.goto('/authors/author-a');
+    await expect
+      .soft(page.locator('main a[target="_blank"]').first())
+      .toContainText(t('s05.authorLink'));
   });
 
   test('E-16: 404 の本文は固定文で、main の文字が辞書どおり', async ({ page }) => {

@@ -195,6 +195,7 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
       legend={t('s06b.legend')}
       defaultCell={{ row: 0, col: defaultMonthIndex(months) }}
       colLabelEvery={labelEvery(months)}
+      scale="row"
     />
   );
 
@@ -210,6 +211,7 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
       hint={t('s06b.tap.hint')}
       legend={t('s06b.legend')}
       defaultCell={{ row: defaultMonthIndex(months), col: 0 }}
+      scale="col"
     />
   );
 

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ArticleTable } from '@/components/ArticleTable';
-import { CommonNotes } from '@/components/CommonNotes';
+import { CommonNotesView } from '@/components/CommonNotes';
 import { DataStatus } from '@/components/DataStatus';
 import { Delta } from '@/components/Delta';
 import { Details } from '@/components/Details';
@@ -18,6 +18,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeaderView } from '@/components/SiteHeader';
 import { ArticleLink, AuthorLink } from '@/components/SiteLinks';
 import { SkipLink } from '@/components/SkipLink';
+import { NOTE_ORDER } from '@/lib/common-notes';
 import { compare } from '@/lib/derive';
 
 import { makePost, PERIODS } from './fixtures';
@@ -34,7 +35,7 @@ const CASES: [string, ReactElement][] = [
   ['SiteFooter', <SiteFooter key="footer" />],
   ['SkipLink', <SkipLink key="skip" targetId="main" />],
   ['DataStatus', <DataStatus key="status" meta={META} />],
-  ['CommonNotes', <CommonNotes key="notes" />],
+  ['CommonNotes', <CommonNotesView key="notes" notes={NOTE_ORDER} />],
   [
     'PeriodPicker',
     <PeriodPicker key="picker" periods={PERIODS} value="m2026-10" onChange={() => undefined} />,

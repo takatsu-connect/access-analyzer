@@ -9,6 +9,8 @@
  */
 import type { Band, Masked } from '@/lib/page-data';
 
+import type { HeatScale } from './heat-levels';
+
 // --- LineChart（日別推移。S-01、S-03） ---
 
 /** 固定行に出す 1 点（日別なら 1 日、週別なら 1 週）。 */
@@ -182,4 +184,9 @@ export type HeatmapProps = {
   formatValue?: (value: number) => string;
   /** 列の見出しを何列おきに出すか（24 列なら 3 など）。既定は 1（すべて）。 */
   colLabelEvery?: number;
+  /**
+   * 濃淡の分位を取る範囲。既定は 'all'（表全体で 1 つ。S-01）。
+   * S-06b は、カテゴリごとに季節の波が色に出るよう、カテゴリの並ぶ向き（'row' か 'col'）を渡す（助言 A-2）。
+   */
+  scale?: HeatScale;
 };

@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
 import { t } from '@/lib/ui-text';
 import type { UiTextKey } from '@/lib/ui-text';
 
 import styles from './SiteHeader.module.css';
+import { useRenderedPathname } from './useRenderedPathname';
 
 type NavItem = { label: UiTextKey; href: string };
 
@@ -138,6 +138,7 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
 
 /** 全ページ共通のヘッダ（layout.tsx に置く）。現在のパスは Next.js のルーターから取る。 */
 export function SiteHeader() {
-  const pathname = usePathname();
-  return <SiteHeaderView pathname={pathname ?? '/'} />;
+  // 一覧にない ID の 404 で、静的な HTML と食い違わないよう、HTML を作ったときのパスで選ぶ。
+  const pathname = useRenderedPathname();
+  return <SiteHeaderView pathname={pathname} />;
 }

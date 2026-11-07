@@ -194,14 +194,19 @@ test('一覧にないパスは 404 の固定文で、同じヘッダが付く（
   expect.soft(await response.text()).toContain(t('notFound.h1'));
 });
 
-test('更新の状況と共通の説明文は、レイアウトが全ページに 1 つずつ出す（404 を含む）', async ({
+test('更新の状況と共通の説明文は、レイアウトが 1 つずつ出す（共通の説明文は 404 には出さない）', async ({
   page,
 }) => {
   // DataStatus の文の、日付を差し込んだあとに続く部分。
   const statusTail = dictionary['status.asOf'].split(/\{[A-Za-z]+\}/).at(-1) ?? '';
   expect(statusTail.length).toBeGreaterThan(0);
 
-  for (const url of ['/', '/no-such-page']) {
+  // 404 には DataStatus だけ（CommonNotes の項目がない。助言 A-2）。
+  await page.goto('/no-such-page');
+  await expect.soft(page.getByText(statusTail), '404 の DataStatus').toHaveCount(1);
+  await expect.soft(page.getByRole('heading', { name: t('notes.h2') })).toHaveCount(0);
+
+  for (const url of ['/']) {
     await page.goto(url);
     const main = page.locator('main');
     const notes = page.getByRole('heading', { name: t('notes.h2') });

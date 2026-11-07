@@ -47,7 +47,8 @@ function largestCell(values: readonly (readonly (number | null)[])[]): Position 
 /**
  * 格子のヒートマップ（05 §2.8。S-01 の曜日 × 時間帯、S-06b の月 × カテゴリ）。
  *
- * - セルは、伏せ値を除いた値の分位で 5 段階の濃淡。伏せ値のセルは面の色（白）と「—」。
+ * - セルは、伏せ値を除いた値の分位で 5 段階の濃淡。分位を取る範囲は scale（表全体 / 行ごと / 列ごと）。
+ *   伏せ値のセルは面の色（白）と「—」。
  * - セルの中の数字は広い画面だけ（CSS で隠す）。選んだセルの値は、図の下の固定行に出す。
  *   固定行は最初から埋まっている。
  */
@@ -62,6 +63,7 @@ export function Heatmap({
   defaultCell,
   formatValue = formatNumber,
   colLabelEvery = 1,
+  scale = 'all',
 }: HeatmapProps) {
   const fixedRowId = useId();
   const [selected, setSelected] = useState<Position | null>(null);
@@ -83,7 +85,7 @@ export function Heatmap({
   const fallback = inRange(defaultCell) ? defaultCell : largestCell(values);
   const current = inRange(selected) ? selected : fallback;
 
-  const levels = heatLevels(values);
+  const levels = heatLevels(values, scale);
   const hasMasked = values.some((cells) => cells.some((value) => value === null));
   const cellWidth = 100 / colCount;
   const leftOf = (col: number): number => round2(col * cellWidth);

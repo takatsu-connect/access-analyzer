@@ -24,8 +24,9 @@ export const metadata: Metadata = {
 
 // 全ページ共通の枠（05 §1、§2.7）: スキップリンク、ヘッダ、DataStatus、main、CommonNotes、フッタ。
 //
-// 決まり: DataStatus（データの日付と更新の状況）と CommonNotes（共通の説明文）は、ここが
-// 全ページ（404 を含む）に 1 つずつ出す。ページの側（page.tsx、not-found.tsx）には置かない。
+// 決まり: DataStatus（データの日付と更新の状況）と CommonNotes（共通の説明文）は、ここが置く。
+// DataStatus は全ページ（404 を含む）に 1 つ。CommonNotes は、src/lib/common-notes.ts の表でパスから項目を選び、
+// 項目のない画面（S-04、404）には出さない。ページの側（page.tsx、not-found.tsx）には置かない。
 // main もここが持つので、ページは main を書かず、フラグメントを返す。
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // ビルド時に 1 回だけ読む（静的生成）。DataStatus は Client Component なので、使う値だけを渡す。
