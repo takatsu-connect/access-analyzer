@@ -83,9 +83,7 @@ describe('S-06b 月ごと × カテゴリ', () => {
 
     // 最初に選んであるのは、終わっている月のうち、いちばん新しい月（2026 年 10 月）。175 と 300。
     const text = fixedRow(view(container, 'wide'));
-    expect(text).toBe(
-      '2026 年 10 月 グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です',
-    );
+    expect(text).toBe('2026 年 10 月 グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です');
     expect(text).not.toMatch(/[▲▼%]/);
   });
 
