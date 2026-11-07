@@ -33,44 +33,75 @@ function fixedRow(container: HTMLElement): string {
 }
 
 describe('LineChart（U-24）', () => {
-  it('前期間の線は点線で、未確定の日の線とクラスが違う', () => {
+  it('当期間の線は 1 本で、未確定の日も確定の日と同じクラス（薄くしない）。前期間は点線', () => {
     const { container } = render(<LineChart {...sevenDays()} />);
     const prev = series(container, 'prev');
-    const unconfirmed = series(container, 'unconfirmed');
     const current = series(container, 'current');
     expect(prev?.getAttribute('stroke-dasharray')).toBe('4 3');
     expect(current?.hasAttribute('stroke-dasharray')).toBe(false);
-    expect(unconfirmed?.hasAttribute('stroke-dasharray')).toBe(false);
-    expect(prev?.getAttribute('class')).not.toBe(unconfirmed?.getAttribute('class'));
     expect(prev?.getAttribute('class')).not.toBe(current?.getAttribute('class'));
-    expect(unconfirmed?.getAttribute('class')).not.toBe(current?.getAttribute('class'));
+    // 未確定の日だけの線（以前の薄い線）はない。当期間の線は 7 日すべてを通る。
+    expect(series(container, 'unconfirmed')).toBeNull();
+    expect(container.querySelectorAll('[data-series="current"]')).toHaveLength(1);
+    const d = current?.getAttribute('d') ?? '';
+    expect([...d.matchAll(/[ML]/g)]).toHaveLength(7);
     // 未確定の日の背景に帯がある。
     expect(parts(container, 'unconfirmed-band')).toHaveLength(1);
   });
 
-  it('未確定の日の線は --shade-3、背景の帯は --shade-1（帯の上で線が読める濃さ）', () => {
+  it('未確定の日（10/28〜10/30）にだけ白抜きの丸。確定の日には点を打たない', () => {
+    const { container } = render(<LineChart {...sevenDays()} />);
+    const dots = parts(container, 'unconfirmed-dot');
+    expect(dots.map((dot) => dot.getAttribute('data-date'))).toEqual([
+      '2026-10-28',
+      '2026-10-29',
+      '2026-10-30',
+    ]);
+    // 丸は 8px 以上（半径 4）。
+    expect(dots.every((dot) => dot.getAttribute('r') === '4')).toBe(true);
+  });
+
+  it('白抜きの丸は中が面の色、縁が当期間の線と同じ色。帯は --shade-1、--shade-3 の薄い線はない', () => {
     const css = readFileSync(
       path.resolve(process.cwd(), 'src/components/charts/LineChart.module.css'),
       'utf8',
     );
     const ruleOf = (className: string): string =>
       new RegExp(`\\.${className}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
-    expect(ruleOf('unconfirmedLine')).toContain('stroke: var(--shade-3)');
+    expect(ruleOf('unconfirmedDot')).toContain('fill: var(--color-surface)');
+    expect(ruleOf('unconfirmedDot')).toContain('stroke: var(--shade-5)');
     expect(ruleOf('unconfirmedBand')).toContain('fill: var(--shade-1)');
-    // 当期間の確定の線は、いちばん濃い色のまま。
+    expect(ruleOf('unconfirmedLine')).toBe('');
+    // 当期間の線は、いちばん濃い色のまま。
     expect(ruleOf('currentLine')).toContain('stroke: var(--shade-5)');
   });
 
-  it('凡例の未確定の見本は、図と同じ線と帯のクラスで描く', () => {
+  it('凡例の未確定の見本は、図と同じ帯と白抜きの丸のクラスで、文は「○ と薄い背景の日は…」', () => {
     const { container } = render(<LineChart {...sevenDays()} />);
-    const lineClass = series(container, 'unconfirmed')?.getAttribute('class');
+    const dotClass = parts(container, 'unconfirmed-dot')[0]?.getAttribute('class');
     const bandClass = parts(container, 'unconfirmed-band')[0]?.getAttribute('class');
-    const swatches = [...container.querySelectorAll('li svg')];
-    const swatch = swatches[swatches.length - 1];
-    expect(lineClass).toBeTruthy();
+    const items = [...container.querySelectorAll('li')];
+    const item = items[items.length - 1];
+    expect(dotClass).toBeTruthy();
     expect(bandClass).toBeTruthy();
-    expect(swatch?.querySelector('line')?.getAttribute('class')).toBe(lineClass);
-    expect(swatch?.querySelector('rect')?.getAttribute('class')).toBe(bandClass);
+    expect(item?.querySelector('circle')?.getAttribute('class')).toBe(dotClass);
+    expect(item?.querySelector('rect')?.getAttribute('class')).toBe(bandClass);
+    expect(item?.querySelector('line')).toBeNull();
+    expect(item?.textContent).toBe('○ と薄い背景の日は、あとで増えることがあります');
+  });
+
+  it('未確定の日を選ぶと、固定行に「（あとで増えることがあります）」を添える。確定の日には添えない', () => {
+    const { container } = render(<LineChart {...sevenDays()} />);
+    const pick = (date: string): void => {
+      const target = container.querySelector(`[data-part="hit"][data-date="${date}"]`);
+      if (target) fireEvent.click(target);
+    };
+    pick('2026-10-29');
+    expect(fixedRow(container)).toBe(
+      '10 月 29 日: 読まれた回数 60（前の期間の同じ日: 88）（あとで増えることがあります）',
+    );
+    pick('2026-10-27');
+    expect(fixedRow(container)).toBe('10 月 27 日: 読まれた回数 132（前の期間の同じ日: 98）');
   });
 
   it('前期間を渡さなければ、前期間の線も凡例も出ない（S-03）', () => {
@@ -149,9 +180,9 @@ describe('LineChart（U-24）', () => {
     expect(Math.max(...pathYs)).toBeLessThan((ys[0] ?? 0) - 50);
   });
 
-  it('未確定の日がなければ、薄い線も帯も注記も出ない', () => {
+  it('未確定の日がなければ、白抜きの丸も帯も注記も出ない', () => {
     const { container } = render(<LineChart {...sevenDays({ unconfirmedFrom: undefined })} />);
-    expect(series(container, 'unconfirmed')).toBeNull();
+    expect(parts(container, 'unconfirmed-dot')).toHaveLength(0);
     expect(parts(container, 'unconfirmed-band')).toHaveLength(0);
     expect(container.textContent).not.toContain('あとで増えることがあります');
   });
@@ -220,6 +251,23 @@ describe('LineChart（U-24）', () => {
     expect(parts(container, 'hit')).toHaveLength(2);
     expect(parts(container, 'published-dot')).toHaveLength(1);
     expect(seen[0]?.unconfirmed).toBe(false);
+  });
+
+  it('週ごとの表示では、未確定の日を含む最後の週だけ白抜きの丸', () => {
+    // 10/1〜10/21 の 3 週。未確定は 10/13 から（2 週目の終わりと 3 週目にまたがる）。
+    const dates = [...Array(21).keys()].map((offset) => addDays('2026-10-01', offset));
+    const { container } = render(
+      <LineChart
+        title={TITLE}
+        valueLabel="読まれた回数"
+        dates={dates}
+        values={Array<number>(21).fill(10)}
+        unconfirmedFrom="2026-10-13"
+        weekly
+      />,
+    );
+    const dots = parts(container, 'unconfirmed-dot');
+    expect(dots.map((dot) => dot.getAttribute('data-date'))).toEqual(['2026-10-15']);
   });
 
   it('値が全部 0 でも、点が 1 つでも落ちない', () => {

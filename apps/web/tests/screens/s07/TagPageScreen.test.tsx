@@ -66,11 +66,17 @@ describe('S-07b シリーズの記事', () => {
     expect(titles()).toEqual(['記事 105', '記事 102', '記事 101']);
     const cells = (name: string): (string | null)[] =>
       [...(screen.getByRole('link', { name }).closest('tr')?.querySelectorAll('td') ?? [])].map(
-        (cell) => cell.textContent,
+        (cell) => (cell.querySelector('[data-part="wide-cell"]') ?? cell).textContent,
       );
     expect(cells('記事 105').at(-1)).toBe('20');
     expect(cells('記事 102').at(-1)).toBe('5');
     expect(cells('記事 101').at(-1)).toBe('40');
+    // 狭い画面では、値に名前を添える（助言 B-10）。
+    const narrow = screen
+      .getByRole('link', { name: '記事 105' })
+      .closest('tr')
+      ?.querySelectorAll('[data-part="narrow-cell"]');
+    expect([...(narrow ?? [])].map((cell) => cell.textContent).at(-1)).toBe('この期間 20 回');
   });
 
   it('列は タイトル、著者、公開日、読まれた回数 の 4 つ', () => {

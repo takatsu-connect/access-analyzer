@@ -18,12 +18,12 @@ const current = (root: HTMLElement): [string | null, string | null][] =>
     .map((link) => [link.textContent, link.getAttribute('aria-current')]);
 
 describe('SiteHeader', () => {
-  it('ナビは 全体 / 記事 / 著者 / カテゴリ / シリーズ / 投稿活動（パスは 05 §1）', () => {
+  it('ナビは 全体 / 記事 / ライター / カテゴリ / シリーズ / 投稿活動（パスは 05 §1）', () => {
     render(<SiteHeaderView pathname="/" />);
     expect(links(mainNav())).toEqual([
       ['全体', '/'],
       ['記事', '/articles/top'],
-      ['著者', '/authors'],
+      ['ライター', '/authors'],
       ['カテゴリ', '/categories'],
       ['シリーズ', '/tags'],
       ['投稿活動', '/activity'],
@@ -68,7 +68,7 @@ describe('SiteHeader', () => {
 
     render(<SiteHeaderView pathname="/authors/writer-a/" />);
     expect(screen.queryByRole('navigation', { name: '記事のページ' })).toBeNull();
-    expect(current(mainNav())).toEqual([['著者', 'true']]);
+    expect(current(mainNav())).toEqual([['ライター', 'true']]);
   });
 });
 

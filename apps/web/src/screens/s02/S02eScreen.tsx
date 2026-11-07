@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ArticleTable } from '@/components/ArticleTable';
+import { ArticleTable, LIST_BADGES } from '@/components/ArticleTable';
 import type { ArticleColumnId } from '@/components/ArticleTable';
 import { StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
@@ -117,6 +117,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
   return (
     <>
       <h1>{t('s02e.h1')}</h1>
+      <p className={styles.lead}>{t('s02e.lead')}</p>
       <PeriodPicker periods={data.periods} value={periodId} onChange={(id) => update({ p: id })} />
       <div className={styles.filters} role="group" aria-label={t('s02e.filter.label')}>
         <label className={styles.field}>
@@ -217,6 +218,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
         columns={COLUMNS}
         narrowColumns={NARROW_COLUMNS}
         columnLabels={{ pageviews: t('column.pageviews.period') }}
+        badges={LIST_BADGES}
         sortable={isNarrowed}
         sort={state.sort}
         onSortChange={(sort) => update({ sort })}

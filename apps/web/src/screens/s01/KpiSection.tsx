@@ -1,5 +1,5 @@
 import { KpiCard, KpiGrid } from '@/components/KpiCard';
-import { absentCompareText, type PeriodChoice } from '@/components/usePeriod';
+import { absentCompareText, prevCountText, type PeriodChoice } from '@/components/usePeriod';
 import { formatNumber } from '@/lib/format';
 import type { DashboardData, Period, SitePeriodValue } from '@/lib/page-data';
 import { metricLabel, metricNote, t } from '@/lib/ui-text';
@@ -51,12 +51,10 @@ export function KpiSection({ data, choice, site }: KpiSectionProps) {
             posting === undefined ? (
               absentCompareText(choice.withheld, 'prev')
             ) : (
-              <ComparisonLines
+              <CountLines
                 choice={choice}
-                current={posting.postCount}
-                prev={pick(data.posting, choice.prevId)?.postCount}
-                yoy={pick(data.posting, choice.yoyId)?.postCount}
-                partialAware={false}
+                prev={pick(data.posting, choice.prevId)}
+                yoy={pick(data.posting, choice.yoyId)}
               />
             )
           }
@@ -87,5 +85,38 @@ export function KpiSection({ data, choice, site }: KpiSectionProps) {
             })}
       </p>
     </div>
+  );
+}
+
+/** 期間ごとの公開本数（DashboardData.posting の値）。 */
+type PostingValue = { postCount: number };
+
+type CountLinesProps = {
+  choice: PeriodChoice & { period: Period };
+  prev: PostingValue | undefined;
+  yoy: PostingValue | undefined;
+};
+
+/**
+ * 公開した記事の本数の比較（助言 A-2）。▲▼ と差を付けず、前の期間の本数を並べる。
+ * 「前の 28 日は 7 本」。月は「前の月は 3 本」と「去年の同じ月は 2 本」。
+ * 月の途中の月は、ほかの KPI と同じく「月が終わると…」（resolvePeriod の withheld）。
+ */
+function CountLines({ choice, prev, yoy }: CountLinesProps) {
+  const line = (target: 'prev' | 'yoy', other: PostingValue | undefined) =>
+    other === undefined
+      ? absentCompareText(choice.withheld, target)
+      : prevCountText(choice.period, target, formatNumber(other.postCount));
+  return (
+    <>
+      <span className={styles.compareLine} data-compare="prev">
+        {line('prev', prev)}
+      </span>
+      {choice.period.kind === 'month' ? (
+        <span className={styles.compareLine} data-compare="yoy">
+          {line('yoy', yoy)}
+        </span>
+      ) : null}
+    </>
   );
 }

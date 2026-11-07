@@ -14,15 +14,17 @@ export const S02_TEXT = {
   's02.count.label': '件数',
 
   // --- 記事を探す（S-02e。05 §4.5）。どれも仮の初期値 ---
+  // h1 の下の 1 文（助言 B-9）。
+  's02e.lead': 'タイトルの言葉、カテゴリ、ライター、公開した月で探せます。',
   's02e.filter.label': '絞り込み',
-  's02e.filter.q': 'タイトルに含む語',
+  's02e.filter.q': 'タイトルの言葉',
   's02e.filter.category': 'カテゴリ',
   's02e.filter.author': 'ライター',
-  's02e.filter.ym': '公開年月',
+  's02e.filter.ym': '公開した月',
   's02e.filter.all': 'すべて',
   's02e.filter.clear': '条件を消す',
   // 絞り込みなし、または親カテゴリだけのときに出す、並びの説明（操作はできない）。
   's02e.sort.fixed': '並び: 公開日の新しい順',
-  's02e.count': '{n} 件',
+  's02e.count': '{n} 本',
   's02e.empty': '条件に合う記事はありません。条件を変えるか、「条件を消す」を押してください。',
 } as const satisfies ScreenTexts<'s02' | 's02a' | 's02b' | 's02c' | 's02d' | 's02e'>;

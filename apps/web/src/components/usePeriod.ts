@@ -60,6 +60,26 @@ export function compareLabel(period: Pick<Period, 'id' | 'kind'>, target: 'prev'
 }
 
 /**
+ * 公開した記事の本数の比較（助言 A-2）。▲▼ と差を付けず、相手の本数を並べる。
+ * 「前の 28 日は 7 本」「前の月は 3 本」「去年の同じ月は 2 本」。n は書式を整えた本数。
+ */
+export function prevCountText(
+  period: Pick<Period, 'id' | 'kind'>,
+  target: 'prev' | 'yoy',
+  n: string,
+): string {
+  if (target === 'yoy') return t('compare.count.yoy', { n });
+  if (period.kind === 'month') return t('compare.count.prevMonth', { n });
+  return t('compare.count.prevWindow', { days: WINDOW_DAYS[period.id] ?? '', n });
+}
+
+/** 公開した記事の本数の表で、前の期間の本数を入れる列の名前（「前の 28 日」「前の月」）。 */
+export function prevCountColumn(period: Pick<Period, 'id' | 'kind'>): string {
+  if (period.kind === 'month') return t('compare.count.column.prevMonth');
+  return t('compare.count.column.prevWindow', { days: WINDOW_DAYS[period.id] ?? '' });
+}
+
+/**
  * 期間の ID から、選んだ期間と比較の相手を引く。
  * useQueryState を直接使う画面（期間以外のパラメータも持つ画面）は、state.p をこれに渡す。
  * 一覧にない ID は、既定（直近 28 日）、それもなければ先頭の期間にする。

@@ -40,8 +40,9 @@ export function RecentSection({ data }: RecentSectionProps) {
       rows.filter(rule).sort(byRecent7).slice(0, LIST_LIMIT);
     return {
       // 両方の印が付いた記事は「久しぶりに読まれた」にだけ出す（同じ記事を 2 つの一覧に出さない）。
-      hot: pick((row) => row.post.isRecentHot && !row.post.isRevival),
-      revival: pick((row) => row.post.isRevival),
+      // 広告の記事は選ばない（S-02d と同じ選び方。助言 B-5）。
+      hot: pick((row) => !row.post.isAd && row.post.isRecentHot && !row.post.isRevival),
+      revival: pick((row) => !row.post.isAd && row.post.isRevival),
     };
   }, [data.posts, recent7]);
   const { name } = data.author;

@@ -5,6 +5,8 @@ export type MonthlyBarRow = {
   key: string;
   /** 月の名前（「2026 年 10 月」）。 */
   label: string;
+  /** 月の名前の下に小さく添える状態（「途中まで」）。なければ null。 */
+  note: string | null;
   /** その月の本数。 */
   value: number;
   /** 去年の同じ月の本数。データがなければ null（枠を描かない）。 */
@@ -81,7 +83,14 @@ export function MonthlyBars({ title, rows, legend }: MonthlyBarsProps) {
       <ul className={styles.bars} aria-label={title}>
         {rows.map((row) => (
           <li key={row.key} className={styles.barRow} data-month={row.key}>
-            <span className={styles.barLabel}>{row.label}</span>
+            <span className={styles.barLabel}>
+              {row.label}
+              {row.note === null ? null : (
+                <span className={styles.barNote} data-part="note">
+                  {row.note}
+                </span>
+              )}
+            </span>
             <svg className={styles.barSvg} role="img" height={HEIGHT}>
               <title>{row.title}</title>
               <rect

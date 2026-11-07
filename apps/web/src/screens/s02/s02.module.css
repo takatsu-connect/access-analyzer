@@ -109,3 +109,8 @@
   margin: 0;
   color: var(--color-text-muted);
 }
+
+/* h1 の下の 1 文（S-02e）。 */
+.lead {
+  margin: var(--space-2) 0 0;
+}

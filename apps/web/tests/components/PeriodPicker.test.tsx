@@ -73,7 +73,7 @@ describe('PeriodPicker と URL の状態', () => {
     ]);
   });
 
-  it('月が終わって確定する前は「集計中」、月の途中は「途中まで」と添える', () => {
+  it('月が終わって確定する前は「ほぼ確定」、月の途中は「途中まで」と添える', () => {
     const periods = PERIODS.map((period) =>
       period.id === 'm2026-10' ? { ...period, isConfirmed: false } : period,
     );
@@ -82,8 +82,30 @@ describe('PeriodPicker と URL の状態', () => {
     expect([...select.options].map((option) => option.textContent)).toEqual([
       '年月を選ぶ',
       '2026 年 11 月（途中まで）',
-      '2026 年 10 月（集計中）',
+      '2026 年 10 月（ほぼ確定）',
     ]);
+  });
+
+  it('ほぼ確定の 10 月を選ぶと、日付の範囲の下に「11 月 7 日ごろまでは、少し増えることがあります。」', () => {
+    const periods = PERIODS.map((period) =>
+      period.id === 'm2026-10' ? { ...period, isConfirmed: false } : period,
+    );
+    const { container, rerender } = render(
+      <PeriodPicker periods={periods} value="m2026-10" onChange={() => undefined} />,
+    );
+    const lines = (): string[] =>
+      [...container.querySelectorAll('p')].map((item) => item.textContent ?? '');
+    expect(lines()).toEqual([
+      '10 月 1 日〜10 月 31 日',
+      '11 月 7 日ごろまでは、少し増えることがあります。',
+    ]);
+    // 確定した月、月の途中の月、移動窓では出さない。
+    rerender(<PeriodPicker periods={PERIODS} value="m2026-10" onChange={() => undefined} />);
+    expect(lines()).toEqual(['10 月 1 日〜10 月 31 日']);
+    rerender(<PeriodPicker periods={periods} value="m2026-11" onChange={() => undefined} />);
+    expect(lines()).toEqual(['11 月 1 日〜11 月 2 日']);
+    rerender(<PeriodPicker periods={periods} value="last28" onChange={() => undefined} />);
+    expect(lines()).toEqual(['10 月 6 日〜11 月 2 日']);
   });
 
   it('URL の値を、マウント後に読む', () => {

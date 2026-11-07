@@ -6,7 +6,7 @@
  * - 単位の日本語（年、月、日、分、秒 など）は src/lib/ui-text.ts の format.* に置く。
  * - 形の違う値は例外にする（「NaN」や壊れた日付を画面に出さない）。
  */
-import { splitYmd, todayJst } from '@/lib/derive/dates';
+import { addDays, splitYmd, todayJst } from '@/lib/derive/dates';
 import type { MonthProgress } from '@/lib/derive/periods';
 import type { SelectablePeriodId } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
@@ -100,6 +100,22 @@ export function formatPeriodLabel(id: SelectablePeriodId): string {
   return formatYearMonth(match[1] ?? '');
 }
 
+/** 月が終わってから、数字を取り直す日数（月末から 7 日。05 §2.2）。 */
+const SETTLING_DAYS = 7;
+
+/** ほぼ確定の月の、数字が落ち着く日。「11 月 7 日」（月末から 7 日後）。 */
+export function formatSettlingUntil(monthEnd: string): string {
+  return formatMonthDay(addDays(monthEnd, SETTLING_DAYS));
+}
+
+/**
+ * ほぼ確定の月に添える 1 文。「11 月 7 日ごろまでは、少し増えることがあります。」
+ * monthEnd はその月の末日（Period.end）。日付は月末から 7 日後。
+ */
+export function formatSettlingNote(monthEnd: string): string {
+  return t('period.month.settling.note', { date: formatSettlingUntil(monthEnd) });
+}
+
 // --- 数 ---
 
 function toInteger(value: number): number {
@@ -116,7 +132,7 @@ function groupDigits(absolute: number): string {
 
 /**
  * 月の名前に、状態を添える。月の途中は「（途中まで）」、月は終わったが数字を取り直している間は
- * 「（集計中）」。確定した月はそのまま。
+ * 「（ほぼ確定）」。確定した月はそのまま。
  */
 export function formatMonthWithProgress(label: string, progress: MonthProgress): string {
   if (progress === 'inProgress') return t('period.month.unconfirmed', { label });

@@ -8,18 +8,11 @@
   line-height: var(--line-height-tight);
 }
 
+/* 前の期間の本数（「前の 28 日は 7 本」）。▲▼ と差は付けない（助言 A-2）。 */
 .leadCompare {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-2);
   margin: 0 0 var(--space-4);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-}
-
-.leadCompare > :last-child {
-  color: var(--color-text);
 }
 
 /* 月ごとの横棒。月の名前、棒、本数の 3 つを 1 行に並べる（スマホもパソコンも同じ）。 */
@@ -42,6 +35,12 @@
 
 .barLabel {
   color: var(--color-text-muted);
+}
+
+/* 月の途中の月の「途中まで」。月の名前の下に小さく置き、括弧ごと折れる形にしない（助言 B-1）。 */
+.barNote {
+  display: block;
+  font-size: var(--font-size-xs);
 }
 
 .barValue {

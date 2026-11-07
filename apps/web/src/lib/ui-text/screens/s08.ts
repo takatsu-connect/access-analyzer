@@ -13,8 +13,6 @@ export const S08_TEXT = {
   's08.lead': 'この期間に {n} 本の記事が公開されました。',
   // ここから下は仮の初期値。
   's08.posts': '{n} 本',
-  // 比較の相手が決まらないとき（前の期間がない月）の言い方。ふだんは「前の 28 日と比べて」など。
-  's08.column.prev': '前の期間と比べて',
   // 前の期間の不在は共通の absent.prev を使う。
   // この期間に公開した記事がないとき（ライターの表、カテゴリの表）。
   's08.empty': 'この期間に公開された記事はありません',
@@ -24,6 +22,8 @@ export const S08_TEXT = {
   's08.monthly.chart': '月ごとの公開本数の図',
   's08.monthly.title': '{month}: {n} 本',
   's08.monthly.title.yoy': '{month}: {n} 本（去年の同じ月: {yoy} 本）',
+  // 月の途中の月に、棒の月の名前の下へ小さく添える（「2026 年 11 月」の下に「途中まで」。助言 B-1）。
+  's08.monthly.inProgress': '途中まで',
   's08.monthly.legend.current': '塗り: その月の本数',
   's08.monthly.legend.yoy': '細い枠: 去年の同じ月の本数',
   's08.monthly.yoy': '去年の同じ月',
@@ -33,11 +33,10 @@ export const S08_TEXT = {
   // --- この期間に記事を公開したライター ---
   's08.authors.count': 'この期間の本数',
 
-  // --- どんな記事が多かった？（FR-52） ---
-  's08.mix.h2': 'どんな記事が多かった？',
+  // --- カテゴリごとの本数（FR-52。助言 B-8） ---
+  's08.mix.h2': 'カテゴリごとの本数',
   's08.mix.column.category': 'カテゴリ',
   's08.mix.column.count': 'この期間に公開した本数',
-  's08.mix.column.prev': '{label}（本数の差）',
   's08.mix.note':
     '1 つの記事が複数のカテゴリに入ることがあるので、本数を足しても公開した本数とは一致しません。',
 } as const satisfies ScreenTexts<'s08'>;

@@ -44,7 +44,8 @@ export const S06_TEXT = {
   's06b.cell': '{month} {category}: {count} 回',
   's06b.cell.yoy': '{text}。{label} {diff}',
   's06b.cell.noYoy': '{text}。{absent}',
-  's06b.settling': '月末から 1 週間ほどは、あとで増えることがあります',
+  // ほぼ確定の月。{date} は月末から 7 日後（period.month.settling.note と同じ文の形。助言 B-1）。
+  's06b.settling': '{date}ごろまでは、少し増えることがあります',
   's06b.cell.unconfirmed': '{text}。月が終わると、去年の同じ月と比べた数字が出ます',
   's06b.cell.note': '{text}。{note}',
   // 数え始めた月は、月の途中からの数字（助言 2026-11-05 §8）。

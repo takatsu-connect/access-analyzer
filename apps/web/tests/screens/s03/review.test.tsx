@@ -164,7 +164,7 @@ describe('S-03 文言の直し（低）', () => {
 
   it('これまでの記事の範囲の注記', () => {
     const text = sectionOf(show(detail(102)), 's03-own').textContent;
-    expect(text).toContain('直近 1 年に公開し、30 日たった記事で見ています。');
+    expect(text).toContain('直近 1 年に公開し、30 日たった記事（広告を除く）で見ています。');
     expect(text).not.toContain('以降に公開した記事');
   });
 });

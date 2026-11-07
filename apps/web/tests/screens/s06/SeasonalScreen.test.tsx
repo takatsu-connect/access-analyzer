@@ -165,7 +165,7 @@ describe('S-06b 月ごと × カテゴリ', () => {
     );
   });
 
-  it('月は終わったが集計中の月は、去年と比べたうえで、あとで増えることを添える', () => {
+  it('ほぼ確定の月（10 月）は、去年と比べたうえで「11 月 7 日ごろまでは、少し増えることがあります」を添える', () => {
     const data = built();
     const settling: SeasonalData = {
       ...data,
@@ -179,10 +179,10 @@ describe('S-06b 月ごと × カテゴリ', () => {
     clickCell(wide, 1, 1);
 
     const text = fixedRow(wide);
-    expect(text).toContain('2026 年 10 月（集計中） イベント:');
+    expect(text).toContain('2026 年 10 月（ほぼ確定） イベント:');
     // 去年の同じ月（2025 年 10 月）は数え始めた月なので、差ではなく数字を並べる。
     expect(text).toContain('去年の同じ月は、8 日からの数字で');
-    expect(text).toContain('月末から 1 週間ほどは、あとで増えることがあります');
+    expect(text).toContain('11 月 7 日ごろまでは、少し増えることがあります');
     expect(text).not.toContain('途中まで');
   });
 

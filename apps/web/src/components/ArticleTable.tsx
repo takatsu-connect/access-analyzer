@@ -3,8 +3,8 @@
 import { Fragment, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { safeExternalUrl } from '@/lib/derive';
-import { formatDateShort, formatNumber } from '@/lib/format';
+import { addDays, safeExternalUrl, splitYmd } from '@/lib/derive';
+import { formatDate, formatDateShort, formatMonthDay, formatNumber } from '@/lib/format';
 import type { Channel, Masked, PostRow } from '@/lib/page-data';
 import type { SortKey } from '@/lib/query';
 import { t } from '@/lib/ui-text';
@@ -31,8 +31,8 @@ export type ArticleColumnId =
   | 'topChannel'
   | 'recent7';
 
-/** タイトルに添える印。 */
-export type ArticleBadgeKind = 'new' | 'recentHot' | 'revival';
+/** タイトルに添える印。'ad' は広告の記事（並べる一覧に付ける。助言 B-5）。 */
+export type ArticleBadgeKind = 'new' | 'recentHot' | 'revival' | 'ad';
 
 /** 記事の行。authorSlug は、著者ページがない著者では null。 */
 export type ArticleTablePost = Omit<PostRow, 'authorSlug'> & { authorSlug: string | null };
@@ -120,6 +120,12 @@ const DEFAULT_PAGE_SIZE = 50;
 const DEFAULT_PAGING_THRESHOLD = 100;
 const DEFAULT_BADGES: readonly ArticleBadgeKind[] = ['new'];
 
+/**
+ * 広告の記事も並べる一覧（S-02e、S-05 の記事の一覧、S-07b）の印。「新着」と「広告」（助言 B-5）。
+ * サイト全体から選ぶ一覧（S-02a〜S-02d）は、データの側で広告を除いている。
+ */
+export const LIST_BADGES: readonly ArticleBadgeKind[] = ['new', 'ad'];
+
 function byPublishedDesc(left: ArticleTableRow, right: ArticleTableRow): number {
   if (left.post.publishedOn === right.post.publishedOn) return 0;
   return left.post.publishedOn < right.post.publishedOn ? 1 : -1;
@@ -166,9 +172,79 @@ function bandText(post: ArticleTablePost): string {
   return post.isPreMeasure ? t('absent.preMeasure') : t('absent.band');
 }
 
+/**
+ * 狭い画面の公開日。「10 月 7 日」。基準日と年が違うときは「2025 年 10 月 7 日」（formatDateRange と同じ決まり）。
+ * 基準日は ageDays から引く（公開した日が 1 日目）。
+ */
+function narrowDate(post: ArticleTablePost): string {
+  const asOf = addDays(post.publishedOn, Math.max(0, post.ageDays - 1));
+  return splitYmd(asOf).year === splitYmd(post.publishedOn).year
+    ? formatMonthDay(post.publishedOn)
+    : formatDate(post.publishedOn);
+}
+
+/** 狭い画面の「最初の 1 週間 / 1 か月」の値。数には「回」を付ける。 */
+function narrowEarly(post: ArticleTablePost, value: number | null): string {
+  if (value !== null) return t('list.cell.count', { n: formatNumber(value) });
+  if (post.isPreMeasure) return t('absent.preMeasure');
+  return t('absent.dayN.count', {
+    n: formatNumber(post.ageDays),
+    count: formatNumber(post.pvTotal),
+  });
+}
+
+/** 狭い画面の、この期間 / 直近 7 日の値。伏せ値は名前のあとに「— 伏せ値」。 */
+function narrowCount(
+  value: Masked | undefined,
+  name: 'list.cell.name.period' | 'list.cell.name.recent7',
+  key: 'list.cell.period' | 'list.cell.recent7',
+): ReactNode {
+  if (value === undefined)
+    return (
+      <>
+        {t(name)} {t('absent.na')}
+      </>
+    );
+  if (value === null) {
+    return (
+      <>
+        {t(name)} <MaskedCell value={null} />
+      </>
+    );
+  }
+  return t(key, { n: formatNumber(value) });
+}
+
+/**
+ * 狭い画面で、値のセルに名前を添えた中身（助言 B-10）。見出しの行が画面から流れても、何の数か分かる。
+ * 名前を添えない列（題名、ライター、帯の文言など）は null。帯の文言は、それだけで文として読める。
+ */
+function narrowCell(column: ArticleColumnId, row: ArticleTableRow): ReactNode {
+  const { post } = row;
+  switch (column) {
+    case 'publishedOn':
+      return (
+        <time dateTime={post.publishedOn}>
+          {t('list.cell.published', { date: narrowDate(post) })}
+        </time>
+      );
+    case 'pageviews':
+      return narrowCount(row.pageviews, 'list.cell.name.period', 'list.cell.period');
+    case 'recent7':
+      return narrowCount(row.recent7, 'list.cell.name.recent7', 'list.cell.recent7');
+    case 'pv7':
+      return t('list.cell.pv7', { value: narrowEarly(post, post.pv7) });
+    case 'pv30':
+      return t('list.cell.pv30', { value: narrowEarly(post, post.pv30) });
+    default:
+      return null;
+  }
+}
+
 function badgeLabels(post: ArticleTablePost, kinds: readonly ArticleBadgeKind[]): string[] {
   const labels: string[] = [];
   if (kinds.includes('new') && post.freshness === 'new') labels.push(t('badge.new'));
+  if (kinds.includes('ad') && post.isAd) labels.push(t('badge.ad'));
   if (kinds.includes('revival') && post.isRevival) labels.push(t('badge.revival'));
   else if (kinds.includes('recentHot') && post.isRecentHot) labels.push(t('badge.recentHot'));
   return labels;
@@ -243,7 +319,9 @@ export function ArticleTable({
                 className={styles.external}
                 ariaLabel={t('link.external.article', { title: post.title })}
               >
-                {t('link.external.mark')}
+                {/* 狭い画面では題名の下に「記事を開く ↗」と言葉で出す（助言 B-10）。広い画面は ↗ だけ。 */}
+                <span className={styles.narrowOnly}>{t('link.external.label')}</span>
+                <span className={styles.wideOnly}>{t('link.external.mark')}</span>
               </ExternalLink>
             )}
             {names.length === 0 ? null : (
@@ -292,6 +370,23 @@ export function ArticleTable({
         if (row.topChannel === undefined) return t('absent.na');
         return row.topChannel === null ? <MaskedMark /> : t(`channel.${row.topChannel}`);
     }
+  };
+
+  // 狭い画面に残す列は、名前を添えた中身と、広い画面の中身を両方描き、CSS で切り替える。
+  const rowCell = (column: ArticleColumnId, row: ArticleTableRow): ReactNode => {
+    const wide = cell(column, row, false);
+    const narrow = kept.includes(column) ? narrowCell(column, row) : null;
+    if (narrow === null) return wide;
+    return (
+      <>
+        <span className={styles.narrowOnly} data-part="narrow-cell">
+          {narrow}
+        </span>
+        <span className={styles.wideOnly} data-part="wide-cell">
+          {wide}
+        </span>
+      </>
+    );
   };
 
   const cellClass = (column: ArticleColumnId): string | undefined =>
@@ -361,7 +456,7 @@ export function ArticleTable({
                       </th>
                     ) : (
                       <td key={column} role="cell" className={cx(styles.cell, cellClass(column))}>
-                        {cell(column, row, false)}
+                        {rowCell(column, row)}
                       </td>
                     ),
                   )}

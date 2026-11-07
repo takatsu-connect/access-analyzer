@@ -9,6 +9,7 @@ import {
   formatMonthDay,
   formatNumber,
   formatMonthWithProgress,
+  formatSettlingNote,
   formatPeriodLabel,
   formatRatio,
   formatShare,
@@ -108,7 +109,7 @@ describe('formatMonthWithProgress', () => {
     expect(formatMonthWithProgress('2026 年 11 月', 'inProgress')).toBe(
       '2026 年 11 月（途中まで）',
     );
-    expect(formatMonthWithProgress('2026 年 10 月', 'settling')).toBe('2026 年 10 月（集計中）');
+    expect(formatMonthWithProgress('2026 年 10 月', 'settling')).toBe('2026 年 10 月（ほぼ確定）');
     expect(formatMonthWithProgress('2026 年 9 月', 'confirmed')).toBe('2026 年 9 月');
   });
 });
@@ -186,5 +187,19 @@ describe('数', () => {
     expect(formatTenOf(10)).toBe('10 人中 10 人');
     expect(() => formatTenOf(11)).toThrow(RangeError);
     expect(() => formatTenOf(2.5)).toThrow(RangeError);
+  });
+});
+
+describe('formatSettlingNote（助言 B-1）', () => {
+  it('月末から 7 日後の日付で「◯月◯日ごろまでは、少し増えることがあります。」', () => {
+    expect(formatSettlingNote('2026-10-31')).toBe(
+      '11 月 7 日ごろまでは、少し増えることがあります。',
+    );
+    expect(formatSettlingNote('2026-12-31')).toBe(
+      '1 月 7 日ごろまでは、少し増えることがあります。',
+    );
+    expect(formatSettlingNote('2027-02-28')).toBe(
+      '3 月 7 日ごろまでは、少し増えることがあります。',
+    );
   });
 });

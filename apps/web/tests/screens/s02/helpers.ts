@@ -66,14 +66,39 @@ export function rowTitles(container: HTMLElement): string[] {
   );
 }
 
-/** タイトルで行を選び、見出しで列を選んで、そのセルの文字を返す。 */
+/**
+ * セルの文字。狭い画面用に名前を添えた中身（data-part=narrow-cell）があるセルは、広い画面の中身
+ * （data-part=wide-cell）を返す。jsdom は CSS を当てないので、両方の文字が textContent に入るため。
+ */
+export function wideText(cell: Element | null | undefined): string {
+  if (cell === null || cell === undefined) return '';
+  return (cell.querySelector('[data-part="wide-cell"]') ?? cell).textContent ?? '';
+}
+
+/** 狭い画面で見える、名前を添えたセルの文字。なければ null。 */
+export function narrowText(cell: Element | null | undefined): string | null {
+  return cell?.querySelector('[data-part="narrow-cell"]')?.textContent ?? null;
+}
+
+/** タイトルで行を選び、見出しで列を選んで、そのセルの要素を返す。 */
+export function cellOf(container: HTMLElement, title: string, header: string): Element {
+  const index = headers(container).indexOf(header);
+  const row = [...container.querySelectorAll('tbody tr')].find(
+    (item) => item.querySelector('th[scope="row"] a')?.textContent === title,
+  );
+  const cell = index < 0 ? undefined : row?.children[index];
+  if (cell === undefined) throw new Error(`セルがありません: ${title} / ${header}`);
+  return cell;
+}
+
+/** タイトルで行を選び、見出しで列を選んで、そのセルの文字（広い画面の中身）を返す。 */
 export function cellText(container: HTMLElement, title: string, header: string): string {
   const index = headers(container).indexOf(header);
   const row = [...container.querySelectorAll('tbody tr')].find(
     (item) => item.querySelector('th[scope="row"] a')?.textContent === title,
   );
   if (index < 0 || row === undefined) throw new Error(`セルがありません: ${title} / ${header}`);
-  return row.children[index]?.textContent ?? '';
+  return wideText(row.children[index]);
 }
 
 /** 連番の列がなく、行の先頭のセル（タイトル）が数字と区切りで始まらない（NFR-36）。 */

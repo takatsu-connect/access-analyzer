@@ -9,7 +9,7 @@ import { BUILT_AT, makeCache, SATO, TANAKA } from '../../data/fixture';
 import { expectCommonRules, expectNoSortUi, setQuery } from '../s06/helpers';
 
 const AUTHORS_HEADING = 'この期間に記事を公開したライター（名前の順）';
-const MIX_HEADING = 'どんな記事が多かった？';
+const MIX_HEADING = 'カテゴリごとの本数';
 
 // 既定の期間（直近 28 日）: 公開 2 本（前の 28 日は 1 本）。ライターは さとう 1 本、たなか 2 本。
 function built(): ActivityData {
@@ -48,8 +48,13 @@ describe('S-08 投稿活動', () => {
     setQuery('');
   });
 
-  it('主文は本数だけで、人数を出さない', () => {
+  it('主文は本数だけで、人数を出さない。h1 は「この期間、どんな記事が公開された？」', () => {
     const { container } = render(<ActivityScreen data={built()} />);
+
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'この期間、どんな記事が公開された？',
+    );
+    expect(screen.getByRole('heading', { level: 2, name: MIX_HEADING })).toBeTruthy();
 
     expect(screen.getByRole('group', { name: '期間' })).toBeTruthy();
     expect(screen.getByText('この期間に 2 本の記事が公開されました。')).toBeTruthy();
@@ -57,13 +62,13 @@ describe('S-08 投稿活動', () => {
     expect(container.textContent).not.toMatch(/[0-9] ?人/);
   });
 
-  it('前の期間との比較は、本数の差だけを出す', () => {
-    render(<ActivityScreen data={built()} />);
+  it('前の期間との比較は、▲▼ と差を付けず「前の 28 日は 1 本」と本数を並べる', () => {
+    const { container } = render(<ActivityScreen data={built()} />);
 
-    const compare = screen.getByText('前の 28 日と比べて').closest('p');
-    expect(compare?.textContent).toContain('本数');
-    expect(compare?.textContent).toContain('+1');
-    expect(compare?.textContent).not.toContain('%');
+    expect(screen.getByText('前の 28 日は 1 本')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/[▲▼]/);
+    expect(container.textContent).not.toContain('+1');
+    expect(container.querySelector('[class*="arrow"]')).toBeNull();
   });
 
   it('月ごとの公開本数: 月の数だけ棒があり、去年の同じ月があるときだけ細い枠を描く', () => {
@@ -74,7 +79,13 @@ describe('S-08 投稿活動', () => {
     const rows = [...container.querySelectorAll('li[data-month]')];
     expect(rows.length).toBe(18);
     expect(rows[0]?.getAttribute('data-month')).toBe('2026-11');
-    expect(rows[0]?.textContent).toContain('2026 年 11 月（途中まで）');
+    // 「途中まで」は、月の名前の下に小さく置く（括弧ごと折れない形。助言 B-1）。
+    expect(rows[0]?.querySelector('[data-part="note"]')?.textContent).toBe('途中まで');
+    expect(rows[0]?.querySelector('[data-part="note"]')?.parentElement?.textContent).toBe(
+      '2026 年 11 月途中まで',
+    );
+    expect(rows[0]?.querySelector('title')?.textContent).toBe('2026 年 11 月（途中まで）: 1 本');
+    expect(rows[1]?.querySelector('[data-part="note"]')).toBeNull();
     // 2026 年 6 月（0 本）は、去年の同じ月（1 本）がある。
     const june = container.querySelector('li[data-month="2026-06"]');
     expect(june?.querySelector('[data-part="yoy"]')).not.toBeNull();
@@ -200,7 +211,7 @@ describe('S-08 投稿活動', () => {
     expect(container.textContent).not.toMatch(/[▲▼]/);
   });
 
-  it('終わった月（2026 年 10 月）は、前の月と比べる', () => {
+  it('終わった月（2026 年 10 月）は、前の月の本数を並べる（「前の月は 3 本」。差は出さない）', () => {
     setQuery('?p=m2026-10');
     const data = built();
     const { container } = render(
@@ -214,9 +225,10 @@ describe('S-08 投稿活動', () => {
         }}
       />,
     );
-    expect(screen.getAllByText('前の月と比べて').length).toBeGreaterThan(0);
-    // 10 月は 1 本、9 月は 3 本。
-    expect(container.textContent).toContain('−2');
+    expect(screen.getByText('前の月は 3 本')).toBeTruthy();
+    // 10 月は 1 本、9 月は 3 本。差は出さない。
+    expect(container.textContent).not.toContain('−2');
+    expect(container.textContent).not.toMatch(/[▲▼]/);
   });
 
   it('13 か月前の行にも、去年の同じ月の本数が出る（36 か月のデータ）', () => {
@@ -259,16 +271,15 @@ describe('S-08 投稿活動', () => {
     expect(within(mixTable()).getByRole('columnheader', { name: '割合' })).toBeTruthy();
   });
 
-  it('カテゴリの前の期間との比較は、本数の差だけ', () => {
+  it('カテゴリの表は、列「前の 28 日」に前の期間の本数を並べる（▲▼ と差を付けない）', () => {
     render(<ActivityScreen data={withMix(20, 4)} />);
 
     const rows = [...mixTable().querySelectorAll('tbody tr')];
-    // グルメ: 10 と 4。イベント: 前の期間に行がないので 0 と比べる。
-    expect(rows[0]?.querySelectorAll('td')[2]?.textContent).toContain('+6');
-    expect(rows[1]?.querySelectorAll('td')[2]?.textContent).toContain('+5');
-    expect(
-      within(mixTable()).getByRole('columnheader', { name: '前の 28 日と比べて（本数の差）' }),
-    ).toBeTruthy();
+    // グルメ: 前の期間は 4 本。イベント: 前の期間に行がないので 0 本。
+    expect(rows[0]?.querySelectorAll('td')[2]?.textContent).toBe('4');
+    expect(rows[1]?.querySelectorAll('td')[2]?.textContent).toBe('0');
+    expect(mixTable().textContent).not.toMatch(/[▲▼+]/);
+    expect(within(mixTable()).getByRole('columnheader', { name: '前の 28 日' })).toBeTruthy();
   });
 
   it('前の期間の内訳がないときは、文字で書く', () => {

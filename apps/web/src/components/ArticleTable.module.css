@@ -192,9 +192,16 @@
     flex-wrap: wrap;
   }
 
+  /*
+   * 見出しの行は、見た目から外して読み上げ用に残す。狭い画面では、値のセルに名前を添えている（助言 B-10）。
+   */
   .headRow {
-    align-items: flex-end;
-    border-bottom: 2px solid var(--color-border-strong);
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .row,
@@ -252,7 +259,12 @@
     flex: 0 1 auto;
   }
 
+  /* 「記事を開く ↗」。押せる大きさ（高さ 2.75rem）を保つ。 */
   .external {
+    display: inline-flex;
+    align-items: center;
     order: 1;
+    min-height: 2.75rem;
+    text-decoration: underline;
   }
 }

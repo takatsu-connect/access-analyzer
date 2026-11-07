@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ArticleTable, sortArticleRows } from '@/components/ArticleTable';
+import { ArticleTable, LIST_BADGES, sortArticleRows } from '@/components/ArticleTable';
 import type { ArticleColumnId, ArticleTableRow } from '@/components/ArticleTable';
 
 import { makePost } from './fixtures';
@@ -76,8 +76,15 @@ const bodyRows = (root: HTMLElement): HTMLTableRowElement[] =>
   [...root.querySelectorAll<HTMLTableRowElement>('tbody > tr')].filter(
     (row) => row.querySelector('details') === null,
   );
-const cellTexts = (row: HTMLTableRowElement): string[] =>
-  [...row.cells].map((item) => item.textContent ?? '');
+/** セルの文字（広い画面の中身）。狭い画面用の名前つきの中身は data-part=narrow-cell に別にある。 */
+const wideText = (cell: Element): string =>
+  (cell.querySelector('[data-part="wide-cell"]') ?? cell).textContent ?? '';
+const cellTexts = (row: HTMLTableRowElement): string[] => [...row.cells].map(wideText);
+/** 狭い画面で見える、名前を添えたセルの文字（ないセルは null）。 */
+const narrowTexts = (row: HTMLTableRowElement): (string | null)[] =>
+  [...row.cells].map(
+    (cell) => cell.querySelector('[data-part="narrow-cell"]')?.textContent ?? null,
+  );
 const titles = (root: HTMLElement): string[] =>
   bodyRows(root).map((row) => row.querySelector('th a')?.textContent ?? '');
 
@@ -108,7 +115,9 @@ describe('ArticleTable（U-24）', () => {
 
   it('公開日は「2026/10/20」の短い形（年を省かない）で、time 要素が元の日付を持つ', () => {
     const { container } = render(<ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} />);
-    const times = bodyRows(container).map((row) => row.querySelector('time'));
+    const times = bodyRows(container).map((row) =>
+      row.querySelector('[data-part="wide-cell"] time'),
+    );
     expect(times.map((item) => item?.textContent)).toEqual([
       '2026/10/20',
       '2026/10/30',
@@ -237,7 +246,8 @@ describe('ArticleTable（U-24）', () => {
       />,
     );
     expect(four.container.querySelector('details')).toBeNull();
-    expect(four.container.querySelector('[class*="wideOnly"]')).toBeNull();
+    // 隠す列（セルごと wideOnly）がない。セルの中の、広い画面用の中身（wide-cell）は別。
+    expect(four.container.querySelector('th[class*="wideOnly"], td[class*="wideOnly"]')).toBeNull();
   });
 
   it('著者の slug は href にだけあり、文字として現れない。slug が null の著者はリンクでない', () => {
@@ -253,14 +263,15 @@ describe('ArticleTable（U-24）', () => {
     expect(noPage?.querySelector('a')).toBeNull();
   });
 
-  it('タイトルは記事詳細へのリンク。右に、記事ページへの「↗」の外部リンク', () => {
+  it('タイトルは記事詳細へのリンク。記事ページへの外部リンクは、広い画面は「↗」、狭い画面は「記事を開く ↗」', () => {
     const { container } = render(<ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} />);
     const anchors = [...(bodyRows(container)[0]?.cells[0]?.querySelectorAll('a') ?? [])];
     expect(anchors.map((anchor) => anchor.getAttribute('href'))).toEqual([
       '/articles/201',
       'https://takatsu-connect.com/archives/101',
     ]);
-    expect(anchors[1]?.textContent).toBe('↗');
+    expect(anchors[1]?.querySelector('[class*="wideOnly"]')?.textContent).toBe('↗');
+    expect(anchors[1]?.querySelector('[class*="narrowOnly"]')?.textContent).toBe('記事を開く ↗');
     expect(anchors[1]?.getAttribute('target')).toBe('_blank');
     expect(anchors[1]?.getAttribute('aria-label')).toContain('記事 A');
   });
@@ -294,6 +305,65 @@ describe('ArticleTable（U-24）', () => {
       <ArticleTable caption="記事" rows={ROWS} columns={['title', 'pageviews']} />,
     );
     expect(bodyRows(container)[2]?.cells[1]?.querySelector('.masked')?.textContent).toBe('—伏せ値');
+  });
+
+  it('狭い画面では、残す列の値に名前を添える（公開 10 月 20 日、この期間 120 回、最初の 1 か月 …）', () => {
+    const { container } = render(
+      <ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} narrowColumns={NARROW} />,
+    );
+    const [a, b, c, d] = bodyRows(container);
+    // 列: 記事、ライター、公開日、読まれた回数、最初の 1 週間、最初の 1 か月、カテゴリ。
+    // 名前を添えるのは、狭い画面に残す列（公開日、読まれた回数、最初の 1 か月）だけ。
+    expect(narrowTexts(a as HTMLTableRowElement)).toEqual([
+      null,
+      null,
+      '公開 10 月 20 日',
+      'この期間 120 回',
+      null,
+      '最初の 1 か月 240 回',
+      null,
+    ]);
+    // まだ日数がたっていない記事、数え始める前の記事（年が違うので年を付ける）、伏せ値。
+    expect(narrowTexts(b as HTMLTableRowElement)[5]).toBe('最初の 1 か月 4 日目: 41 回');
+    expect(narrowTexts(c as HTMLTableRowElement)[2]).toBe('公開 2025 年 9 月 1 日');
+    expect(narrowTexts(c as HTMLTableRowElement)[3]).toBe('この期間 —伏せ値');
+    expect(narrowTexts(c as HTMLTableRowElement)[5]).toBe('最初の 1 か月 数え始める前');
+    expect(narrowTexts(d as HTMLTableRowElement)[3]).toBe('この期間 64 回');
+    // 広い画面の中身はそのまま（名前は列の見出しにある）。
+    expect(cellTexts(a as HTMLTableRowElement).slice(2, 4)).toEqual(['2026/10/20', '120']);
+  });
+
+  it('狭い画面の直近 7 日と最初の 1 週間にも名前を添える。帯の文言には添えない', () => {
+    const rows: ArticleTableRow[] = [
+      { post: makePost({ id: 301, title: '記事 G', pv7: 12, band30: 'middle' }), recent7: 25 },
+    ];
+    const { container } = render(
+      <ArticleTable caption="記事" rows={rows} columns={['title', 'recent7', 'pv7', 'band']} />,
+    );
+    expect(narrowTexts(bodyRows(container)[0] as HTMLTableRowElement)).toEqual([
+      null,
+      '直近 7 日 25 回',
+      '最初の 1 週間 12 回',
+      null,
+    ]);
+  });
+
+  it('広告の記事は、LIST_BADGES のときだけ「広告」の印。既定の印（新着だけ）では付かない', () => {
+    const rows: ArticleTableRow[] = [
+      { post: makePost({ id: 401, title: '記事 H', isAd: true }) },
+      { post: makePost({ id: 402, title: '記事 I', isAd: false, freshness: 'new' }) },
+    ];
+    const plain = render(<ArticleTable caption="記事" rows={rows} columns={['title']} />);
+    expect(plain.container.textContent).not.toContain('広告');
+    plain.unmount();
+
+    const { container } = render(
+      <ArticleTable caption="記事" rows={rows} columns={['title']} badges={LIST_BADGES} />,
+    );
+    const texts = bodyRows(container).map((row) => row.textContent ?? '');
+    expect(texts[0]).toContain('広告');
+    expect(texts[1]).not.toContain('広告');
+    expect(texts[1]).toContain('新着');
   });
 
   it('帯の図は、呼び出し側の描画関数で差し込む。数え始める前の記事では呼ばない', () => {

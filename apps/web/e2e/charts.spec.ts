@@ -190,7 +190,9 @@ test.describe('グラフと色（E-11、E-19）', () => {
     await expect(section.locator('[data-part="fixed-row"]')).toContainText(t('metric.M02.label'));
   });
 
-  test('E-19: 未確定の 3 日が薄いクラスで、前の期間の線は点線で別のクラス', async ({ page }) => {
+  test('E-19: 未確定の 3 日は線を薄くせず白抜きの丸。前の期間の線は点線で別のクラス', async ({
+    page,
+  }) => {
     await openScreen(page, '/');
     const section = dailySection(page);
     const hits = await readHits(section);
@@ -222,15 +224,32 @@ test.describe('グラフと色（E-11、E-19）', () => {
       });
     const current = await lineStyle('current');
     const prev = await lineStyle('prev');
-    const unconfirmed = await lineStyle('unconfirmed');
     // 前の期間の線は点線で、クラスも違う（色だけで見分けさせない）。
     expect(prev.dash).not.toBe('none');
     expect(current.dash).toBe('none');
     expect(prev.className).not.toBe(current.className);
-    // 未確定の部分は、この期間の線とは別のクラスで、薄い色。
-    expect(unconfirmed.className).not.toBe(current.className);
-    expect(unconfirmed.stroke).not.toBe(current.stroke);
-    // 凡例に、薄い色の説明と、前の期間がある。
+    // 未確定の日も、この期間の線と同じ 1 本の線（薄い別の線がない。助言 B-7）。
+    await expect(section.locator('[data-series="unconfirmed"]')).toHaveCount(0);
+    await expect(section.locator('path[data-series="current"]')).toHaveCount(1);
+    // 未確定の 3 日に白抜きの丸。縁は線と同じ色、中は線と違う色（面の色）。
+    const dots = section.locator('[data-part="unconfirmed-dot"]');
+    const dotInfo = await dots.evaluateAll((items) =>
+      items.map((item) => {
+        const style = getComputedStyle(item);
+        return { date: item.getAttribute('data-date'), fill: style.fill, stroke: style.stroke };
+      }),
+    );
+    expect(dotInfo.map((dot) => dot.date)).toEqual([addDays(base, -2), addDays(base, -1), base]);
+    for (const dot of dotInfo) {
+      expect(dot.stroke).toBe(current.stroke);
+      expect(dot.fill).not.toBe(current.stroke);
+    }
+    // 未確定の日を選ぶと、固定行に「あとで増えることがあります」を添える。
+    await section.locator(`[data-part="hit"][data-date="${base}"]`).click({ force: true });
+    await expect(section.locator('[data-part="fixed-row"]')).toContainText(
+      '（あとで増えることがあります）',
+    );
+    // 凡例に、白抜きの丸と薄い背景の説明と、前の期間がある。
     const text = await section.innerText();
     expect(text).toContain(t('legend.unconfirmed'));
     expect(text).toContain(t('legend.prev'));

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo } from 'react';
 
-import { ArticleTable } from '@/components/ArticleTable';
+import { ArticleTable, LIST_BADGES } from '@/components/ArticleTable';
 import type { ArticleColumnId, ArticleTableRow } from '@/components/ArticleTable';
 import { StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
@@ -90,6 +90,7 @@ export function TagPageScreen({ data }: { data: TagPageData }) {
         rows={rows}
         columns={COLUMNS}
         columnLabels={{ pageviews: t('column.pageviews.period') }}
+        badges={LIST_BADGES}
       />
     </>
   );

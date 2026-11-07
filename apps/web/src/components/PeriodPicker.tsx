@@ -1,7 +1,7 @@
 'use client';
 
 import { monthProgress } from '@/lib/derive';
-import { formatDateRange, formatMonthWithProgress } from '@/lib/format';
+import { formatDateRange, formatMonthWithProgress, formatSettlingNote } from '@/lib/format';
 import type { Period, SelectablePeriodId } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
@@ -19,13 +19,15 @@ export type PeriodPickerProps = {
 /**
  * 期間の選択（05 §2.5）。全画面で同じ部品を使う。
  * 「直近 7 日 / 直近 28 日 / 直近 90 日」はボタン（aria-pressed）、月は select。
- * 選んでいる期間の日付の範囲を、下に文字で添える。
+ * 選んでいる期間の日付の範囲を、下に文字で添える。ほぼ確定の月を選んだときは、その下に
+ * 「◯月◯日ごろまでは、少し増えることがあります。」を添える（助言 B-1）。
  */
 export function PeriodPicker({ periods, value, onChange }: PeriodPickerProps) {
   const windows = periods.filter((period) => period.kind === 'window');
   const months = periods.filter((period) => period.kind === 'month');
   const selected = periods.find((period) => period.id === value);
   const monthValue = selected?.kind === 'month' ? selected.id : '';
+  const settling = selected?.kind === 'month' && monthProgress(selected) === 'settling';
 
   return (
     <div className={styles.picker} role="group" aria-label={t('period.picker')}>
@@ -69,6 +71,9 @@ export function PeriodPicker({ periods, value, onChange }: PeriodPickerProps) {
       </div>
       {selected === undefined ? null : (
         <p className={styles.range}>{formatDateRange(selected.start, selected.end)}</p>
+      )}
+      {selected === undefined || !settling ? null : (
+        <p className={styles.settling}>{formatSettlingNote(selected.end)}</p>
       )}
     </div>
   );

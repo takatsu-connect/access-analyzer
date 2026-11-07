@@ -76,12 +76,15 @@ function withVisibleBreakdown(data: AuthorPageData): AuthorPageData {
 }
 
 describe('S-05 見出しと全体', () => {
-  test('h1 は表示名で書き、著者ページへの外部リンクを添える', () => {
+  test('h1 は表示名で書き、「高津コネクトの紹介ページ」の外部リンクを添える', () => {
     show(pageData(SATO));
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
       `${SATO_NAME}さんの記事は、この期間どう読まれた？`,
     );
-    const link = screen.getByRole('link', { name: /^著者ページ/ });
+    const link = screen.getByRole('link', { name: /^高津コネクトの紹介ページ/ });
+    expect(link.getAttribute('aria-label')).toBe(
+      `高津コネクトの紹介ページ（${SATO_NAME}さんの高津コネクトのページを新しいタブで開きます）`,
+    );
     expect(link.getAttribute('href')).toBe(`https://takatsu-connect.com/author/${SATO}/`);
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.textContent).toContain('↗');
@@ -215,7 +218,9 @@ describe('S-05 (b) これまでの記事と、多くの記事の範囲', () => {
       `${SATO_NAME}さんの記事は、公開から 30 日で 230 回くらい読まれています。多くの記事は 100〜300 回（真ん中は 200 回）です。`,
     );
     expect(section.textContent).toContain('成績ではなく、位置です。');
-    expect(section.textContent).toContain('直近 1 年に公開し、30 日たった記事で見ています。');
+    expect(section.textContent).toContain(
+      '直近 1 年に公開し、30 日たった記事（広告を除く）で見ています。',
+    );
   });
 
   test('帯の点は 3 つの固定位置のどれかで、値に比例しない', () => {
@@ -422,6 +427,24 @@ describe('S-05 最近よく読まれている記事 / 久しぶりに読まれ�
     expect(section.textContent).not.toContain('今週は該当する記事がありません');
   });
 
+  test('広告の記事は、印が付いていても選ばない（S-02d と同じ選び方）。記事の一覧には「広告」の印で出す', () => {
+    const data = pageData(SATO);
+    // 記事 105 は広告。最近よく読まれている印と久しぶりの印を付けても、ここには出さない。
+    data.posts = data.posts.map((post) =>
+      post.id === 105 ? { ...post, isRecentHot: true, isRevival: true } : post,
+    );
+    expect(data.posts.find((post) => post.id === 105)?.isAd).toBe(true);
+    show(data);
+    const section = sectionOf('いま読まれている記事');
+    expect(within(section).queryByRole('link', { name: '記事 105' })).toBeNull();
+
+    const list = screen.getByRole('table', { name: POSTS_CAPTION });
+    const row = within(list).getByRole('link', { name: '記事 105' }).closest('tr');
+    expect(row?.querySelector('th')?.textContent).toContain('広告');
+    const other = within(list).getByRole('link', { name: '記事 101' }).closest('tr');
+    expect(other?.querySelector('th')?.textContent).not.toContain('広告');
+  });
+
   test('5 件までにする', () => {
     const data = pageData(TANAKA);
     const base = data.posts[0];
@@ -512,7 +535,10 @@ describe('S-05 記事の一覧', () => {
     show(pageData(SATO));
     const table = screen.getByRole('table', { name: POSTS_CAPTION });
     const row = within(table).getByRole('link', { name: '記事 101' }).closest('tr');
-    const cells = [...(row?.querySelectorAll('td') ?? [])].map((cell) => cell.textContent);
+    // 広い画面の中身（狭い画面用の名前つきの中身は別に描く）。
+    const cells = [...(row?.querySelectorAll('td') ?? [])].map(
+      (cell) => (cell.querySelector('[data-part="wide-cell"]') ?? cell).textContent,
+    );
     // 公開日、カテゴリ、読まれた回数（この期間）、最初の 1 週間、最初の 1 か月、多くの記事と比べて、どこから来たか。
     expect(cells.slice(0, 6)).toEqual([
       '2025/06/01',

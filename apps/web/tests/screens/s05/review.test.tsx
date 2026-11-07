@@ -205,7 +205,7 @@ describe('S-05 文言の直し（中・低）', () => {
   test('これまでの記事の範囲は「直近 1 年に公開し、30 日たった記事」', () => {
     show(pageData(SATO));
     const text = sectionOf(SUMMARY_H2).textContent;
-    expect(text).toContain('直近 1 年に公開し、30 日たった記事で見ています。');
+    expect(text).toContain('直近 1 年に公開し、30 日たった記事（広告を除く）で見ています。');
     expect(text).not.toContain('以降に公開した記事');
   });
 

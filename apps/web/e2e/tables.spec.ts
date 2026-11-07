@@ -34,7 +34,13 @@ function articleColumn(page: Page, header: string): Promise<string[]> {
       if (index < 0) return [];
       return [...table.querySelectorAll('tbody tr')]
         .filter((row) => row.querySelector('th[role="rowheader"]') !== null)
-        .map((row) => (row.children[index]?.textContent ?? '').trim());
+        .map((row) => {
+          // 狭い画面用に名前を添えた中身（narrow-cell）と別に、広い画面の中身（wide-cell）を読む。
+          const cell = row.children[index];
+          return (
+            (cell?.querySelector('[data-part="wide-cell"]') ?? cell)?.textContent ?? ''
+          ).trim();
+        });
     }, header);
 }
 
@@ -418,7 +424,8 @@ test.describe('表の決まり（E-07〜E-10、E-15）', () => {
     expect(total - diff, '前の期間の読まれた回数（分母）').toBe(19);
     expect(summary).not.toContain('%');
 
-    // S-01: 読まれた回数（分母が大きい）には % が付き、公開本数（前の期間は 7 本）は差だけ。
+    // S-01: 読まれた回数（分母が大きい）には % が付く。公開本数（前の期間は 7 本）は ▲▼ と差を
+    // 付けず、前の期間の本数を並べる（助言 A-2）。
     await openScreen(page, '/');
     const kpi = await page.locator('[data-section="kpi"]').innerText();
     const pvPart = kpi.slice(0, kpi.indexOf(t('metric.M30.label')));
@@ -428,7 +435,8 @@ test.describe('表の決まり（E-07〜E-10、E-15）', () => {
     );
     // 比率は「+8%」か、丸めて 0% のときの「ほぼ同じ」で出る（分母が 20 以上なので比率がある）。
     expect(pvPart).toMatch(new RegExp(`%|${t('compare.ratio.flat')}`));
-    expect(countPart).toMatch(/[+−±]\d+/);
+    expect(countPart).toContain(t('compare.count.prevWindow', { days: 28, n: 7 }));
+    expect(countPart).not.toMatch(/[▲▼]|[+−±]\d+/);
     expect(countPart).not.toContain('%');
   });
 

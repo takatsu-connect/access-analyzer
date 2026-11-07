@@ -89,7 +89,7 @@ function axisDate(ymd: string): string {
   return `${month}/${day}`;
 }
 
-/** 固定行の既定の点。最新の確定日を含む点。その点が薄い（未確定を含む）なら、薄くない最後の点。 */
+/** 固定行の既定の点。最新の確定日を含む点。その点が未確定の日を含むなら、確定の最後の点。 */
 function defaultIndex(points: readonly LineChartPoint[], defaultDate: string | undefined): number {
   let lastConfirmed = -1;
   points.forEach((point, index) => {
@@ -122,8 +122,10 @@ function defaultFixedRow(
 /**
  * 日別推移の折れ線（05 §2.8。S-01、S-03）。
  *
- * - 当期間は実線、前期間は点線、あとで増えることがある日は薄い線と背景の帯。意味の違いは
- *   色ではなく線種で分ける（05 §2.4）。縦軸は 0 始まり。
+ * - 当期間は実線、前期間は点線。あとで増えることがある日は、線を薄くせず（確定の日と同じ色と太さ）、
+ *   背景の帯、白抜きの丸、言葉の 3 つで示す（助言 B-7）。白抜きの丸は、日ごとなら未確定の日のすべて、
+ *   週ごとなら未確定の日を含む最後の週だけ。意味の違いは色ではなく線種と形で分ける（05 §2.4）。
+ *   縦軸は 0 始まり。
  * - 日付を選ぶと、図の下の固定行が変わる（ツールチップは作らない。ADR 0008）。
  *   固定行は最初から埋まっている。
  */
@@ -150,7 +152,6 @@ export function LineChart(props: LineChartProps) {
 
   // 線は、横 0〜100・縦 px の入れ子の SVG に描く（横だけ引き伸ばす）。
   const firstUnconfirmed = points.findIndex((point) => point.unconfirmed);
-  const confirmedEnd = firstUnconfirmed < 0 ? count : firstUnconfirmed;
   const indexes = points.map((_, index) => index);
   const currentLine = line<number>()
     .x((index) => xAt(index))
@@ -159,10 +160,15 @@ export function LineChart(props: LineChartProps) {
     .defined((index) => (points[index]?.prev ?? null) !== null)
     .x((index) => xAt(index))
     .y((index) => axis.y(points[index]?.prev ?? 0));
-  const confirmedPath = confirmedEnd > 0 ? currentLine(indexes.slice(0, confirmedEnd)) : null;
-  // 薄い線は、最後の確定の点から続けて描く。
-  const unconfirmedPath =
-    firstUnconfirmed < 0 ? null : currentLine(indexes.slice(Math.max(0, firstUnconfirmed - 1)));
+  // 当期間の線は 1 本。未確定の日も同じ色と太さで描く。
+  const currentPath = currentLine(indexes);
+  // 白抜きの丸を打つ点。週ごとは、未確定の日を含む最後の週だけ。
+  const hollowIndexes =
+    firstUnconfirmed < 0
+      ? []
+      : weekly
+        ? [count - 1]
+        : indexes.filter((index) => points[index]?.unconfirmed === true);
   const prevPath = prevValues ? prevLine(indexes) : null;
 
   const boundary = (index: number): number => round2((xAt(index - 1) + xAt(index)) / 2);
@@ -186,9 +192,13 @@ export function LineChart(props: LineChartProps) {
     select(next);
   };
 
-  const fixedRow = fixedRowText
+  const baseFixedRow = fixedRowText
     ? fixedRowText(currentPoint)
     : defaultFixedRow(currentPoint, valueLabel, props.publishedText);
+  // 未確定の日（を含む週）を選んだときは、あとで増えることを言葉でも添える。
+  const fixedRow = currentPoint.unconfirmed
+    ? t('chart.fixedRow.unconfirmed', { text: baseFixedRow })
+    : baseFixedRow;
   const hasUnconfirmed = firstUnconfirmed >= 0;
 
   return (
@@ -239,18 +249,11 @@ export function LineChart(props: LineChartProps) {
                 strokeDasharray="4 3"
               />
             )}
-            {confirmedPath === null ? null : (
+            {currentPath === null ? null : (
               <path
                 className={`${styles.line} ${styles.currentLine}`}
                 data-series="current"
-                d={confirmedPath}
-              />
-            )}
-            {unconfirmedPath === null ? null : (
-              <path
-                className={`${styles.line} ${styles.unconfirmedLine}`}
-                data-series="unconfirmed"
-                d={unconfirmedPath}
+                d={currentPath}
               />
             )}
           </svg>
@@ -279,6 +282,17 @@ export function LineChart(props: LineChartProps) {
                 ) : null,
               )
             : null}
+          {hollowIndexes.map((index) => (
+            <circle
+              key={points[index]?.start ?? index}
+              className={styles.unconfirmedDot}
+              data-part="unconfirmed-dot"
+              data-date={points[index]?.start}
+              cx={percent(xAt(index))}
+              cy={axis.y(points[index]?.value ?? 0)}
+              r={4}
+            />
+          ))}
           <line
             className={styles.marker}
             x1={percent(xAt(current))}
@@ -356,15 +370,9 @@ export function LineChart(props: LineChartProps) {
         ) : null}
         {hasUnconfirmed ? (
           <li className={styles.legendItem}>
-            <svg className={styles.swatch} aria-hidden="true" width={24} height={8}>
-              <rect className={styles.unconfirmedBand} x={0} y={0} width={24} height={8} />
-              <line
-                className={`${styles.line} ${styles.unconfirmedLine}`}
-                x1={1}
-                y1={4}
-                x2={23}
-                y2={4}
-              />
+            <svg className={styles.swatch} aria-hidden="true" width={24} height={12}>
+              <rect className={styles.unconfirmedBand} x={0} y={0} width={24} height={12} />
+              <circle className={styles.unconfirmedDot} cx={12} cy={6} r={4} />
             </svg>
             <span>{t('legend.unconfirmed')}</span>
           </li>

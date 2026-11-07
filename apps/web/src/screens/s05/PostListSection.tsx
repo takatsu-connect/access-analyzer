@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-import { ArticleTable, sortArticleRows } from '@/components/ArticleTable';
+import { ArticleTable, LIST_BADGES, sortArticleRows } from '@/components/ArticleTable';
 import type { ArticleColumnId, ArticleTableRow } from '@/components/ArticleTable';
 import { BandDot } from '@/components/charts';
 import { Notice } from '@/components/Notice';
@@ -98,6 +98,7 @@ export function PostListSection({ data, periodId, sort, onSortChange }: PostList
         columns={COLUMNS}
         narrowColumns={NARROW_COLUMNS}
         columnLabels={columnLabels}
+        badges={LIST_BADGES}
         renderBand={(post) => <BandDot band={post.band30} />}
         sortable
         sort={sort}
@@ -112,6 +113,7 @@ export function PostListSection({ data, periodId, sort, onSortChange }: PostList
             columns={COLUMNS}
             narrowColumns={NARROW_COLUMNS}
             columnLabels={columnLabels}
+            badges={LIST_BADGES}
           />
         </>
       ) : null}

@@ -198,9 +198,37 @@ describe('S-01 全体ダッシュボード: 見出しと KPI', () => {
     const line = part(kpiCard(container, label), '[data-compare="yoy"]');
     expect(line.textContent).toBe('去年の同じ月は 2,000（8 日からの数字）');
     expect(line.textContent).not.toMatch(/[▲▼%]/);
-    // 公開本数は WordPress から数えるので、数え始めた日に関係なく差を出す。
+    // 公開本数は ▲▼ と差を付けず、去年の同じ月の本数を並べる（助言 A-2）。
     const posting = part(kpiCard(container, metricLabel('M30')), '[data-compare="yoy"]');
-    expect(posting.textContent).toContain(t('compare.yoy'));
+    expect(posting.textContent).toBe('去年の同じ月は 0 本');
+  });
+
+  it('公開した記事の本数は ▲▼ と差を付けず「前の 28 日は 7 本」。月は「前の月は … 本」', () => {
+    const data = build();
+    const container = renderScreen({
+      ...data,
+      posting: {
+        ...data.posting,
+        last28: { postCount: 2 },
+        prev28: { postCount: 7 },
+        'm2026-09': { postCount: 3 },
+      },
+      // 前の月（9 月）の本数を引けるように、10 月の比較の相手を 9 月にする。
+      periods: data.periods.map((period) =>
+        period.id === 'm2026-10' ? { ...period, prevId: 'm2026-09' as const } : period,
+      ),
+    });
+    const card = kpiCard(container, metricLabel('M30'));
+    expect(part(card, '[data-compare="prev"]').textContent).toBe('前の 28 日は 7 本');
+    expect(card.textContent).not.toMatch(/[▲▼]/);
+    expect(card.textContent).not.toContain('−5');
+    // 読まれた回数の比較は、今のまま ▲▼ と差。
+    expect(kpiCard(container, t('metric.M01.label.first')).textContent).toMatch(/[▲▼]/);
+
+    selectMonth('m2026-10');
+    expect(part(kpiCard(container, metricLabel('M30')), '[data-compare="prev"]').textContent).toBe(
+      '前の月は 3 本',
+    );
   });
 
   it('終わった月（集計中）で、去年の同じ月が数え始めた月でなければ、差と % を出す', () => {

@@ -18,6 +18,7 @@ import {
   formatDiff,
   formatMonthWithProgress,
   formatNumber,
+  formatSettlingUntil,
   formatYearMonth,
   isFlatChange,
 } from '@/lib/format';
@@ -109,6 +110,10 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   );
   // periods にない月は、状態が分からないので安全側（月の途中）とみなす（比較を出さない）。
   const progressOf = (month: MonthId): MonthProgress => progressByMonth.get(month) ?? 'inProgress';
+  // 月の末日（ほぼ確定の月の「◯月◯日ごろまでは」に使う）。
+  const endByMonth = new Map<string, string>(
+    data.periods.filter((item) => item.kind === 'month').map((item) => [item.id, item.end]),
+  );
   // 数え始めた月。月の途中から数えているときだけ、注記を添える。
   const start = splitYmd(data.meta.measureStart);
   const startMonth: MonthId = `m${start.year}-${String(start.month).padStart(2, '0')}`;
@@ -155,9 +160,13 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
       isPartialStart && month === startMonth
         ? t('s06b.cell.note', { text: withYoy, note: partialText })
         : withYoy;
-    // 月は終わったが、月末から 1 週間ほどは数字を取り直している。
-    return progress === 'settling'
-      ? t('s06b.cell.note', { text: withStart, note: t('s06b.settling') })
+    // 月は終わったが、月末から 7 日たつまでは数字を取り直している。
+    const monthEnd = endByMonth.get(month);
+    return progress === 'settling' && monthEnd !== undefined
+      ? t('s06b.cell.note', {
+          text: withStart,
+          note: t('s06b.settling', { date: formatSettlingUntil(monthEnd) }),
+        })
       : withStart;
   };
 

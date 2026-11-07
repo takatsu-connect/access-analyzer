@@ -107,7 +107,7 @@ const baseDictionary = {
   'site.title': '高津コネクト アクセス BI',
   'nav.dashboard': '全体',
   'nav.articles': '記事',
-  'nav.authors': '著者',
+  'nav.authors': 'ライター',
   'nav.categories': 'カテゴリ',
   'nav.tags': 'シリーズ',
   'nav.activity': '投稿活動',
@@ -132,7 +132,7 @@ const baseDictionary = {
   's02d.name': '最近よく読まれている記事',
   's02d.h1': '最近よく読まれている記事は？',
   's02e.name': '記事を探す',
-  's02e.h1': '記事を探す（絞り込みと検索）',
+  's02e.h1': '記事を探す',
   's03.name': '記事詳細',
   's03.h1': 'この記事はどう読まれた？',
   's04.name': '著者一覧',
@@ -148,7 +148,7 @@ const baseDictionary = {
   's07b.name': 'シリーズの記事',
   's07b.h1': '{name}の記事は、この期間どう読まれた？',
   's08.name': '投稿活動',
-  's08.h1': 'この期間、どれくらい書いた？ どんな記事が多かった？',
+  's08.h1': 'この期間、どんな記事が公開された？',
 
   // --- 存在しないページ（05 §10 の固定文） ---
   'notFound.h1': 'このページはありません',
@@ -182,7 +182,9 @@ const baseDictionary = {
   // 月の途中（基準日の属する月）。
   'period.month.unconfirmed': '{label}（途中まで）',
   // 月は終わったが、月末から 7 日たつまでは数字を取り直している。
-  'period.month.settling': '{label}（集計中）',
+  'period.month.settling': '{label}（ほぼ確定）',
+  // 月がほぼ確定のときに、期間の日付の行の下に出す。{date} は月末から 7 日後（助言 B-1）。
+  'period.month.settling.note': '{date}ごろまでは、少し増えることがあります。',
   'compare.withRatio': '{diff}（{ratio}）',
   'compare.prevWindow': '前の {days} 日と比べて',
   'compare.prevMonth': '前の月と比べて',
@@ -204,6 +206,13 @@ const baseDictionary = {
   // 変化率が +100% 以上のとき。
   'compare.ratio.times': '約 {n} 倍',
   'absent.prev': '前の期間の数字なし',
+  // 公開した記事の本数は、▲▼ と差を付けず、前の期間の本数を並べる（助言 A-2）。
+  'compare.count.prevWindow': '前の {days} 日は {n} 本',
+  'compare.count.prevMonth': '前の月は {n} 本',
+  'compare.count.yoy': '去年の同じ月は {n} 本',
+  // 表の列名（セルは本数だけ）。
+  'compare.count.column.prevWindow': '前の {days} 日',
+  'compare.count.column.prevMonth': '前の月',
 
   // --- 書式（src/lib/format.ts が使う） ---
   'format.date': '{year} 年 {month} 月 {day} 日',
@@ -243,7 +252,7 @@ const baseDictionary = {
   'notes.measureStart': '読まれた回数は、{start}から数えています。',
   'notes.measureStart.detail':
     'それより前に公開された記事は、公開してすぐの数字（最初の 1 週間、最初の 1 か月、多くの記事との比較）が残っていません。合計は{start}からの合計です。',
-  'notes.ownMedian.scope': '直近 1 年に公開し、30 日たった記事で見ています。',
+  'notes.ownMedian.scope': '直近 1 年に公開し、30 日たった記事（広告を除く）で見ています。',
 
   // --- 伏せ値、該当なし、不在（05 §2.3） ---
   'masked.dash': '—',
@@ -267,6 +276,8 @@ const baseDictionary = {
 
   // --- 印とお知らせ（05 §2.4、M-22、M-23） ---
   'badge.new': '新着',
+  // 広告の記事（並べる一覧に付ける。助言 B-5）。
+  'badge.ad': '広告',
   'badge.recentHot': '最近読まれている',
   'badge.revival': '久しぶりに読まれた',
   'milestone.reached': '{n} 回読まれました（{date}）',
@@ -280,6 +291,8 @@ const baseDictionary = {
   'chart.tap.hint': 'グラフの日付をタップすると、その日の数字に変わります',
   'chart.fixedRow': '{date}: {label} {value}（前の期間の同じ日: {prev}）',
   'chart.fixedRow.single': '{date}: {label} {value}',
+  // 未確定の日（直近 3 日）を選んだときの固定行（助言 B-7）。
+  'chart.fixedRow.unconfirmed': '{text}（あとで増えることがあります）',
   // ここから、グラフ部品が props で受ける文言（05 §2.8。仮の初期値）。
   // LineChart: 公開本数の添え書き（publishedText）と、週別の固定行（fixedRowText）。
   'chart.fixedRow.published': '。この日に {n} 本公開',
@@ -290,7 +303,7 @@ const baseDictionary = {
   'hbar.compare.prev': '前: {share}',
   'legend.current': 'この期間',
   'legend.prev': '前の期間',
-  'legend.unconfirmed': '薄い色の日はあとで増えることがあります',
+  'legend.unconfirmed': '○ と薄い背景の日は、あとで増えることがあります',
   'legend.masked': '— 伏せ値',
   'legend.heatmap': '読まれた回数が多い時間ほど濃い色',
   'legend.published': '公開した日',
@@ -348,6 +361,18 @@ const baseDictionary = {
   'table.shown': '{total} 件のうち {shown} 件を表示しています',
   'list.separator': '、',
   'link.external.mark': '↗',
+  'link.external.label': '記事を開く ↗',
+  // 狭い画面の記事の表で、値のセルに添える名前（助言 B-10）。広い画面では列の見出しが名前になる。
+  'list.cell.published': '公開 {date}',
+  'list.cell.period': 'この期間 {n} 回',
+  'list.cell.pv7': '最初の 1 週間 {value}',
+  'list.cell.pv30': '最初の 1 か月 {value}',
+  'list.cell.recent7': '直近 7 日 {n} 回',
+  // 値が伏せ値や該当なしのときに、前に置く名前。
+  'list.cell.name.period': 'この期間',
+  'list.cell.name.recent7': '直近 7 日',
+  // 狭い画面の「最初の 1 週間 / 1 か月」の数。
+  'list.cell.count': '{n} 回',
   'link.external.article': '{title}（高津コネクトの記事を新しいタブで開きます）',
 
   // --- 区分の名前（区分の値は contracts/constants.json と同じ） ---

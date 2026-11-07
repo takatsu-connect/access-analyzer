@@ -8,7 +8,16 @@ import { S02eScreen } from '@/screens/s02/S02eScreen';
 import { makePost } from '../../components/fixtures';
 import { SATO, TANAKA } from '../../data/fixture';
 
-import { cellText, headers, listData, makeListData, rowTitles, setUrl } from './helpers';
+import {
+  cellText,
+  headers,
+  listData,
+  makeListData,
+  rowTitles,
+  setUrl,
+  cellOf,
+  narrowText,
+} from './helpers';
 
 /** 公開日の新しい順（フィクスチャの 6 本。広告の記事 105 を含む）。 */
 const BY_PUBLISHED = ['記事 104', '記事 103', '記事 105', '記事 106', '記事 102', '記事 101'];
@@ -54,10 +63,13 @@ afterEach(() => {
 describe('S-02e 記事を探す', () => {
   it('見出し、期間、絞り込み、件数、7 つの列を描く', () => {
     const { container } = render(<S02eScreen data={listData('search')} />);
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('記事を探す');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('記事を探す');
+    expect(
+      screen.getByText('タイトルの言葉、カテゴリ、ライター、公開した月で探せます。'),
+    ).toBeTruthy();
     expect(screen.getByRole('group', { name: '期間' })).toBeTruthy();
     expect(screen.getByRole('group', { name: '絞り込み' })).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toBe('6 件');
+    expect(screen.getByRole('status').textContent).toBe('6 本');
     expect(headers(container)).toEqual([
       '記事',
       'ライター',
@@ -70,6 +82,20 @@ describe('S-02e 記事を探す', () => {
     expect(rowTitles(container)).toEqual(BY_PUBLISHED);
     expect(cellText(container, '記事 101', 'カテゴリ')).toBe('記事 > グルメ');
     expect(cellText(container, '記事 106', '読まれた回数（この期間）')).toBe('200');
+  });
+
+  it('広告の記事も並べ、「広告」の印を付ける。狭い画面のセルには名前を添える', () => {
+    const { container } = render(<S02eScreen data={listData('search')} />);
+    const rowOf = (title: string): Element | null | undefined =>
+      [...container.querySelectorAll('tbody tr')].find(
+        (row) => row.querySelector('th[scope="row"] a')?.textContent === title,
+      );
+    // 記事 105 は広告。
+    expect(rowOf('記事 105')?.querySelector('th')?.textContent).toContain('広告');
+    expect(rowOf('記事 101')?.querySelector('th')?.textContent).not.toContain('広告');
+    expect(narrowText(cellOf(container, '記事 106', '読まれた回数（この期間）'))).toBe(
+      'この期間 200 回',
+    );
   });
 
   it('絞り込みの選択肢は、埋め込んだ一覧にあるものだけ', () => {
@@ -85,7 +111,7 @@ describe('S-02e 記事を探す', () => {
     expect(options('カテゴリ')).toContain('記事 > グルメ');
     // 著者ページのある著者だけ。名前の順。
     expect(options('ライター')).toEqual(['すべて', 'さとう はなこ', 'たなか たろう']);
-    expect(options('公開年月')).toEqual([
+    expect(options('公開した月')).toEqual([
       'すべて',
       '2026 年 11 月',
       '2026 年 10 月',
@@ -111,7 +137,7 @@ describe('S-02e 記事を探す', () => {
       expect(sortGroup()).toBeNull();
       // 親「記事」の配下の「記事 > グルメ」に属する 3 本。読まれた回数の順なら 101 が先頭になる。
       expect(rowTitles(container)).toEqual(['記事 104', '記事 102', '記事 101']);
-      expect(screen.getByRole('status').textContent).toBe('3 件');
+      expect(screen.getByRole('status').textContent).toBe('3 本');
     });
 
     it('検索語だけのときも並びの UI がない', () => {
@@ -150,7 +176,7 @@ describe('S-02e 記事を探す', () => {
       expect(window.location.search).toBe('');
     });
 
-    it('公開年月で絞ると、多い順の UI が出る', () => {
+    it('公開した月で絞ると、多い順の UI が出る', () => {
       setUrl('/articles?ym=2026-10');
       const { container } = render(<S02eScreen data={listData('search')} />);
       expect(sortGroup()).not.toBeNull();
@@ -207,12 +233,12 @@ describe('S-02e 記事を探す', () => {
   describe('検索語', () => {
     it('入力のたびに絞り込み、URL の q に書き戻す', () => {
       const { container } = render(<S02eScreen data={searchData()} />);
-      const input = screen.getByLabelText('タイトルに含む語');
+      const input = screen.getByLabelText('タイトルの言葉');
       fireEvent.change(input, { target: { value: '朝' } });
       expect(rowTitles(container)).toEqual(['カフェの朝', '溝の口の朝市']);
       flushWrite();
       expect(queryParam('q')).toBe('朝');
-      expect(screen.getByRole('status').textContent).toBe('2 件');
+      expect(screen.getByRole('status').textContent).toBe('2 本');
 
       fireEvent.change(input, { target: { value: '朝市' } });
       expect(rowTitles(container)).toEqual(['溝の口の朝市']);
@@ -227,7 +253,7 @@ describe('S-02e 記事を探す', () => {
 
     it('大文字と小文字、全角と半角を区別しない', () => {
       const { container } = render(<S02eScreen data={searchData()} />);
-      const input = screen.getByLabelText('タイトルに含む語');
+      const input = screen.getByLabelText('タイトルの言葉');
       for (const text of ['cafe', 'CAFE', 'ｃａｆｅ', 'Ｃafe']) {
         fireEvent.change(input, { target: { value: text } });
         expect(rowTitles(container)).toEqual(['Cafe めぐり', 'ＣＡＦＥ 特集']);
@@ -239,7 +265,7 @@ describe('S-02e 記事を探す', () => {
     it('URL の q を読んで、入力欄に入れる。打った文字の末尾の空白は消さない', () => {
       setUrl('/articles?q=CAFE');
       const { container } = render(<S02eScreen data={searchData()} />);
-      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルの言葉');
       expect(input.value).toBe('CAFE');
       expect(rowTitles(container)).toEqual(['Cafe めぐり', 'ＣＡＦＥ 特集']);
 
@@ -253,7 +279,7 @@ describe('S-02e 記事を探す', () => {
 
     it('打っている間は URL に書かず、打つのをやめて 300 ミリ秒たってから書く', () => {
       render(<S02eScreen data={searchData()} />);
-      const input = screen.getByLabelText('タイトルに含む語');
+      const input = screen.getByLabelText('タイトルの言葉');
       fireEvent.change(input, { target: { value: '朝' } });
       act(() => {
         vi.advanceTimersByTime(299);
@@ -273,7 +299,7 @@ describe('S-02e 記事を探す', () => {
           })}
         />,
       );
-      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルの言葉');
       fireEvent.change(input, { target: { value: `${long}い` } });
       expect([...input.value]).toHaveLength(50);
       expect(input.value).toBe(long.slice(0, 50));
@@ -287,7 +313,7 @@ describe('S-02e 記事を探す', () => {
       vi.spyOn(window.history, 'replaceState').mockImplementation(() => {
         throw new DOMException('回数の上限', 'SecurityError');
       });
-      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルの言葉');
       fireEvent.change(input, { target: { value: '朝' } });
       expect(() => flushWrite()).not.toThrow();
       expect(input.value).toBe('朝');
@@ -299,7 +325,7 @@ describe('S-02e 記事を探す', () => {
 
     it('「条件を消す」は、書き戻し待ちの検索語を取り消す', () => {
       const { container } = render(<S02eScreen data={searchData()} />);
-      const input = screen.getByLabelText<HTMLInputElement>('タイトルに含む語');
+      const input = screen.getByLabelText<HTMLInputElement>('タイトルの言葉');
       fireEvent.change(input, { target: { value: '朝' } });
       fireEvent.click(screen.getByRole('button', { name: t('s02e.filter.clear') }));
       flushWrite();
@@ -310,8 +336,8 @@ describe('S-02e 記事を探す', () => {
 
     it('条件に合う記事がなければ、その旨の文を出す', () => {
       const { container } = render(<S02eScreen data={searchData()} />);
-      fireEvent.change(screen.getByLabelText('タイトルに含む語'), { target: { value: '温泉' } });
-      expect(screen.getByRole('status').textContent).toBe('0 件');
+      fireEvent.change(screen.getByLabelText('タイトルの言葉'), { target: { value: '温泉' } });
+      expect(screen.getByRole('status').textContent).toBe('0 本');
       expect(screen.getByText(/^条件に合う記事はありません。/)).toBeTruthy();
       expect(container.querySelector('table')).toBeNull();
     });
@@ -323,7 +349,7 @@ describe('S-02e 記事を探す', () => {
     expect(rowTitles(container)).toEqual(BY_PUBLISHED);
     expect(screen.getByLabelText<HTMLSelectElement>('カテゴリ').value).toBe('');
     expect(screen.getByLabelText<HTMLSelectElement>('ライター').value).toBe('');
-    expect(screen.getByLabelText<HTMLSelectElement>('公開年月').value).toBe('');
+    expect(screen.getByLabelText<HTMLSelectElement>('公開した月').value).toBe('');
     expect(sortGroup()).toBeNull();
   });
 
@@ -334,7 +360,7 @@ describe('S-02e 記事を探す', () => {
     expect(sortGroup()).toBeNull();
   });
 
-  it('カテゴリ、著者、公開年月を重ねて絞れる。親カテゴリは配下の子の記事を含む', () => {
+  it('カテゴリ、著者、公開した月を重ねて絞れる。親カテゴリは配下の子の記事を含む', () => {
     const { container } = render(<S02eScreen data={listData('search')} />);
     const adParent = listData('search').categories.find((category) => category.path === '広告');
     fireEvent.change(screen.getByLabelText('カテゴリ'), {
@@ -345,9 +371,9 @@ describe('S-02e 記事を探す', () => {
     fireEvent.change(screen.getByLabelText('カテゴリ'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('ライター'), { target: { value: SATO } });
     expect(rowTitles(container)).toEqual(['記事 102', '記事 101']);
-    fireEvent.change(screen.getByLabelText('公開年月'), { target: { value: '2026-01' } });
+    fireEvent.change(screen.getByLabelText('公開した月'), { target: { value: '2026-01' } });
     expect(rowTitles(container)).toEqual(['記事 102']);
-    expect(screen.getByRole('status').textContent).toBe('1 件');
+    expect(screen.getByRole('status').textContent).toBe('1 本');
     expect(window.location.search).toBe(`?cat=3&author=${SATO}&ym=2026-01`);
   });
 
@@ -359,10 +385,10 @@ describe('S-02e 記事を探す', () => {
     fireEvent.click(screen.getByRole('button', { name: '条件を消す' }));
     expect(rowTitles(container)).toEqual(BY_PUBLISHED);
     expect(window.location.search).toBe('?p=last7');
-    expect(screen.getByLabelText<HTMLInputElement>('タイトルに含む語').value).toBe('');
+    expect(screen.getByLabelText<HTMLInputElement>('タイトルの言葉').value).toBe('');
     expect(screen.getByLabelText<HTMLSelectElement>('カテゴリ').value).toBe('');
     expect(sortGroup()).toBeNull();
-    expect(screen.getByRole('status').textContent).toBe('6 件');
+    expect(screen.getByRole('status').textContent).toBe('6 本');
   });
 
   it('期間を変えると、読まれた回数（この期間）の値が変わる。並びは変わらない', () => {
@@ -377,7 +403,7 @@ describe('S-02e 記事を探す', () => {
       makePost({ id: 700 + index, title: `まち歩きの記事 ${index + 1}` }),
     );
     const { container } = render(<S02eScreen data={makeListData({ posts })} />);
-    expect(screen.getByRole('status').textContent).toBe('120 件');
+    expect(screen.getByRole('status').textContent).toBe('120 本');
     expect(rowTitles(container)).toHaveLength(50);
     fireEvent.click(screen.getByRole('button', { name: 'さらに表示' }));
     expect(rowTitles(container)).toHaveLength(100);
