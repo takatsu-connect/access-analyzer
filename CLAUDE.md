@@ -23,6 +23,7 @@ WordPress で運営する「高津コネクト」(https://takatsu-connect.com/) 
 | 横断 | tech-writer | docs/ 全体, docs/glossary.md, README.md |
 | 横断 | security-auditor | docs/security/audits/（監査報告。コードや設定は変更しない） |
 | 要件定義・設計 | analytics-advisor | docs/requirements/advice/（指標の適切さと見せ方の助言。要件・設計の文書は編集しない） |
+| 設計・構築 | web-designer | docs/design/reviews/（画面の見た目と使い勝手の批評。ローカルの画面を撮って見る。コードと設計書は編集しない） |
 
 ## docs/ の構成
 ```
@@ -31,6 +32,7 @@ docs/
   requirements/advice/  analytics-advisor の助言（YYYY-MM-DD-題.md。指標の取捨と見せ方。要件への反映は requirements-analyst が行う）
   design/         設計（構成、技術選定、データモデル、パイプライン、API、画面、セキュリティ、テスト計画、トレース表）
   design/adr/     Architecture Decision Record（NNNN-題名.md）
+  design/reviews/ web-designer の画面の批評（YYYY-MM-DD-題.md）
   operations/     環境、デプロイ手順、CI/CD、運用手順、監視、コスト
   security/audits/  セキュリティ監査の報告（YYYY-MM-DD-範囲.md）
   glossary.md     用語集
