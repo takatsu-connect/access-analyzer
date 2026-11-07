@@ -53,7 +53,8 @@ export const S06_TEXT = {
   's06b.partial.note':
     '読まれた回数を数え始めたのが {date}なので、{month}は {day} 日からの数字です。日数がそろわないので、この月とは差を出さず、それぞれの数字を並べています。',
   // 去年の同じ月が数え始めた月のときの、選んだマスの文（差を出さず、数字を並べる。助言 B-2）。
-  's06b.cell.partialYoy': '{text}。去年の同じ月は、{day} 日からの数字で {count} 回です。',
+  // 後ろに「。{note}」がつながることがあるので、ほかの固定行の文と同じく末尾に句点を付けない。
+  's06b.cell.partialYoy': '{text}。去年の同じ月は、{day} 日からの数字で {count} 回です',
   's06b.table.summary': '同じ数字を表で見る',
   's06b.table.caption': '月ごと、カテゴリごとの読まれた回数の表',
 } as const satisfies ScreenTexts<'s06' | 's06b'>;

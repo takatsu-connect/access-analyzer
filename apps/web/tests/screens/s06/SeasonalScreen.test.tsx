@@ -84,7 +84,7 @@ describe('S-06b 月ごと × カテゴリ', () => {
     // 最初に選んであるのは、終わっている月のうち、いちばん新しい月（2026 年 10 月）。175 と 300。
     const text = fixedRow(view(container, 'wide'));
     expect(text).toBe(
-      '2026 年 10 月 グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です。',
+      '2026 年 10 月 グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です',
     );
     expect(text).not.toMatch(/[▲▼%]/);
   });
@@ -184,6 +184,25 @@ describe('S-06b 月ごと × カテゴリ', () => {
     expect(text).toContain('去年の同じ月は、8 日からの数字で');
     expect(text).toContain('11 月 7 日ごろまでは、少し増えることがあります');
     expect(text).not.toContain('途中まで');
+  });
+
+  it('ほぼ確定の月で、去年の同じ月が数え始めた月のとき、句点が重ならない', () => {
+    const data = built();
+    const settling: SeasonalData = {
+      ...data,
+      periods: data.periods.map((period) =>
+        period.id === 'm2026-10' ? { ...period, isConfirmed: false } : period,
+      ),
+    };
+    const { container } = render(<SeasonalScreen data={settling} />);
+    const wide = view(container, 'wide');
+
+    clickCell(wide, 0, 1);
+
+    const text = fixedRow(wide);
+    expect(text).toContain('日からの数字で');
+    expect(text).toContain('ごろまでは、少し増えることがあります');
+    expect(text).not.toContain('。。');
   });
 
   it('数え始めた月が月の途中からなら、図の下に注記を出す', () => {
