@@ -1,7 +1,7 @@
 # 06 セキュリティ
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-04
+- 更新日: 2026-11-07
 - 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36（初回対象外）、ADR 0002、ADR 0003、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0009、docs/operations/initial_setup.md
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
@@ -9,6 +9,7 @@
   - 2026-11-03: 書き込み経路の監査（以下「経路監査」。docs/security/audits/2026-11-03-write-path-review.md）の W-1〜W-3、W-5、W-6、W-9、L-1〜L-4、L-7 を反映（§2.3 の漏えい時の影響、§3 の対処の順序と TLS、§5 の手順、§9 の Environment、§10 の依存の更新、§13）
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。§5 を置き換え、§1、§2、§3、§4、§12、§13 の除外リストの記述を外した
   - 2026-11-04: tech-writer の整合確認。Q-12 の確定を反映（§3、§10、§13）。TLS の基準を第 1 に合わせた（§3、§13）
+  - 2026-11-07: D-17 を ADR 0010 で確定。§6 の CSP を実装の値にし、§7 に値を文字として描く規則と検索語の扱いを足し、§13 から D-17 を外した
 
 ## 1. 守る資産と前提
 
@@ -112,7 +113,7 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 
 | ヘッダ | 値 | 備考 |
 | --- | --- | --- |
-| Content-Security-Policy | `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'` | 外部スクリプト・外部接続なし（Supabase にはブラウザから接続しない）。`style-src` は `'self'` に確定し `'unsafe-inline'` を外した（2026-11-03、ADR 0008。グラフは自前の SVG 部品で、動的な見た目は SVG 属性と CSS クラスだけで表す。React の `style` prop を lint で禁止する。07 §7 S-03）。`script-src` は未確定: Next.js App Router の静的生成は RSC ペイロードをインライン `<script>` で出すため `'self'` だけでは動かない可能性がある。nonce は静的生成と両立しないので、hash の列挙か `'unsafe-inline'` + `'strict-dynamic'` のどちらかを実装時に security-auditor と決める（ADR 0008「結果」、§13） |
+| Content-Security-Policy | `default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'` | 外部スクリプト・外部接続なし（Supabase にはブラウザから接続しない）。`style-src` は `'self'`（2026-11-03、ADR 0008。React の `style` prop を lint で禁止する。07 §7 S-03）。`script-src` の `'unsafe-inline'` は、App Router の静的生成が出すインラインの script のため（2026-11-07、ADR 0010 で確定。nonce は静的生成と両立せず、hash は配り方が未確認）。かわりに、`script-src-attr 'none'` でイベントハンドラの属性を止め、値を HTML として描く書き方を lint で禁止し（無効化コメントも不可）、E2E で CSP の指示の集合の完全一致、インラインの script の形、HTML の形の文字列が文字として出ることを確かめる（ADR 0010 の 1〜8）。第三者のスクリプト（Vercel の Web Analytics、Speed Insights、Toolbar を含む）は足さない |
 | X-Content-Type-Options | `nosniff` | |
 | Referrer-Policy | `strict-origin-when-cross-origin` | takatsu-connect.com への遷移で BI の URL パスを送らない |
 | X-Frame-Options | `DENY` | CSP の frame-ancestors と二重 |
@@ -126,6 +127,7 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 - ビルド時: `generateStaticParams` は `pub_post.post_id`（整数）と `pub_author.author_slug`（`^[a-z0-9-]{1,64}$`。形の定義は `apps/web/src/lib/query.ts` の 1 か所）だけからパスを作る。`dynamicParams = false`。
 - クライアント側: URL のクエリ（期間、フィルタ、選択）は許可リストで検証する（期間は `last7` / `last28` / `last90` / `mYYYY-MM` の形、カテゴリ・タグは埋め込んだ一覧にある ID、著者は埋め込んだ一覧にある slug）。許可されない値は既定値（直近 28 日、フィルタなし）に戻し、エラーを出さない。
 - 文字列を問い合わせに埋め込む箇所はない（ビルド時の Supabase 読み出しは supabase-js のパラメータ化された API を使い、フィルタ値は上記の検証済みの値だけ）。
+- 記事の題名、著者名、カテゴリ名、タグ名、参照元ドメインと、URL のクエリ由来の値（S-02e の検索語 `q`）は、HTML ではない文字列として、テキストと属性値にだけ使う（ADR 0010 の 2）。参照元ドメインは、ドメインの形でない行を表から落とす（04 §5）。検索語は送られず、問い合わせにも正規表現にも入らない。
 - 外部リンクは `pub_post.post_url`、`pub_author.author_url` の値だけを使い、バッチが `https://takatsu-connect.com/` 配下であることを検証済み（03 §4）。BI 側でも描画前に同じ検証をし、違えばリンクにしない。
 - エラー画面（404、500）は固定文。スタックトレース、内部 URL、SQL を出さない（Next.js の production ビルドの既定）。
 
@@ -194,11 +196,10 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 ## 13. 未確定
 
 - Supabase のアドバイザが出す「security definer view」（`pub_*` が所有者権限で base 表を読む）の警告は、設計レビュー（2026-11-03、§3 判定 3）で承認された。受け入れの記録は docs/operations/（デプロイ工程）に置く。代替（`security_invoker = true` + 内部表に anon の select を許すポリシー）は内部表の列が直接読めるようになるので採らない（ADR 0007）。
-- CSP の `script-src`: Next.js App Router の静的生成が出すインライン `<script>`（RSC ペイロード）の扱い（hash の列挙か、`'unsafe-inline'` + `'strict-dynamic'`）。実装時に `next build` の出力で確認し、security-auditor と決める（D-17、ADR 0008「結果」）。`style-src` は `'self'` で確定した（2026-11-03、ADR 0008）。
 - Vercel（依頼者の確認事項、設計レビュー §6）: (a) Hobby プランで Deployment Protection の Standard Protection（本番ドメイン以外のすべてのデプロイ URL の保護）が設定できるか、過去デプロイの保持数と削除の可否（M-6）。(b) fork からの PR でプレビューが作られるか、Preview の環境変数が渡るか（§2.4 の代替で足りるか）。
 - GCP（依頼者の確認事項）: WIF の属性条件に `assertion.repository_id` を加える（L-10）。SA が GA4 閲覧者のみで GCP ロールを持たないこと、「サービス アカウント トークン作成者」の削除。
 - Supabase（依頼者の確認事項）: Exposed schemas が `public` のみで `internal` を含まないこと、`graphql_public` の無効化。`batch_writer` の有効化とパスワードの設定。
 - 実装着手前の確認項目 1〜4 と、仕様の確認 V-1〜V-6（ADR 0009「実装着手前の確認項目」）。TLS の基準は確認項目 1 の結果で第 1 に確定した。psycopg からの接続は 07 A-11 で確かめる。Environment の可否は確認項目 4（親）。
 - SQL エディタの履歴などに `alter role` の文が残るか（確認項目 3。ADR 0009 経路監査 L-4）。
 - ADR 0009 の残りの未確定（`executemany`、IPv4 の到達など。実装時と 07 A-11）。
-- 確定: D-16（0 は伏せない。02 §2.3、M-1）、Q-33（ADR 0003 判断 5）、Q-36（ADR 0003 判断 6）、Q-12（失敗通知は GitHub のメール）。
+- 確定: D-16（0 は伏せない。02 §2.3、M-1）、Q-33（ADR 0003 判断 5）、Q-36（ADR 0003 判断 6）、Q-12（失敗通知は GitHub のメール）、D-17（CSP の `script-src`。2026-11-07、ADR 0010）。

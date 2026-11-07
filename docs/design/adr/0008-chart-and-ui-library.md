@@ -56,3 +56,4 @@ Tailwind を採らない理由: 画面数が少なく、トークン（濃淡 5 
 - 引き受ける点: frontend-engineer が 5 部品を書く（見積もり 2〜3 日）。部品の仕様は 05 §2.8 に書き、Vitest の描画テストで「順位の数字がない」「伏せ値は —」「`style` 属性がない」を検査する（07 §3）。軸の目盛りと日付ラベルの間引き（スマホで重ならないように）を自分で決める必要がある。
 - 選ばなかった案を再検討する条件: 図の種類が増える（散布図、積み上げ、ズーム）か、部品の保守が負担になったとき。そのときは案 B（canvas、CSP 不要）を第一候補にする。案 A は `'unsafe-inline'` を要する限り採らない。
 - 残る CSP の課題（この ADR の範囲外、実装時に確認。06 §13）: Next.js App Router の静的生成は RSC ペイロードをインライン `<script>` で出すため、`script-src 'self'` だけでは動かない可能性がある。nonce は実行時のレンダリングが要るので静的生成と両立しない。対応は (1) インラインスクリプトの hash を列挙する、(2) `script-src` にだけ `'unsafe-inline'` を許し `'strict-dynamic'` と組み合わせる、のいずれかで、security-auditor と決める。`style-src` の判断には影響しない。
+  - 追記（2026-11-07）: ADR 0010 で `script-src 'self' 'unsafe-inline'` に確定した（hash の列挙と `'strict-dynamic'` は採らない。理由と、かわりに守ることは ADR 0010）。`style-src 'self'` は変えていない。

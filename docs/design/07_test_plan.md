@@ -1,7 +1,7 @@
 # 07 テスト計画
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-06
+- 更新日: 2026-11-07
 - 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0006、ADR 0008、ADR 0009
 - 読者: qa-engineer（テストの実装と受入の実施）、backend-engineer / frontend-engineer（単体テストの実装）、devops-engineer（CI の検査）
 - 変更履歴:
@@ -16,6 +16,7 @@
   - 2026-11-05: 構築 2 の実装を反映。U-23、I-B-01、S-06 を 03 §4 の著者の取り方（個別の `users/<id>`）に合わせた。I-DB-17 に `pub_article_cumulative` を足した。I-B-11 (b) の `batch_run` の状態、§2 のローカルでの実行、§5 のフィクスチャの置き場所を実装に合わせた。S-06、S-16、S-17 の pytest での検査を追記
   - 2026-11-05: 構築 2 のコードレビューと監査（audits/2026-11-05-build2-review.md）を反映。§2: テストから外部へ接続しない歯止めと、結合テストの接続先の検査（監査 M-1、L-1）。I-DB-17: 統計が 0 行の状態での性能
   - 2026-11-06: 構築 3 の実装に合わせた（§2 と §6 から E2E の spec の対応表 `apps/web/e2e/README.md` を参照。§3 に画面の部品のテスト `tests/screens/**`、U-20 を列の集合の突き合わせに。E-08 の判定、E-17 の LCP 未実施、E-20 の文言、E-21 の実行方法と WebKit の fixme。S-11、S-14 を実装済みに、`build` の最初に fetch-cache を消す。§11 に残りを追加）
+  - 2026-11-07: ADR 0010 の確定に合わせ、E-01 の CSP の期待値を確定した値にした
 
 ## 1. 方針
 
@@ -133,7 +134,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 
 | ID | 検査 | 合格条件 | 受入基準 |
 | --- | --- | --- | --- |
-| E-01 | 応答ヘッダ | 全画面（S-01〜S-08、404）で `Content-Security-Policy`（`style-src 'self'` を含み `unsafe-inline` を含まない。script-src は実装時の決定どおり）、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、`X-Frame-Options: DENY` / `frame-ancestors 'none'`、`X-Robots-Tag: noindex, nofollow` | NFR-91、NFR-21、06 §6 |
+| E-01 | 応答ヘッダ | 全画面（S-01〜S-08、404）で `Content-Security-Policy`（指示の集合が `apps/web/next.config.ts` と ADR 0010 の一覧に完全に一致する。`'unsafe-inline'` は `script-src` の 1 か所だけで、`style-src 'self'`、`script-src-attr 'none'`、`object-src 'none'` を含む）、`X-Content-Type-Options: nosniff`、`Referrer-Policy`、`X-Frame-Options: DENY` / `frame-ancestors 'none'`、`X-Robots-Tag: noindex, nofollow` | NFR-91、NFR-21、06 §6 |
 | E-02 | noindex | 全画面の `<meta name="robots">` が noindex, nofollow。`/robots.txt` が `Disallow: /` | NFR-21 |
 | E-03 | 404 | 存在しない記事 ID、存在しない slug、不正な形式（`/articles/abc`、`/authors/A%20B`）がすべて同じ状態コード 404 と同じ本文（CommonNotes を含む）。スタックトレース・内部 URL・SQL がない | FR-06、FR-23、FR-30、NFR-91 |
 | E-04 | 配信される JS と HTML | ビルド出力（`.next/static`、HTML）に `SUPABASE_URL` の値、anon キーの先頭 20 文字、`supabase.co` の文字列が含まれない（CI のビルドではテスト用のダミー値を環境変数に入れ、その値で検索する。L-5）。`NEXT_PUBLIC_` で始まる環境変数がビルド出力に 1 つもない | NFR-42 |
