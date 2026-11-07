@@ -241,7 +241,11 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
                         {t('column.share')}
                       </th>
                     ) : null}
-                    <th scope="col" className={cx(parts.head, parts.numeric)}>
+                    {/*
+                      「前の 28 日」が数の列の keep-all で語ごとに縦に折れないよう、見出しは折らない。
+                      幅は 5 字ほどで、360px でも 4 列に収まる。
+                    */}
+                    <th scope="col" className={cx(parts.head, parts.numeric, parts.nowrap)}>
                       {period === null ? null : prevCountColumn(period)}
                     </th>
                   </tr>

@@ -334,6 +334,25 @@ describe('S-02e 記事を探す', () => {
       expect(rowTitles(container)).toHaveLength(4);
     });
 
+    it('「条件を消す」は、条件がないときは disabled、条件があると押せる（レビュー P-2）', async () => {
+      render(<S02eScreen data={searchData()} />);
+      const button = screen.getByRole<HTMLButtonElement>('button', {
+        name: t('s02e.filter.clear'),
+      });
+      expect(button.disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText<HTMLInputElement>('タイトルの言葉'), {
+        target: { value: '朝' },
+      });
+      expect(button.disabled).toBe(false);
+      // 押せるときの見た目（太字、基調色の枠）と、押せないときの見た目（点線）を CSS で分ける。
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync('src/screens/s02/s02.module.css', 'utf8');
+      expect(css).toMatch(
+        /\.clearButton \{[^}]*min-height: var\(--tap-min\);[^}]*font-weight: 700;/,
+      );
+      expect(css).toMatch(/\.clearButton:disabled \{[^}]*border-style: dashed;/);
+    });
+
     it('条件に合う記事がなければ、その旨の文を出す', () => {
       const { container } = render(<S02eScreen data={searchData()} />);
       fireEvent.change(screen.getByLabelText('タイトルの言葉'), { target: { value: '温泉' } });

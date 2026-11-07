@@ -205,6 +205,43 @@ describe('S-05 (a) 読まれた回数の合計と、公開した本数', () => {
     );
     expect(text).not.toMatch(/前の\s*\d+\s*日/);
     expect(text).not.toContain('%');
+    // 終わった月では、比較を止めた 1 文を出さない。
+    expect(text).not.toContain('月が終わると');
+  });
+
+  test('月の途中の月は、比較の代わりに「月が終わると、前の月と比べた数字が出ます」を出す', () => {
+    const data = pageData(TANAKA);
+    const current = { postCount: 1, pageviews: 120, longPostCount: 1, longPageviews: 80 };
+    data.period['m2026-11'] = current;
+    // 前の月の値があっても、途中の月とは比べない（usePeriod の withheld）。
+    data.period['m2026-10'] = {
+      postCount: 2,
+      pageviews: 300,
+      longPostCount: 1,
+      longPageviews: 150,
+    };
+    data.periods = data.periods.map((item) =>
+      item.id === 'm2026-11' ? { ...item, prevId: 'm2026-10' } : item,
+    );
+    expect(data.periods.some((item) => item.id === 'm2026-11')).toBe(true);
+    show(data, '?p=m2026-11');
+    const section = sectionOf(SUMMARY_H2);
+    const text = section.textContent;
+    expect(text).toContain(`${TANAKA_NAME}さんの記事は、この期間に合計 120 回読まれました。`);
+    expect(text).toContain('月が終わると、前の月と比べた数字が出ます');
+    expect(text).not.toContain('前の月と比べて');
+    expect(text).not.toContain('前の月は');
+    // 1 回だけ（(c) の行で繰り返さない）。
+    expect(section.querySelectorAll('[data-part="compare-withheld"]')).toHaveLength(1);
+  });
+
+  test('月の途中の月で公開が 0 本でも、比較の代わりの 1 文を出す', () => {
+    const data = pageData(TANAKA);
+    data.period['m2026-11'] = { postCount: 0, pageviews: 90, longPostCount: 0, longPageviews: 0 };
+    show(data, '?p=m2026-11');
+    const section = sectionOf(SUMMARY_H2);
+    expect(section.textContent).toContain('月が終わると、前の月と比べた数字が出ます');
+    expect(section.querySelectorAll('[data-part="compare-withheld"]')).toHaveLength(1);
   });
 });
 

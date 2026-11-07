@@ -264,7 +264,7 @@
   .narrowName {
     display: block;
     color: var(--color-text-muted);
-    font-size: var(--font-size-xs);
+    font-size: var(--font-size-note);
     line-height: var(--line-height-tight);
   }
 

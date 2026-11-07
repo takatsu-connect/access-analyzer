@@ -4,9 +4,22 @@
   gap: var(--space-3);
 }
 
+/* 狭い画面で、1 枚目を全幅、2 枚目からを 2 列にする（レビュー C-15）。 */
+.lead {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lead > :first-child {
+  grid-column: 1 / -1;
+}
+
 @media (min-width: 600px) {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lead > :first-child {
+    grid-column: auto;
   }
 }
 
@@ -49,5 +62,16 @@
 .note {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-note);
+}
+
+/* 狭い画面で 2 列に並べるカード。値を 24px にし、余白を詰める（レビュー C-15）。 */
+@media (max-width: 599.98px) {
+  .compact {
+    padding: var(--space-3);
+  }
+
+  .compact .value {
+    font-size: var(--font-size-xl);
+  }
 }

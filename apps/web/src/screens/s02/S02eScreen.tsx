@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ArticleTable, LIST_BADGES } from '@/components/ArticleTable';
 import type { ArticleColumnId } from '@/components/ArticleTable';
+import { cx } from '@/components/class-names';
 import { StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { resolvePeriod } from '@/components/usePeriod';
@@ -192,8 +193,9 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
         <div className={styles.clear}>
           <button
             type="button"
-            className={styles.button}
+            className={cx(styles.button, styles.clearButton)}
             disabled={!hasCondition}
+            data-part="clear-filter"
             onClick={() => {
               // 書き戻し待ちの検索語が、消したあとに戻ってこないようにする。
               cancelWrite();

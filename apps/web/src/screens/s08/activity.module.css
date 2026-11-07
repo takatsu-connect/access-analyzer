@@ -40,7 +40,7 @@
 /* 月の途中の月の「途中まで」。月の名前の下に小さく置き、括弧ごと折れる形にしない（助言 B-1）。 */
 .barNote {
   display: block;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-note);
 }
 
 .barValue {

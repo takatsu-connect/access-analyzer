@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+
 import a11y from '@/components/a11y.module.css';
 import { cx } from '@/components/class-names';
 import { Delta } from '@/components/Delta';
@@ -13,6 +15,9 @@ import { monthlyTarget, pick } from './series';
 
 /** 表に出す行数（上位 10。連番は付けない）。 */
 const TOP_ROWS = 10;
+
+/** 狭い画面で見えている列の数（名前、訪問回数、前の月と比べて）。「詳しく」の段の colSpan。 */
+const NARROW_COLUMNS = 3;
 
 export type MonthTableRow = {
   key: string;
@@ -76,7 +81,8 @@ function OtherMonth({ current, rows, rowKey, partialDay, target }: OtherMonthPro
 /**
  * 月ごとに集計する表（リンク元のサイト、市別。FR-13、FR-15）。
  * 見出し「リンク元のサイト（2026 年 9 月）」と、その直下に、期間の選択に連動しないことの注記。
- * 名前 | 訪問回数 | 前の月と比べて | 去年の同じ月と比べて。狭い画面では最後の列を「詳しく」に入れる。
+ * 名前 | 訪問回数 | 前の月と比べて | 去年の同じ月と比べて。
+ * 狭い画面では最後の列を隠し、行の下の段の「詳しく」に入れる（レビュー P-1。ArticleTable の .moreRow と同じ形）。
  */
 export function MonthTable<Row extends { sessions: number }>({
   label,
@@ -136,9 +142,6 @@ export function MonthTable<Row extends { sessions: number }>({
             <th scope="col" className={cx(styles.num, styles.wideCell)}>
               {t('compare.yoy')}
             </th>
-            <th scope="col" className={styles.narrowCell}>
-              {t('column.more')}
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -153,34 +156,46 @@ export function MonthTable<Row extends { sessions: number }>({
               />
             );
             return (
-              <tr key={row.key}>
-                {groupHeader === undefined ? null : (
-                  <td className={styles.wideCell}>{row.group}</td>
-                )}
-                <th scope="row" className={styles.name}>
-                  {groupHeader === undefined || row.group === undefined ? null : (
-                    <span className={styles.narrowGroup}>{row.group}</span>
+              <Fragment key={row.key}>
+                <tr className={styles.hasMore}>
+                  {groupHeader === undefined ? null : (
+                    <td className={styles.wideCell}>{row.group}</td>
                   )}
-                  {row.name}
-                </th>
-                <td className={styles.num}>{formatNumber(row.sessions)}</td>
-                <td className={styles.num}>
-                  <OtherMonth
-                    current={row.sessions}
-                    rows={prev}
-                    rowKey={row.key}
-                    partialDay={prevPartial}
-                    target="prev"
-                  />
-                </td>
-                <td className={cx(styles.num, styles.wideCell)}>{yoyCell}</td>
-                <td className={styles.narrowCell}>
-                  <Details summary={t('column.more')}>
-                    <span className={styles.compareLabel}>{t('compare.yoy')}</span>
-                    {yoyCell}
-                  </Details>
-                </td>
-              </tr>
+                  <th scope="row" className={styles.name}>
+                    {groupHeader === undefined || row.group === undefined ? null : (
+                      <span className={styles.narrowGroup}>{row.group}</span>
+                    )}
+                    {row.name}
+                  </th>
+                  <td className={styles.num}>{formatNumber(row.sessions)}</td>
+                  <td className={styles.num}>
+                    <OtherMonth
+                      current={row.sessions}
+                      rows={prev}
+                      rowKey={row.key}
+                      partialDay={prevPartial}
+                      target="prev"
+                    />
+                  </td>
+                  <td className={cx(styles.num, styles.wideCell)}>{yoyCell}</td>
+                </tr>
+                {/* 狭い画面だけの段。見えている列（名前、訪問回数、前の月と比べて）の幅いっぱいに置く。 */}
+                <tr className={styles.moreRow} data-part="more-row">
+                  <td colSpan={NARROW_COLUMNS} className={styles.moreCell}>
+                    <Details
+                      summary={
+                        <>
+                          {t('column.more')}
+                          <span className={a11y.srOnly}>{row.name}</span>
+                        </>
+                      }
+                    >
+                      <span className={styles.compareLabel}>{t('compare.yoy')}</span>
+                      {yoyCell}
+                    </Details>
+                  </td>
+                </tr>
+              </Fragment>
             );
           })}
         </tbody>

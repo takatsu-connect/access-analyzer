@@ -90,6 +90,23 @@
   align-items: flex-end;
 }
 
+/*
+ * 「条件を消す」（レビュー P-2）。条件があるときは、押せると分かるように、期間のボタンと同じ高さにし、
+ * 基調色の濃い枠と文字、太字にする。条件がないときは disabled のまま、点線の薄い枠と薄い文字にする
+ * （色だけでなく、枠の線の種類と文字の太さでも違いを示す）。
+ */
+.clearButton {
+  min-height: var(--tap-min);
+  border-color: var(--shade-5);
+  color: var(--shade-5);
+  font-weight: 700;
+}
+
+.clearButton:disabled {
+  border-style: dashed;
+  font-weight: 400;
+}
+
 /* 件数と、並びの説明。 */
 .summary {
   display: flex;

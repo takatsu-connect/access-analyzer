@@ -28,7 +28,7 @@ export function KpiSection({ data, choice, site }: KpiSectionProps) {
 
   return (
     <div className={styles.block} data-section="kpi">
-      <KpiGrid>
+      <KpiGrid layout="lead">
         <KpiCard
           headingLevel={2}
           label={t('metric.M01.label.first')}
@@ -45,6 +45,7 @@ export function KpiSection({ data, choice, site }: KpiSectionProps) {
         />
         <KpiCard
           headingLevel={2}
+          size="compact"
           label={metricLabel('M30')}
           value={posting === undefined ? t('s01.absent.value') : posting.postCount}
           comparison={
@@ -62,6 +63,7 @@ export function KpiSection({ data, choice, site }: KpiSectionProps) {
         />
         <KpiCard
           headingLevel={2}
+          size="compact"
           label={metricLabel('M03')}
           value={site.activeUsers}
           comparison={

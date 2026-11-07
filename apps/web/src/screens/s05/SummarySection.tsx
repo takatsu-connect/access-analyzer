@@ -6,7 +6,7 @@ import { BandDot } from '@/components/charts';
 import { Delta } from '@/components/Delta';
 import { Notice, StateMessage } from '@/components/Notice';
 import { ArticleLink } from '@/components/SiteLinks';
-import type { PeriodChoice } from '@/components/usePeriod';
+import { absentCompareText, type CompareWithheld, type PeriodChoice } from '@/components/usePeriod';
 import { compare } from '@/lib/derive';
 import { formatDate, formatDiff, formatMonthDay, formatNumber } from '@/lib/format';
 import type { AuthorPageData, AuthorPeriodValue, Period } from '@/lib/page-data';
@@ -84,6 +84,19 @@ type PeriodValues = {
 };
 
 /**
+ * 月の途中の月で比較を止めたときの 1 文（compare.inProgress。ほかの画面と同じ）。
+ * 黙って比較を省かず、月が終わると比べた数字が出ることを書く（NFR-95）。止めていなければ何も出さない。
+ */
+function WithheldLine({ withheld }: { withheld: CompareWithheld }) {
+  if (withheld === null) return null;
+  return (
+    <p className={styles.small} data-part="compare-withheld">
+      {absentCompareText(withheld, 'prev')}
+    </p>
+  );
+}
+
+/**
  * (a) 読まれた回数の合計と、公開した本数（M-01、M-30）。
  * 期間内の公開が 0 本のときも、期間の合計を出す（公開から 3 か月未満の記事の分を落とさない。助言 B-3）。
  * 0 本の文には本数の比較がないので、読まれた回数の差を下の行に添える（比較の相手を 1 つ。NFR-95）。
@@ -94,11 +107,13 @@ function Published({
   current,
   prev,
   prevLabel,
-}: PeriodValues & { name: string; period: Period }) {
+  withheld,
+}: PeriodValues & { name: string; period: Period; withheld: CompareWithheld }) {
   if (current.postCount > 0) {
     return (
       <div className={styles.summaryItem}>
         <p className={styles.statement}>{publishedText(name, period, current, prev)}</p>
+        <WithheldLine withheld={withheld} />
       </div>
     );
   }
@@ -108,6 +123,7 @@ function Published({
         {t('s05.summary.a.zero', { name, pv: formatNumber(current.pageviews) })}
       </p>
       <PrevDiff label={prevLabel} current={current.pageviews} prev={prev?.pageviews} />
+      <WithheldLine withheld={withheld} />
     </div>
   );
 }
@@ -241,6 +257,7 @@ export function SummarySection({ data, period, choice }: SummarySectionProps) {
             current={current}
             prev={prev}
             prevLabel={choice.prevLabel}
+            withheld={choice.withheld}
           />
           {/* (c) は「そのうち」で (a) の合計を受けるので、(a) の直後に置く。 */}
           <LongRead current={current} prev={prev} prevLabel={choice.prevLabel} />

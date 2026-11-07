@@ -37,6 +37,8 @@
 
   /* 文字サイズ */
   --font-size-xs: 0.75rem;
+  /* 注記、表の見出し、図の中の添え書き（13px。12px では年配の読者に読みにくい。レビュー C-14） */
+  --font-size-note: 0.8125rem;
   --font-size-sm: 0.875rem;
   --font-size-md: 1rem;
   --font-size-lg: 1.125rem;

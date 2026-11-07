@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { buildActivity } from '@/data/pages';
 import type { ActivityData } from '@/lib/page-data';
+import parts from '@/screens/s06/shared/parts.module.css';
 import { ActivityScreen } from '@/screens/s08/ActivityScreen';
 
 import { BUILT_AT, makeCache, SATO, TANAKA } from '../../data/fixture';
@@ -281,6 +282,13 @@ describe('S-08 投稿活動', () => {
     expect(rows[1]?.querySelectorAll('td')[2]?.textContent).toBe('0');
     expect(mixTable().textContent).not.toMatch(/[▲▼+]/);
     expect(within(mixTable()).getByRole('columnheader', { name: '前の 28 日' })).toBeTruthy();
+  });
+
+  it('カテゴリの表の見出し「前の 28 日」は折り返さない（語ごとに縦に折れない）', () => {
+    render(<ActivityScreen data={withMix(20, 4)} />);
+    const header = within(mixTable()).getByRole('columnheader', { name: '前の 28 日' });
+    expect(parts.nowrap).toBeTruthy();
+    expect(header.classList.contains(parts.nowrap ?? '')).toBe(true);
   });
 
   it('前の期間の内訳がないときは、文字で書く', () => {

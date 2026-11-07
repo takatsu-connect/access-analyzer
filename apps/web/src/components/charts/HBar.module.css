@@ -34,7 +34,7 @@
 .maskedLabel,
 .compareText {
   fill: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-note);
 }
 
 .track {

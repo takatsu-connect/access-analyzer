@@ -498,7 +498,30 @@ describe('S-01 全体ダッシュボード: 読者はどこから来たか', () 
   it('月の表の「詳しく」は折り返さない（360px で「詳し / く」にならない）', async () => {
     const { readFileSync } = await import('node:fs');
     const css = readFileSync('src/screens/s01/s01.module.css', 'utf8');
-    expect(css).toMatch(/\.narrowCell summary\s*\{\s*white-space: nowrap;/);
+    expect(css).toMatch(/\.moreCell summary\s*\{\s*white-space: nowrap;/);
+  });
+
+  it('月の表の「詳しく」は列ではなく行の下の段にある（レビュー P-1）', () => {
+    const container = renderScreen(build());
+    const referrer = part(container, '[data-part="referrer"]');
+    const table = referrer.querySelector('table');
+    // 列の見出しに「詳しく」はない。
+    const headers = [...(table?.querySelectorAll('thead th') ?? [])].map((th) => th.textContent);
+    expect(headers).not.toContain(t('column.more'));
+    // 行ごとに、すぐ下の段に「詳しく」があり、見えている 3 列の幅いっぱいに置く。
+    const moreRows = [...(table?.querySelectorAll('tr[data-part="more-row"]') ?? [])];
+    const rowHeaders = [...(table?.querySelectorAll('tbody th[scope="row"]') ?? [])];
+    expect(moreRows.length).toBe(rowHeaders.length);
+    expect(moreRows.length).toBeGreaterThan(0);
+    for (const more of moreRows) {
+      expect(more.previousElementSibling?.querySelector('th[scope="row"]')).not.toBeNull();
+      expect(more.querySelector('td')?.getAttribute('colspan')).toBe('3');
+      const summary = more.querySelector('summary');
+      expect(summary?.textContent).toContain(t('column.more'));
+      expect(more.textContent).toContain(t('compare.yoy'));
+    }
+    // 読み上げでは、どの行の「詳しく」か分かる。
+    expect(moreRows[0]?.querySelector('summary')?.textContent).toContain('google.com');
   });
 });
 
