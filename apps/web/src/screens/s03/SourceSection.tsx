@@ -35,9 +35,9 @@ function ReferrerBlock({ referrer30d }: Pick<SourceSectionProps, 'referrer30d'>)
       <h3>{t('metric.M12.label')}</h3>
       <Notice>{t('s03.referrer.note')}</Notice>
       {referrer30d.status === 'pending' ? (
-        <p className={styles.lead}>{t('absent.referrer30')}</p>
+        <p className={styles.empty}>{t('absent.referrer30')}</p>
       ) : referrer30d.rows.length === 0 ? (
-        <p className={styles.lead}>{t('s03.referrer.empty')}</p>
+        <p className={styles.empty}>{t('s03.referrer.empty')}</p>
       ) : (
         <table className={styles.table}>
           <caption className={a11y.srOnly}>{t('s03.referrer.caption')}</caption>

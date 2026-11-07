@@ -1,7 +1,8 @@
 .main {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-4);
+  /* 上の余白はデータの更新状況から h1 までの間（全画面で 24px。レビュー C-9）。 */
+  padding: var(--space-5) var(--space-4) var(--space-4);
 }
 
 /* スキップリンクの行き先。フォーカスの枠は出さない（操作する要素ではない）。 */
@@ -21,7 +22,7 @@
 }
 
 .beforeMain {
-  padding-top: var(--space-4);
+  padding-top: var(--space-3);
 }
 
 .afterMain {

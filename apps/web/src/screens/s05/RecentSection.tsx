@@ -66,7 +66,7 @@ export function RecentSection({ data }: RecentSectionProps) {
       <h2>{t('s05.recent.h2')}</h2>
       {/* 両方ないときは h3 と枠を出さず 1 文だけ。片方だけなら、ある方だけ（助言 A-1）。 */}
       {lists.length === 0 ? (
-        <p>{t('s05.recent.empty')}</p>
+        <p className={styles.empty}>{t('s05.recent.empty')}</p>
       ) : (
         <>
           <div className={styles.pair}>

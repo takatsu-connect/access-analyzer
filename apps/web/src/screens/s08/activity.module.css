@@ -58,15 +58,29 @@
   fill: var(--color-surface-subtle);
 }
 
+/* ダークでは地の棒が背景に溶けるので、罫線の色にする（レビュー C-11）。 */
+@media (prefers-color-scheme: dark) {
+  .barTrack {
+    fill: var(--color-border);
+  }
+}
+
 .barFill {
   fill: var(--shade-4);
 }
 
-/* 去年の同じ月は、塗らずに細い枠で描く（色ではなく形で分ける）。 */
-.barOutline {
-  fill: none;
+/*
+ * 去年の同じ月は、その位置の縦の線で描く（色ではなく形で分ける）。
+ * 枠は今の棒に隠れて見えなかったので線にした（レビュー C-10）。背景色の縁を下に敷く。
+ */
+.barYoy {
   stroke: var(--color-text);
-  stroke-width: 1;
+  stroke-width: 2;
+}
+
+.barYoyRing {
+  stroke: var(--color-surface);
+  stroke-width: 4;
 }
 
 .legend {

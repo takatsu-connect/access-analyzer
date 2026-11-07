@@ -36,6 +36,7 @@ export function S02dScreen({ data }: { data: ArticleListData }) {
         columns={COLUMNS}
         badges={BADGES}
         emptyText={t('s02d.empty')}
+        primaryColumn="recent7"
       />
     </>
   );

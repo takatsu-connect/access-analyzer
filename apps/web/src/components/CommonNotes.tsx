@@ -13,30 +13,37 @@ export type CommonNotesProps = {
 };
 
 /**
- * 全画面共通の説明文（05 §2.7）。本文の後（フッタの直上）に、折りたたまずに出す。
+ * 全画面共通の説明文（05 §2.7）。本文の後（フッタの直上）に置く。
  * レイアウト（src/app/layout.tsx）が全ページ（404 を含む）に 1 つ置く。ページの側には置かない。
+ *
+ * 閉じた折りたたみで出す。見出し（h2）が summary で、押すと項目が開く（レビュー C-6。依頼者の判断）。
+ * 項目は全画面で同じ（画面ごとに選ぶ形にはしていない）。操作はブラウザの details に任せる。
  */
 export function CommonNotes({ measureStart = MEASURE_START }: CommonNotesProps) {
   const start = formatDate(measureStart);
   return (
     <section className={styles.notes} aria-labelledby={HEADING_ID}>
-      <h2 id={HEADING_ID} className={styles.heading}>
-        {t('notes.h2')}
-      </h2>
-      <ul className={styles.list}>
-        <li>{t('notes.pageviews')}</li>
-        <li>
-          {t('notes.measureStart', { start })}
-          <Details summary={t('notes.more')}>{t('notes.measureStart.detail', { start })}</Details>
-        </li>
-        <li>{t('notes.masked')}</li>
-        <li>
-          {t('notes.band')}
-          <Details summary={t('notes.more')}>{t('notes.band.detail')}</Details>
-        </li>
-        <li>{t('notes.ratio')}</li>
-        <li>{t('notes.source')}</li>
-      </ul>
+      <details className={styles.fold}>
+        <summary className={styles.summary}>
+          <h2 id={HEADING_ID} className={styles.heading}>
+            {t('notes.h2')}
+          </h2>
+        </summary>
+        <ul className={styles.list}>
+          <li>{t('notes.pageviews')}</li>
+          <li>
+            {t('notes.measureStart', { start })}
+            <Details summary={t('notes.more')}>{t('notes.measureStart.detail', { start })}</Details>
+          </li>
+          <li>{t('notes.masked')}</li>
+          <li>
+            {t('notes.band')}
+            <Details summary={t('notes.more')}>{t('notes.band.detail')}</Details>
+          </li>
+          <li>{t('notes.ratio')}</li>
+          <li>{t('notes.source')}</li>
+        </ul>
+      </details>
     </section>
   );
 }

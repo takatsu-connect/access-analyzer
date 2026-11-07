@@ -6,7 +6,7 @@
 .inner {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-3) var(--space-4) var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-1);
 }
 
 .title {
@@ -29,6 +29,8 @@
 }
 
 .subList {
+  /* 選んでいるタブを横に寄せるときの位置の基準（SiteHeader.tsx）。 */
+  position: relative;
   padding-top: var(--space-1);
   border-top: var(--border-width) solid var(--color-border);
   font-size: var(--font-size-sm);
@@ -36,9 +38,11 @@
 
 .link,
 .subLink {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
   padding: var(--space-2);
-  border-bottom: 3px solid transparent;
+  border-bottom: 4px solid transparent;
   color: var(--color-text);
   text-decoration: none;
 }
@@ -54,4 +58,59 @@
 .subLink[aria-current] {
   border-bottom-color: var(--shade-5);
   font-weight: 700;
+}
+
+/*
+ * 狭い画面（600px 未満）。レビュー C-1。
+ * - 主タブは 3 列 × 2 行の格子にし、6 個を同じ大きさで並べる。
+ * - 記事のサブナビは 1 行の横スクロールにする（表の横スクロールを避ける方針は
+ *   ナビゲーションには当てない。依頼者の判断）。続きがある側の端に影を出す。
+ */
+@media (max-width: 599.98px) {
+  .list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+  }
+
+  .link {
+    justify-content: center;
+    width: 100%;
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--font-size-sm);
+    text-align: center;
+  }
+
+  .subList {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    /*
+     * 続きがある側だけに影を出す（スクロールの影）。local の 2 枚は中身と一緒に動いて
+     * 端に着いたときに影を隠し、scroll の 2 枚は枠に固定された影。色はトークンだけ。
+     */
+    background:
+      linear-gradient(to right, var(--color-surface) 40%, transparent) left center / 2.5rem 100%
+        no-repeat local,
+      linear-gradient(to left, var(--color-surface) 40%, transparent) right center / 2.5rem 100%
+        no-repeat local,
+      linear-gradient(to right, var(--color-border-strong), transparent) left center / 1rem 100%
+        no-repeat scroll,
+      linear-gradient(to left, var(--color-border-strong), transparent) right center / 1rem 100%
+        no-repeat scroll;
+    background-color: var(--color-surface);
+  }
+
+  .subList::-webkit-scrollbar {
+    display: none;
+  }
+
+  .subList > li {
+    flex: 0 0 auto;
+  }
+
+  .subLink {
+    white-space: nowrap;
+  }
 }

@@ -52,12 +52,17 @@
   overflow-wrap: anywhere;
 }
 
+/* 紹介ページへのリンクは h1 の下に小さく置き、押せる高さを保つ（レビュー P-3）。 */
 .authorLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
 .picker {
-  margin-block-start: 1rem;
+  margin-block-start: var(--space-4);
 }
 
 /* --- S-05 この期間のまとめ --- */
@@ -125,6 +130,13 @@
   margin: 0 0 0.5rem;
 }
 
+/* まだ値が出ない節の 1 文。見出しより弱く、小さく薄く（レビュー C-12）。 */
+.empty {
+  margin: var(--space-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .chartBox {
   display: grid;
   gap: 0.5rem;
@@ -145,6 +157,16 @@
   vertical-align: top;
   font-weight: inherit;
   overflow-wrap: anywhere;
+}
+
+/* 名前の列が 1〜2 文字幅まで縮まないよう、幅の下限を持たせる（レビュー C-3）。 */
+.table :is(th, td):first-child {
+  min-width: 6em;
+}
+
+/* 数の列の見出しは折ってよい（値だけを 1 行に保つ）。 */
+.table thead .numeric {
+  white-space: normal;
 }
 
 .table thead th {

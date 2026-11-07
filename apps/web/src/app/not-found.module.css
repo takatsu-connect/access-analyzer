@@ -1,20 +1,20 @@
-.title {
-  margin: 0 0 var(--space-4);
-  font-size: var(--font-size-xl);
-  line-height: var(--line-height-tight);
-}
+/* h1 の大きさと余白は globals.css で決める（レビュー C-2）。 */
 
+/* 行き先のボタンは縦に並べ、幅をそろえる（レビュー P-4）。 */
 .links {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: var(--space-2);
+  max-width: 24rem;
   margin: var(--space-5) 0 0;
   padding: 0;
   list-style: none;
 }
 
 .link {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-min);
   padding: var(--space-2) var(--space-4);
   border: var(--border-width) solid var(--color-border-strong);
   border-radius: var(--radius-sm);

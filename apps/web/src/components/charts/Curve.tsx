@@ -6,11 +6,11 @@ import styles from './Curve.module.css';
 import { percent, xPercent, zeroBasedAxis } from './geometry';
 import type { CurveProps } from './types';
 
-// 縦の寸法（px）。
-const HEIGHT = 180;
+// 縦の寸法（px）。LineChart と同じ 200px（レビュー C-8）。
+const HEIGHT = 200;
 const PLOT_TOP = 16;
-const PLOT_BOTTOM = 146;
-const DAY_LABEL_Y = 170;
+const PLOT_BOTTOM = 166;
+const DAY_LABEL_Y = 190;
 /** 横軸の目盛り（◯日目）。 */
 const DAY_TICKS: Record<30 | 90, readonly number[]> = { 30: [1, 10, 20, 30], 90: [1, 30, 60, 90] };
 

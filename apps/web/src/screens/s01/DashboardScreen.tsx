@@ -14,7 +14,6 @@ import { DailySection } from './DailySection';
 import { KpiSection } from './KpiSection';
 import { MoreSection } from './MoreSection';
 import { ReadersSection } from './ReadersSection';
-import styles from './s01.module.css';
 import { SourceSection } from './SourceSection';
 
 export type DashboardScreenProps = {
@@ -41,7 +40,7 @@ export function DashboardScreen({ data }: DashboardScreenProps) {
 
   return (
     <>
-      <h1 className={styles.h1}>{t('s01.h1')}</h1>
+      <h1>{t('s01.h1')}</h1>
       {period === null ? null : (
         <PeriodPicker
           periods={data.periods}

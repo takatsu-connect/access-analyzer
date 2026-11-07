@@ -9,7 +9,7 @@ import styles from './not-found.module.css';
 export default function NotFound() {
   return (
     <>
-      <h1 className={styles.title}>{t('notFound.h1')}</h1>
+      <h1>{t('notFound.h1')}</h1>
       <p>{t('notFound.lead')}</p>
       <p>{t('notFound.reasons.lead')}</p>
       <ul>

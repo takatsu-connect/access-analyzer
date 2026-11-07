@@ -1,6 +1,6 @@
 /*
  * 構成比の横棒と、表の行に埋める小さな棒（05 §2.8）。
- * 棒は --shade-4、比較相手は --shade-3 の細い輪郭。文字は文字色のトークンで書く。
+ * 棒は --shade-4、比較相手は文字色の縦の線（背景色の縁つき。レビュー C-10）。文字は文字色のトークンで書く。
  */
 .chart {
   display: grid;
@@ -41,14 +41,25 @@
   fill: var(--color-surface-subtle);
 }
 
+/* ダークでは地の棒が背景に溶けるので、罫線の色にする（レビュー C-11）。 */
+@media (prefers-color-scheme: dark) {
+  .track {
+    fill: var(--color-border);
+  }
+}
+
 .bar {
   fill: var(--shade-4);
 }
 
 .compare {
-  fill: none;
-  stroke: var(--shade-3);
-  stroke-width: 1.5;
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+
+.compareRing {
+  stroke: var(--color-surface);
+  stroke-width: 4;
 }
 
 .legend {

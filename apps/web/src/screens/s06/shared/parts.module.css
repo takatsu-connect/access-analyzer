@@ -178,10 +178,26 @@
   .head,
   .cell {
     padding: var(--space-2) var(--space-1);
+  }
+
+  /*
+   * 12px のまま。値を 14px にすると、360px で前の期間との差の列（「+1,180（約 6.4 倍）」）が
+   * 収まらず横にはみ出すため（レビュー C-14 は見送り）。
+   */
+  .head,
+  .cell {
     font-size: var(--font-size-xs);
   }
 
-  /* 名前の列が 1 文字幅につぶれないよう、幅の下限を決める。そのぶん棒の列を狭くする。 */
+  /*
+   * 文字の列は、はみ出すときにどこでも折る（body は break-word にしたので、ここで戻す。レビュー C-3）。
+   * 名前の列が 1 文字幅につぶれないよう、幅の下限を決める。そのぶん棒の列を狭くする。
+   */
+  .cell:not(.numeric),
+  .head:not(.numeric) {
+    overflow-wrap: anywhere;
+  }
+
   .rowHead {
     min-width: 5.5em;
     font-size: var(--font-size-sm);

@@ -64,7 +64,7 @@
 .axisLabel,
 .dateLabel {
   fill: var(--color-text-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -76,8 +76,9 @@
   stroke-linejoin: round;
 }
 
+/* 公開した日の点。基調色にして、目盛りの文字と見分ける（レビュー C-16）。 */
 .publishedDot {
-  fill: var(--color-text-muted);
+  fill: var(--shade-4);
 }
 
 .marker {

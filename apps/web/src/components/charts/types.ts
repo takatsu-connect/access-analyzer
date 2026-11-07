@@ -108,8 +108,8 @@ export type HBarCompare = {
   /** 比較相手の構成比（0〜1。items と同じ順。出せない区分は null）。 */
   shares: readonly (number | null)[];
   /**
-   * 凡例の文言。前の期間は辞書の legend.compare.prev（「細い枠: 前の期間」）、
-   * サイト全体は s05.referrer.legend（「細い枠: サイト全体」）。
+   * 凡例の文言。前の期間は辞書の legend.compare.prev（「縦の線: 前の期間」）、
+   * サイト全体は s05.referrer.legend（「縦の線: サイト全体」）。
    */
   legend: string;
   /**

@@ -25,7 +25,7 @@ export const S08_TEXT = {
   // 月の途中の月に、棒の月の名前の下へ小さく添える（「2026 年 11 月」の下に「途中まで」。助言 B-1）。
   's08.monthly.inProgress': '途中まで',
   's08.monthly.legend.current': '塗り: その月の本数',
-  's08.monthly.legend.yoy': '細い枠: 去年の同じ月の本数',
+  's08.monthly.legend.yoy': '縦の線: 去年の同じ月の本数',
   's08.monthly.yoy': '去年の同じ月',
   's08.monthly.table.summary': '同じ数字を表で見る',
   's08.monthly.table.caption': '月ごとの公開本数の表',

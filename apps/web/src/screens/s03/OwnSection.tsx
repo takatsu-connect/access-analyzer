@@ -46,7 +46,7 @@ export function OwnSection({ post, cumulative, ownMedian30d }: OwnSectionProps) 
     <section className={styles.section} aria-labelledby="s03-own">
       <h2 id="s03-own">{t('s03.own.h2', { name: post.authorName })}</h2>
       {ownMedian30d === null ? (
-        <p className={styles.lead}>{t('absent.ownMedian')}</p>
+        <p className={styles.empty}>{t('absent.ownMedian')}</p>
       ) : (
         <>
           <p className={styles.lead}>{ownSentence(post, cumulative, ownMedian30d.value)}</p>

@@ -71,7 +71,7 @@ describe('S-08 投稿活動', () => {
     expect(container.querySelector('[class*="arrow"]')).toBeNull();
   });
 
-  it('月ごとの公開本数: 月の数だけ棒があり、去年の同じ月があるときだけ細い枠を描く', () => {
+  it('月ごとの公開本数: 月の数だけ棒があり、去年の同じ月があるときだけ縦の線を描く', () => {
     const { container } = render(<ActivityScreen data={built()} />);
 
     expect(screen.getByRole('heading', { name: '月ごとの公開本数（直近 24 か月）' })).toBeTruthy();
@@ -88,7 +88,8 @@ describe('S-08 投稿活動', () => {
     expect(rows[1]?.querySelector('[data-part="note"]')).toBeNull();
     // 2026 年 6 月（0 本）は、去年の同じ月（1 本）がある。
     const june = container.querySelector('li[data-month="2026-06"]');
-    expect(june?.querySelector('[data-part="yoy"]')).not.toBeNull();
+    // 去年の同じ月は縦の線（枠ではない）。今の棒が 0 本でも線は見える（レビュー C-10）。
+    expect(june?.querySelector('[data-part="yoy"]')?.tagName.toLowerCase()).toBe('line');
     expect(june?.querySelector('title')?.textContent).toBe(
       '2026 年 6 月: 0 本（去年の同じ月: 1 本）',
     );
@@ -97,7 +98,7 @@ describe('S-08 投稿活動', () => {
     expect(first?.querySelector('[data-part="yoy"]')).toBeNull();
     // 凡例。
     expect(container.textContent).toContain('塗り: その月の本数');
-    expect(container.textContent).toContain('細い枠: 去年の同じ月の本数');
+    expect(container.textContent).toContain('縦の線: 去年の同じ月の本数');
   });
 
   it('終わった月には、確定の前でも「途中まで」を添えない（公開本数は月末で固まる）', () => {
@@ -122,7 +123,7 @@ describe('S-08 投稿活動', () => {
     const table = screen.getByRole('table', { name: '月ごとの公開本数の表', hidden: true });
     const rows = [...table.querySelectorAll('tbody tr')].map((row) => row.textContent);
     expect(rows.length).toBe(18);
-    // 途中の月は、去年の 1 か月分と比べない（枠も描かない）。
+    // 途中の月は、去年の 1 か月分と比べない（線も描かない）。
     expect(rows[0]).toBe(
       '2026 年 11 月（途中まで）1月が終わると、去年の同じ月と比べた数字が出ます',
     );

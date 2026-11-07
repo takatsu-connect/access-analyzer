@@ -67,6 +67,7 @@ export function S02bScreen({ data }: { data: ArticleListData }) {
         narrowColumns={NARROW_COLUMNS}
         renderBand={renderBand}
         emptyText={t('s02b.empty')}
+        primaryColumn="pv30"
       />
     </>
   );

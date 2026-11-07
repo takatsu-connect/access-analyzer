@@ -50,7 +50,7 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
       .map((item) => item.id),
   );
   // 去年の同じ月の本数は、データ層が行ごとに持つ（13〜24 か月前の月の去年も引ける）。
-  // 途中の月は、去年の 1 か月分と日数がそろわないので、枠を描かない。
+  // 途中の月は、去年の 1 か月分と日数がそろわないので、線を描かない。
   // 図では「途中まで」を月の名前の下に小さく置き（折れない形）、表と読み上げの文は「（途中まで）」を付けた名前。
   const monthlyRows: (MonthlyBarRow & { withheld: boolean; fullLabel: string })[] = data.monthly
     .slice(-MONTHS)

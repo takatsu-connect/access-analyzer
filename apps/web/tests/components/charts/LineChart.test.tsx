@@ -115,7 +115,9 @@ describe('LineChart（U-24）', () => {
   it('固定行は最初から最新の確定日で埋まっていて、行の前に案内がある', () => {
     const { container } = render(<LineChart {...sevenDays()} />);
     expect(fixedRow(container)).toBe('10 月 27 日: 読まれた回数 132（前の期間の同じ日: 98）');
-    expect(container.textContent).toContain('グラフの日付をタップすると、その日の数字に変わります');
+    expect(container.textContent).toContain(
+      'グラフの日付をタップすると、その日の数字に変わります（キーボードでは左右の矢印キー）',
+    );
   });
 
   it('日付をクリックすると固定行が変わる', () => {

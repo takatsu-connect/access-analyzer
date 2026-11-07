@@ -128,8 +128,16 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
       await expect
         .soft(main.getByRole('heading', { name: t('notes.h2'), exact: true }))
         .toHaveCount(0);
-      // 説明文の中身（数え方、伏せ値、比率、出どころ）が、開かなくても読める。
-      const body = await bodyText(page);
+      // 説明文は閉じた折りたたみ（見出しが summary）で出す。中身（数え方、伏せ値、比率、出どころ）は
+      // その details の中にあり、見出しを押すと読める（レビュー C-6。依頼者の判断）。
+      const fold = page.locator('details', {
+        has: page.locator('summary').getByRole('heading', { name: t('notes.h2'), exact: true }),
+      });
+      await expect.soft(fold, `${screen.id} の CommonNotes の折りたたみ`).toHaveCount(1);
+      await expect
+        .soft(fold, `${screen.id} の CommonNotes は閉じている`)
+        .not.toHaveAttribute('open');
+      const body = (await fold.textContent()) ?? '';
       for (const key of [
         'notes.pageviews',
         'notes.masked',

@@ -29,7 +29,7 @@
 }
 
 .button {
-  min-height: 2.5rem;
+  min-height: var(--tap-min);
   padding: var(--space-1) var(--space-3);
   border: var(--border-width) solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -44,8 +44,15 @@
 .button[aria-pressed='true'] {
   border-color: var(--shade-5);
   background: var(--shade-1);
-  box-shadow: inset 0 -3px 0 var(--shade-5);
+  box-shadow: inset 0 -4px 0 var(--shade-5);
   font-weight: 700;
+}
+
+/* ダークの --shade-1 は背景とほぼ同じなので、選択中だけ 1 段濃くする（レビュー C-11）。 */
+@media (prefers-color-scheme: dark) {
+  .button[aria-pressed='true'] {
+    background: var(--shade-2);
+  }
 }
 
 .table {
@@ -84,6 +91,21 @@
   text-align: right;
 }
 
+/*
+ * 広い画面の列幅（レビュー C-3）。題名の列に下限を持たせ、数の列は必要な幅だけ取る。
+ */
+@media (min-width: 600px) {
+  .head.title,
+  .cell.title {
+    min-width: 16em;
+  }
+
+  .numeric {
+    width: 1%;
+    white-space: nowrap;
+  }
+}
+
 /* 広い画面: タイトルの右に「↗」、その下に印。狭い画面: タイトルの下に、印と「↗」。 */
 .titleBox {
   display: flex;
@@ -102,7 +124,7 @@
 .titleLink {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: calc(100% - 1.5rem - var(--space-1));
+  max-width: calc(100% - 4.5rem - var(--space-1));
 }
 
 /* 日付と帯の文言が 1 文字ずつ折れないよう、列の幅の下限を決める。 */
@@ -124,12 +146,16 @@
   }
 }
 
+/* 押す範囲は 44px 四方（レビュー C-13）。 */
 .external {
+  display: inline-flex;
   flex: none;
-  min-width: 1.5rem;
-  min-height: 1.5rem;
-  text-align: center;
-  text-decoration: none;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
 }
 
 .badges {
@@ -220,22 +246,45 @@
     min-width: 0;
     padding: var(--space-1);
     border-bottom: 0;
-    font-size: var(--font-size-xs);
+    font-size: var(--font-size-sm);
+    text-align: left;
   }
 
   .head.title,
   .cell.title {
     flex: 0 0 100%;
-    padding-top: var(--space-2);
-  }
-
-  .cell.title {
-    font-size: var(--font-size-sm);
+    padding-top: var(--space-3);
   }
 
   .row > .cell:not(.title),
   .headRow > .head:not(.title) {
-    padding-bottom: var(--space-2);
+    padding-bottom: var(--space-1);
+  }
+
+  /*
+   * 値のセルは、名前（上の段、小さく薄い）と値（下の段）の 2 段にする（レビュー C-4）。
+   * 数の値は数と単位の間で折らない。
+   */
+  .narrowName {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    line-height: var(--line-height-tight);
+  }
+
+  .narrowValue {
+    display: block;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .narrowNumber {
+    white-space: nowrap;
+  }
+
+  /* その画面の主な値は、大きく太く描く（レビュー C-4）。 */
+  .primary .narrowValue {
+    font-size: var(--font-size-md);
+    font-weight: 700;
   }
 
   .moreCell {
@@ -264,7 +313,7 @@
     display: inline-flex;
     align-items: center;
     order: 1;
-    min-height: 2.75rem;
-    text-decoration: underline;
+    justify-content: flex-start;
+    min-height: var(--tap-min);
   }
 }

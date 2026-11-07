@@ -4,16 +4,11 @@
  * 幅 600px 未満を狭い画面として扱う（05 §2.6）。
  */
 
-.h1 {
-  margin: 0 0 var(--space-4);
-  font-size: var(--font-size-xl);
-  line-height: 1.4;
-}
+/* h1 と h2 の大きさは globals.css で全画面共通に決める（レビュー C-2、C-9）。 */
 
+/* 節の見出しの行（sectionHead）の中に置くので、上下の余白だけ消す。 */
 .h2 {
   margin: 0;
-  font-size: var(--font-size-lg);
-  line-height: 1.4;
 }
 
 .h3 {
@@ -152,8 +147,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 長いドメイン名で、狭い画面に横スクロールを出さない。 */
+/*
+ * 長いドメイン名で、狭い画面に横スクロールを出さない（どこでも折れる anywhere）。
+ * anywhere だけでは列幅の計算で列が 1〜2 文字幅まで縮むので、幅の下限を持たせる（レビュー C-3）。
+ */
 .name {
+  min-width: 5em;
   overflow-wrap: anywhere;
 }
 

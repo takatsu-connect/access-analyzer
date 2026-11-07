@@ -58,7 +58,12 @@ export function TopListScreen({ data, screen }: TopListScreenProps) {
       <CountToggle value={state.n} onChange={(count) => update({ n: count })} />
       <Notice>{t(`${screen}.note`)}</Notice>
       <PreMeasureNote rows={rows} columns={COLUMNS} measureStart={data.meta.measureStart} />
-      <ArticleTable caption={t(`${screen}.name`)} rows={rows} columns={COLUMNS} />
+      <ArticleTable
+        caption={t(`${screen}.name`)}
+        rows={rows}
+        columns={COLUMNS}
+        primaryColumn="pageviews"
+      />
     </>
   );
 }

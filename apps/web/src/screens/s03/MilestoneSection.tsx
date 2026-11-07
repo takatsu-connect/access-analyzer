@@ -35,7 +35,7 @@ export function MilestoneSection({
     <section className={styles.section} aria-labelledby="s03-milestone">
       <h2 id="s03-milestone">{t('metric.M23.label')}</h2>
       {items.length === 0 ? (
-        <p className={styles.lead}>
+        <p className={styles.empty}>
           {isPreMeasure ? t('absent.milestone.since') : t('absent.milestone')}
         </p>
       ) : (

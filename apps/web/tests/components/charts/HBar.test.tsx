@@ -85,25 +85,35 @@ describe('HBar（U-24）', () => {
     expect(parts(container, 'bar')).toHaveLength(0);
   });
 
-  it('比較相手の構成比を細い輪郭で重ね、凡例と添え書きを出す', () => {
+  it('比較相手の構成比を、その位置の縦の線で重ね、凡例と添え書きを出す（レビュー C-10）', () => {
     const compare = {
       shares: [0.61, 0.1, 0.05, null, 0.03],
-      legend: '細い枠: 前の期間',
+      legend: '縦の線: 前の期間',
       text: (share: string): string => `前: ${share}`,
     };
     const { container } = render(<HBar {...props({ compare })} />);
     const search = row(container, 'search');
-    const outline = search.querySelector('[data-part="compare"]');
-    expect(outline?.getAttribute('width')).toBe('61%');
-    expect(outline?.getAttribute('class')).not.toBe(
-      search.querySelector('[data-part="bar"]')?.getAttribute('class'),
+    const mark = search.querySelector('[data-part="compare"]');
+    // 線（line）で、横の位置が前の期間の構成比。縦は棒より上下に 3px ずつはみ出す。
+    expect(mark?.tagName.toLowerCase()).toBe('line');
+    expect(mark?.getAttribute('x1')).toBe('61%');
+    expect(mark?.getAttribute('x2')).toBe('61%');
+    const bar = search.querySelector('[data-part="bar"]');
+    const barTop = Number(bar?.getAttribute('y'));
+    const barBottom = barTop + Number(bar?.getAttribute('height'));
+    expect(Number(mark?.getAttribute('y1'))).toBe(barTop - 3);
+    expect(Number(mark?.getAttribute('y2'))).toBe(barBottom + 3);
+    expect(mark?.getAttribute('class')).not.toBe(bar?.getAttribute('class'));
+    // 凡例の見本も同じ形（縦の線）。
+    expect(container.querySelector('p [data-part="compare-swatch"]')?.tagName.toLowerCase()).toBe(
+      'line',
     );
     expect(textOf(search, 'compare-text')).toBe('前: 61%');
     // 伏せ値の区分と、比較相手の値がない区分には重ねない。
     expect(row(container, 'direct').querySelector('[data-part="compare"]')).toBeNull();
     expect(row(container, 'referral').querySelector('[data-part="compare"]')).toBeNull();
     expect(parts(container, 'compare')).toHaveLength(3);
-    expect(container.querySelector('p')?.textContent).toBe('細い枠: 前の期間');
+    expect(container.querySelector('p')?.textContent).toBe('縦の線: 前の期間');
   });
 
   it('比較相手を渡さなければ、輪郭も凡例も出ない', () => {

@@ -288,7 +288,9 @@ const baseDictionary = {
   'lead.sessions': '訪問 {n} 回のうち',
   'lead.pageviews': '読まれた {n} 回のうち',
   'lead.users': '読んだ人 {n} 人のうち',
-  'chart.tap.hint': 'グラフの日付をタップすると、その日の数字に変わります',
+  // レビュー C-8 でキーボードの操作を添えた。
+  'chart.tap.hint':
+    'グラフの日付をタップすると、その日の数字に変わります（キーボードでは左右の矢印キー）',
   'chart.fixedRow': '{date}: {label} {value}（前の期間の同じ日: {prev}）',
   'chart.fixedRow.single': '{date}: {label} {value}',
   // 未確定の日（直近 3 日）を選んだときの固定行（助言 B-7）。
@@ -308,7 +310,7 @@ const baseDictionary = {
   'legend.heatmap': '読まれた回数が多い時間ほど濃い色',
   'legend.published': '公開した日',
   // HBar の比較相手の凡例。サイト全体との比較は s05.referrer.legend を使う。
-  'legend.compare.prev': '細い枠: 前の期間',
+  'legend.compare.prev': '縦の線: 前の期間',
   // Curve の凡例の「この記事」。帯は metric.M19.label、点線は metric.M27.label、
   // 横軸の「n 日目」は absent.dayN を使う（同じ意味のキーを 2 つ持たない）。
   'legend.curve.post': 'この記事',
@@ -361,16 +363,14 @@ const baseDictionary = {
   'table.shown': '{total} 件のうち {shown} 件を表示しています',
   'list.separator': '、',
   'link.external.mark': '↗',
+  // 広い画面の記事の表の外部リンク（↗ だけでは斜線に見える。レビュー C-13）。
+  'link.external.short': '開く ↗',
   'link.external.label': '記事を開く ↗',
   // 狭い画面の記事の表で、値のセルに添える名前（助言 B-10）。広い画面では列の見出しが名前になる。
-  'list.cell.published': '公開 {date}',
-  'list.cell.period': 'この期間 {n} 回',
-  'list.cell.pv7': '最初の 1 週間 {value}',
-  'list.cell.pv30': '最初の 1 か月 {value}',
-  'list.cell.recent7': '直近 7 日 {n} 回',
-  // 値が伏せ値や該当なしのときに、前に置く名前。
+  // 名前（上の段）と値（下の段）に分けて描く（レビュー C-4）。「最初の 1 週間 / 1 か月」の名前は column.pv7 / pv30。
   'list.cell.name.period': 'この期間',
   'list.cell.name.recent7': '直近 7 日',
+  'list.cell.name.published': '公開',
   // 狭い画面の「最初の 1 週間 / 1 か月」の数。
   'list.cell.count': '{n} 回',
   'link.external.article': '{title}（高津コネクトの記事を新しいタブで開きます）',
@@ -453,7 +453,7 @@ const baseDictionary = {
   's05.summary.b.preMeasure':
     '{name}さんの記事は、どれも{start}より前に公開されたので、最初の 1 か月の数字は残っていません。',
   's05.summary.c': 'そのうち、公開から 3 か月以上たった {n} 本の記事が {pv} 回読まれました。',
-  's05.referrer.legend': '細い枠: サイト全体',
+  's05.referrer.legend': '縦の線: サイト全体',
 
   // --- S-06 カテゴリ ---
   's06.note':

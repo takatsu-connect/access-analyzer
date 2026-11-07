@@ -263,17 +263,68 @@ describe('ArticleTable（U-24）', () => {
     expect(noPage?.querySelector('a')).toBeNull();
   });
 
-  it('タイトルは記事詳細へのリンク。記事ページへの外部リンクは、広い画面は「↗」、狭い画面は「記事を開く ↗」', () => {
+  it('タイトルは記事詳細へのリンク。記事ページへの外部リンクは、広い画面は「開く ↗」、狭い画面は「記事を開く ↗」（レビュー C-13）', () => {
     const { container } = render(<ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} />);
     const anchors = [...(bodyRows(container)[0]?.cells[0]?.querySelectorAll('a') ?? [])];
     expect(anchors.map((anchor) => anchor.getAttribute('href'))).toEqual([
       '/articles/201',
       'https://takatsu-connect.com/archives/101',
     ]);
-    expect(anchors[1]?.querySelector('[class*="wideOnly"]')?.textContent).toBe('↗');
+    expect(anchors[1]?.querySelector('[class*="wideOnly"]')?.textContent).toBe('開く ↗');
     expect(anchors[1]?.querySelector('[class*="narrowOnly"]')?.textContent).toBe('記事を開く ↗');
     expect(anchors[1]?.getAttribute('target')).toBe('_blank');
     expect(anchors[1]?.getAttribute('aria-label')).toContain('記事 A');
+  });
+
+  it('狭い画面の値のセルは、名前（上の段）と値（下の段）の 2 段。数の値は折れない形（レビュー C-4）', () => {
+    const { container } = render(
+      <ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} narrowColumns={NARROW} />,
+    );
+    const first = bodyRows(container)[0];
+    const narrow = [...(first?.querySelectorAll('[data-part="narrow-cell"]') ?? [])];
+    const parts = narrow.map((cell) => [
+      cell.querySelector('[class*="narrowName"]')?.textContent,
+      cell.querySelector('[class*="narrowValue"]')?.textContent,
+    ]);
+    expect(parts).toEqual([
+      ['公開', '10 月 20 日'],
+      ['この期間', '120 回'],
+      ['最初の 1 か月', '240 回'],
+    ]);
+    // 数の値には、折らない印（narrowNumber）が付く。
+    const values = narrow.map((cell) => cell.querySelector('[class*="narrowValue"]'));
+    expect(values.every((value) => value !== null && hasClass(value, 'narrowNumber'))).toBe(true);
+    // 伏せ値は「— 伏せ値」で、折らない印は付けない（文字の値）。
+    const masked = bodyRows(container)[2]?.querySelectorAll('[data-part="narrow-cell"]')[1];
+    expect(masked?.querySelector('[class*="narrowName"]')?.textContent).toBe('この期間');
+    const maskedValue = masked?.querySelector('[class*="narrowValue"]');
+    expect(maskedValue?.textContent).toContain('伏せ値');
+    expect(maskedValue === null || maskedValue === undefined).toBe(false);
+    if (maskedValue) expect(hasClass(maskedValue, 'narrowNumber')).toBe(false);
+  });
+
+  it('主な値の列（primaryColumn）に primary の印が付く。省くと、並べ替えている列（レビュー C-4）', () => {
+    const fixed = render(
+      <ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} primaryColumn="pageviews" />,
+    );
+    const primaryCells = (root: HTMLElement): (string | null)[] =>
+      [...root.querySelectorAll('thead th')]
+        .filter((cell) => hasClass(cell, 'primary'))
+        .map((cell) => cell.textContent);
+    expect(primaryCells(fixed.container)).toEqual(['読まれた回数']);
+    fixed.unmount();
+
+    const sorted = render(
+      <ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} sortable sort="pv30" />,
+    );
+    expect(primaryCells(sorted.container)).toEqual(['最初の 1 か月']);
+    sorted.unmount();
+
+    // 公開日の順で並べているときは、主な値の列を決めない。
+    const byDate = render(
+      <ArticleTable caption="記事" rows={ROWS} columns={ALL_COLUMNS} sortable sort="published" />,
+    );
+    expect(primaryCells(byDate.container)).toEqual([]);
   });
 
   it('記事ページの URL が検証を通らなければ、「↗」を描かない', () => {

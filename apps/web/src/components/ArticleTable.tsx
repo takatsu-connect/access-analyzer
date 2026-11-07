@@ -84,6 +84,11 @@ export type ArticleTableProps = {
   pagingThreshold?: number;
   /** 行がないときの文言。省くと state.empty。 */
   emptyText?: string;
+  /**
+   * その画面の主な値の列。狭い画面で大きく太く描く（レビュー C-4）。
+   * 省くと、sortable のときは選んでいる並びの列（公開日の順なら付けない）。
+   */
+  primaryColumn?: ArticleColumnId;
 };
 
 const COLUMN_LABELS = {
@@ -193,52 +198,62 @@ function narrowEarly(post: ArticleTablePost, value: number | null): string {
   });
 }
 
-/** 狭い画面の、この期間 / 直近 7 日の値。伏せ値は名前のあとに「— 伏せ値」。 */
-function narrowCount(
-  value: Masked | undefined,
-  name: 'list.cell.name.period' | 'list.cell.name.recent7',
-  key: 'list.cell.period' | 'list.cell.recent7',
-): ReactNode {
-  if (value === undefined)
-    return (
-      <>
-        {t(name)} {t('absent.na')}
-      </>
-    );
-  if (value === null) {
-    return (
-      <>
-        {t(name)} <MaskedCell value={null} />
-      </>
-    );
+/** 狭い画面の、この期間 / 直近 7 日の値。伏せ値は「— 伏せ値」。 */
+function narrowCount(value: Masked | undefined): { value: ReactNode; isNumber: boolean } {
+  if (value === undefined) return { value: t('absent.na'), isNumber: false };
+  if (value === null) return { value: <MaskedCell value={null} />, isNumber: false };
+  return { value: t('list.cell.count', { n: formatNumber(value) }), isNumber: true };
+}
+
+/** 狭い画面のセルの中身: 値の名前（上の段）と値（下の段）。 */
+type NarrowParts = { name: string; value: ReactNode; isNumber: boolean };
+
+function narrowParts(column: ArticleColumnId, row: ArticleTableRow): NarrowParts | null {
+  const { post } = row;
+  switch (column) {
+    case 'publishedOn':
+      return {
+        name: t('list.cell.name.published'),
+        value: <time dateTime={post.publishedOn}>{narrowDate(post)}</time>,
+        isNumber: true,
+      };
+    case 'pageviews':
+      return { name: t('list.cell.name.period'), ...narrowCount(row.pageviews) };
+    case 'recent7':
+      return { name: t('list.cell.name.recent7'), ...narrowCount(row.recent7) };
+    case 'pv7':
+      return {
+        name: t('column.pv7'),
+        value: narrowEarly(post, post.pv7),
+        isNumber: post.pv7 !== null,
+      };
+    case 'pv30':
+      return {
+        name: t('column.pv30'),
+        value: narrowEarly(post, post.pv30),
+        isNumber: post.pv30 !== null,
+      };
+    default:
+      return null;
   }
-  return t(key, { n: formatNumber(value) });
 }
 
 /**
  * 狭い画面で、値のセルに名前を添えた中身（助言 B-10）。見出しの行が画面から流れても、何の数か分かる。
+ * 名前と値を 2 段に分け、値と単位の間で折れないようにする（レビュー C-4）。
  * 名前を添えない列（題名、ライター、帯の文言など）は null。帯の文言は、それだけで文として読める。
  */
 function narrowCell(column: ArticleColumnId, row: ArticleTableRow): ReactNode {
-  const { post } = row;
-  switch (column) {
-    case 'publishedOn':
-      return (
-        <time dateTime={post.publishedOn}>
-          {t('list.cell.published', { date: narrowDate(post) })}
-        </time>
-      );
-    case 'pageviews':
-      return narrowCount(row.pageviews, 'list.cell.name.period', 'list.cell.period');
-    case 'recent7':
-      return narrowCount(row.recent7, 'list.cell.name.recent7', 'list.cell.recent7');
-    case 'pv7':
-      return t('list.cell.pv7', { value: narrowEarly(post, post.pv7) });
-    case 'pv30':
-      return t('list.cell.pv30', { value: narrowEarly(post, post.pv30) });
-    default:
-      return null;
-  }
+  const parts = narrowParts(column, row);
+  if (parts === null) return null;
+  return (
+    <>
+      <span className={styles.narrowName}>{parts.name}</span>{' '}
+      <span className={cx(styles.narrowValue, parts.isNumber && styles.narrowNumber)}>
+        {parts.value}
+      </span>
+    </>
+  );
 }
 
 function badgeLabels(post: ArticleTablePost, kinds: readonly ArticleBadgeKind[]): string[] {
@@ -273,11 +288,15 @@ export function ArticleTable({
   pageSize = DEFAULT_PAGE_SIZE,
   pagingThreshold = DEFAULT_PAGING_THRESHOLD,
   emptyText,
+  primaryColumn,
 }: ArticleTableProps) {
   const sortOptions = SORT_COLUMNS.filter(
     ([, column]) => column === null || columns.includes(column),
   ).map(([key]) => key);
   const activeSort: SortKey = sortable && sortOptions.includes(sort) ? sort : 'published';
+  const primary: ArticleColumnId | null =
+    primaryColumn ??
+    (sortable ? (SORT_COLUMNS.find(([key]) => key === activeSort)?.[1] ?? null) : null);
 
   // 行か並びが変わったら、「さらに表示」で足した分を戻す。
   const [shown, setShown] = useState({ rows, sort: activeSort, count: pageSize });
@@ -319,9 +338,12 @@ export function ArticleTable({
                 className={styles.external}
                 ariaLabel={t('link.external.article', { title: post.title })}
               >
-                {/* 狭い画面では題名の下に「記事を開く ↗」と言葉で出す（助言 B-10）。広い画面は ↗ だけ。 */}
+                {/*
+                  狭い画面では題名の下に「記事を開く ↗」と言葉で出す（助言 B-10）。
+                  広い画面も「開く ↗」と言葉を添える（↗ だけでは斜線に見える。レビュー C-13）。
+                */}
                 <span className={styles.narrowOnly}>{t('link.external.label')}</span>
-                <span className={styles.wideOnly}>{t('link.external.mark')}</span>
+                <span className={styles.wideOnly}>{t('link.external.short')}</span>
               </ExternalLink>
             )}
             {names.length === 0 ? null : (
@@ -396,6 +418,7 @@ export function ArticleTable({
       column === 'title' && styles.title,
       column === 'author' && styles.author,
       column === 'band' && styles.band,
+      column === primary && styles.primary,
       !kept.includes(column) && styles.wideOnly,
     );
 

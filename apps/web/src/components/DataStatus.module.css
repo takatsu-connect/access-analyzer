@@ -1,5 +1,6 @@
 .status {
-  margin: 0 0 var(--space-4);
+  /* h1 までの間は main の上の余白だけで決める（レビュー C-9）。 */
+  margin: 0;
   font-size: var(--font-size-sm);
 }
 

@@ -2,9 +2,11 @@
   margin: var(--space-2) 0;
 }
 
+/* 押せる高さは 44px 以上（レビュー C-7）。 */
 .summary {
-  display: inline-block;
-  min-height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--color-text);

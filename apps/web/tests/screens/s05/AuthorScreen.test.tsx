@@ -317,7 +317,7 @@ describe('S-05 読者はどこから来たか', () => {
     // 流入チャネルの 5 区分に、輪郭が 1 つずつ。
     expect(section.querySelectorAll('[data-part="compare"]').length).toBe(5);
     expect(section.querySelectorAll('[data-part="bar"]').length).toBe(10);
-    expect(within(section).getByText('細い枠: サイト全体')).toBeTruthy();
+    expect(within(section).getByText('縦の線: サイト全体')).toBeTruthy();
     expect(section.textContent).toContain('60（60%）');
     expect(section.textContent).toContain('サイト全体: 70%');
     expect(section.textContent).toContain('傾向として見るためのもので、良し悪しではありません。');

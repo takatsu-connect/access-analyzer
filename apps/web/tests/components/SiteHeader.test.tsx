@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CommonNotes } from '@/components/CommonNotes';
 import { SiteFooter } from '@/components/SiteFooter';
-import { SiteHeaderView } from '@/components/SiteHeader';
+import { SiteHeaderView, centerCurrentTab } from '@/components/SiteHeader';
 import { SkipLink } from '@/components/SkipLink';
 
 const mainNav = (): HTMLElement => screen.getByRole('navigation', { name: 'ページの移動' });
@@ -70,6 +70,23 @@ describe('SiteHeader', () => {
     expect(screen.queryByRole('navigation', { name: '記事のページ' })).toBeNull();
     expect(current(mainNav())).toEqual([['ライター', 'true']]);
   });
+
+  it('横にはみ出したサブナビのタブの列は、選んでいるタブが真ん中に来るよう横に寄せる（レビュー C-1）', () => {
+    // jsdom は配置を計算しないので、寸法を持つ偽の要素で確かめる。
+    const list = { scrollWidth: 600, clientWidth: 300, scrollLeft: 0 } as unknown as HTMLElement;
+    const tab = { offsetLeft: 400, offsetWidth: 100 } as unknown as HTMLElement;
+    centerCurrentTab(list, tab);
+    expect(list.scrollLeft).toBe(300);
+    // 先頭のタブは 0 より左に寄せない。
+    centerCurrentTab(list, { offsetLeft: 10, offsetWidth: 100 } as unknown as HTMLElement);
+    expect(list.scrollLeft).toBe(0);
+  });
+
+  it('はみ出していない（広い画面の）サブナビのタブの列は動かさない', () => {
+    const list = { scrollWidth: 300, clientWidth: 300, scrollLeft: 0 } as unknown as HTMLElement;
+    centerCurrentTab(list, { offsetLeft: 200, offsetWidth: 100 } as unknown as HTMLElement);
+    expect(list.scrollLeft).toBe(0);
+  });
 });
 
 describe('SkipLink', () => {
@@ -96,7 +113,20 @@ describe('SiteFooter と CommonNotes', () => {
     expect(details?.querySelector('summary')?.textContent).toBe('この BI について');
   });
 
-  it('CommonNotes は 05 §2.7 の行を、折りたたまずに出す', () => {
+  it('CommonNotes は閉じた折りたたみで、見出し（h2）が summary（レビュー C-6）', () => {
+    const { container } = render(<CommonNotes measureStart="2025-10-08" />);
+    const outer = container.querySelector('section > details');
+    expect(outer).not.toBeNull();
+    expect(outer?.hasAttribute('open')).toBe(false);
+    const heading = outer?.querySelector(':scope > summary > h2');
+    expect(heading?.textContent).toBe('このページの数字について');
+    // 見出しの名前で節を読み上げられる。
+    expect(screen.getByRole('region', { name: 'このページの数字について' })).toBeTruthy();
+    // 項目は折りたたみの中にある（summary の外）。
+    expect(outer?.querySelector(':scope > ul')).not.toBeNull();
+  });
+
+  it('CommonNotes は 05 §2.7 の行を全部持つ', () => {
     const { container } = render(<CommonNotes measureStart="2025-10-08" />);
     expect(container.querySelector('h2')?.textContent).toBe('このページの数字について');
     const items = [...container.querySelectorAll('ul > li')].map((item) => item.textContent ?? '');
@@ -107,8 +137,8 @@ describe('SiteFooter と CommonNotes', () => {
     expect(items[3]).toContain('「多くの記事はこの範囲」');
     expect(items[4]).toContain('比率（%）は');
     expect(items[5]).toContain('Google アナリティクス（GA4）');
-    // 「詳しく」は閉じた状態。
-    const folds = [...container.querySelectorAll('details')];
+    // 「詳しく」は閉じた状態（全体の折りたたみの中に 2 つ）。
+    const folds = [...container.querySelectorAll('li details')];
     expect(folds).toHaveLength(2);
     expect(folds.every((fold) => !fold.hasAttribute('open'))).toBe(true);
     expect(folds.map((fold) => fold.querySelector('summary')?.textContent)).toEqual([

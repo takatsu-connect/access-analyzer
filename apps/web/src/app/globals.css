@@ -49,6 +49,8 @@
   --radius-sm: 4px;
   --border-width: 1px;
   --content-max-width: 60rem;
+  /* 押せる部品の高さの下限（44px。レビュー C-7） */
+  --tap-min: 2.75rem;
 
   /* 外部フォントを読まない（CSP font-src 'self'）。 */
   --font-family-base:
@@ -91,10 +93,61 @@ body {
   font-family: var(--font-family-base);
   font-size: var(--font-size-md);
   line-height: var(--line-height-base);
-  overflow-wrap: anywhere;
+  /*
+   * はみ出すときだけ折る。anywhere は表の列幅の計算（min-content）を 1 文字分にして、
+   * 文字の列を 1〜2 文字幅まで縮めてしまうので使わない（レビュー C-3）。
+   */
+  overflow-wrap: break-word;
+}
+
+/*
+ * 見出しの大きさは全画面でここだけで決める（レビュー C-2）。
+ * text-wrap: balance は 1 文字だけの行を防ぎ、word-break: auto-phrase は文節で折る
+ * （効かない環境では通常の折り返しになるだけ）。
+ */
+h1,
+h2,
+h3 {
+  line-height: var(--line-height-tight);
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+
+h1 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-xl);
+}
+
+h2 {
+  margin: var(--space-7) 0 var(--space-3);
+  font-size: var(--font-size-lg);
+}
+
+h3 {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--font-size-md);
+}
+
+@media (min-width: 600px) {
+  h1 {
+    font-size: var(--font-size-2xl);
+  }
+
+  h2 {
+    font-size: var(--font-size-xl);
+  }
+}
+
+/*
+ * リンクの色は基調色の濃い段に固定する。訪れたあとも同じ色（レビュー C-5）。
+ * :where で詳細度を 0 にし、部品のクラスで決めた色（ヘッダの題名など）を上書きしない。
+ */
+:where(a, a:visited) {
+  color: var(--shade-5);
+  text-underline-offset: 0.2em;
 }
 
 :focus-visible {
   outline: 2px solid var(--shade-5);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }

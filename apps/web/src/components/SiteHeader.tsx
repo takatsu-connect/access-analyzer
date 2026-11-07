@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 
 import { t } from '@/lib/ui-text';
 import type { UiTextKey } from '@/lib/ui-text';
@@ -56,10 +57,30 @@ export type SiteHeaderViewProps = {
  * リンクは先読みしない（prefetch={false}）。各ページはデータの JSON を埋め込んでいるので、
  * 全ページのヘッダで行き先を先読みすると、スマホの通信量と配信の量が増える。
  */
+/**
+ * 横スクロールのサブナビのタブで、選んでいるタブが見えるように列を横に寄せる（レビュー C-1）。
+ * scrollIntoView は縦にもページを動かしうるので使わず、列の scrollLeft だけを変える。
+ * 横にはみ出していない（広い画面）ときは何もしない。
+ */
+export function centerCurrentTab(list: HTMLElement, tab: HTMLElement): void {
+  if (list.scrollWidth <= list.clientWidth) return;
+  const left = tab.offsetLeft - (list.clientWidth - tab.offsetWidth) / 2;
+  list.scrollLeft = Math.max(0, left);
+}
+
 export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
   const current = normalize(pathname);
   const section = sectionOf(current);
   const inArticles = section === 'articles';
+  const subListRef = useRef<HTMLUListElement>(null);
+  const currentSubRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    const list = subListRef.current;
+    const tab = currentSubRef.current;
+    if (list === null || tab === null) return;
+    centerCurrentTab(list, tab);
+  }, [current]);
 
   return (
     <header className={styles.header}>
@@ -90,19 +111,23 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
         </nav>
         {inArticles ? (
           <nav aria-label={t('nav.articles.aria')}>
-            <ul className={styles.subList}>
-              {ARTICLE_NAV_ITEMS.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    prefetch={false}
-                    className={styles.subLink}
-                    aria-current={item.href === current ? 'page' : undefined}
-                  >
-                    {t(item.label)}
-                  </Link>
-                </li>
-              ))}
+            <ul className={styles.subList} ref={subListRef}>
+              {ARTICLE_NAV_ITEMS.map((item) => {
+                const isCurrent = item.href === current;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      prefetch={false}
+                      className={styles.subLink}
+                      aria-current={isCurrent ? 'page' : undefined}
+                      ref={isCurrent ? currentSubRef : undefined}
+                    >
+                      {t(item.label)}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </nav>
         ) : null}

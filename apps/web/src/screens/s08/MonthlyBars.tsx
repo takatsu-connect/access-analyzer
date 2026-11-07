@@ -9,7 +9,7 @@ export type MonthlyBarRow = {
   note: string | null;
   /** その月の本数。 */
   value: number;
-  /** 去年の同じ月の本数。データがなければ null（枠を描かない）。 */
+  /** 去年の同じ月の本数。データがなければ null（線を描かない）。 */
   yoy: number | null;
   /** 棒の右に書く文字（「3 本」）。 */
   valueText: string;
@@ -21,14 +21,15 @@ export type MonthlyBarsProps = {
   /** 図の名前（読み上げ用）。 */
   title: string;
   rows: readonly MonthlyBarRow[];
-  /** 凡例の文言（塗り、細い枠）。 */
+  /** 凡例の文言（塗り、縦の線）。 */
   legend: { current: string; yoy: string };
 };
 
 const HEIGHT = 16;
 const BAR_HEIGHT = 8;
 const BAR_TOP = (HEIGHT - BAR_HEIGHT) / 2;
-const OUTLINE_INSET = 1;
+/** 去年の同じ月の縦の線は、棒より上下に 3px ずつはみ出させる（レビュー C-10）。 */
+const YOY_OVERHANG = 3;
 const SWATCH_WIDTH = 20;
 
 function percent(ratio: number): string {
@@ -39,8 +40,9 @@ function percent(ratio: number): string {
  * 月ごとの横棒を縦に並べる図（05 §8。S-08 だけが使う）。
  *
  * 共通の HBar は構成比の図で、月ごとの本数と去年の同じ月を重ねる形を持たないので、ここに作った。
- * - 塗りの棒がその月、細い枠が去年の同じ月。色ではなく、塗りと枠の違いで分ける。
- * - 棒の長さは、塗りと枠を合わせた最大値を基準にする（軸は 1 本）。
+ * - 塗りの棒がその月、縦の線が去年の同じ月。色ではなく、塗りと線の形の違いで分ける。
+ *   線は今の棒より短くても長くても、棒の上下にはみ出した部分で見える。
+ * - 棒の長さは、塗りと線を合わせた最大値を基準にする（軸は 1 本）。
  * - 本数は棒の右に文字でも書く。同じ値の表は、呼び出し側が並べる。
  */
 export function MonthlyBars({ title, rows, legend }: MonthlyBarsProps) {
@@ -68,12 +70,26 @@ export function MonthlyBars({ title, rows, legend }: MonthlyBarsProps) {
           <li className={styles.legendItem}>
             <svg className={styles.swatch} aria-hidden="true" width={SWATCH_WIDTH} height={HEIGHT}>
               <rect
-                className={styles.barOutline}
+                className={styles.barFill}
                 x="0"
-                y={OUTLINE_INSET}
+                y={BAR_TOP}
                 width={SWATCH_WIDTH}
-                height={HEIGHT - OUTLINE_INSET * 2}
+                height={BAR_HEIGHT}
                 rx={2}
+              />
+              <line
+                className={styles.barYoyRing}
+                x1={SWATCH_WIDTH / 2}
+                x2={SWATCH_WIDTH / 2}
+                y1={BAR_TOP - YOY_OVERHANG}
+                y2={BAR_TOP + BAR_HEIGHT + YOY_OVERHANG}
+              />
+              <line
+                className={styles.barYoy}
+                x1={SWATCH_WIDTH / 2}
+                x2={SWATCH_WIDTH / 2}
+                y1={BAR_TOP - YOY_OVERHANG}
+                y2={BAR_TOP + BAR_HEIGHT + YOY_OVERHANG}
               />
             </svg>
             {legend.yoy}
@@ -111,15 +127,23 @@ export function MonthlyBars({ title, rows, legend }: MonthlyBarsProps) {
                 rx={2}
               />
               {row.yoy === null ? null : (
-                <rect
-                  className={styles.barOutline}
-                  data-part="yoy"
-                  x="0"
-                  y={OUTLINE_INSET}
-                  width={percent(ratio(row.yoy))}
-                  height={HEIGHT - OUTLINE_INSET * 2}
-                  rx={2}
-                />
+                <>
+                  <line
+                    className={styles.barYoyRing}
+                    x1={percent(ratio(row.yoy))}
+                    x2={percent(ratio(row.yoy))}
+                    y1={BAR_TOP - YOY_OVERHANG}
+                    y2={BAR_TOP + BAR_HEIGHT + YOY_OVERHANG}
+                  />
+                  <line
+                    className={styles.barYoy}
+                    data-part="yoy"
+                    x1={percent(ratio(row.yoy))}
+                    x2={percent(ratio(row.yoy))}
+                    y1={BAR_TOP - YOY_OVERHANG}
+                    y2={BAR_TOP + BAR_HEIGHT + YOY_OVERHANG}
+                  />
+                </>
               )}
             </svg>
             <span className={styles.barValue}>{row.valueText}</span>

@@ -12,12 +12,13 @@ import { percent, round2, xPercent, zeroBasedAxis } from './geometry';
 import styles from './LineChart.module.css';
 import type { LineChartPoint, LineChartProps } from './types';
 
-// 縦の寸法（px）。高さは 160px（05 §2.6）。
-const HEIGHT = 160;
+// 縦の寸法（px）。高さは 200px（05 §2.6 の 160px から、レビュー C-8 で高くした）。
+// 座標を px で持つので、狭い画面と広い画面で同じ高さにしている。
+const HEIGHT = 200;
 const PLOT_TOP = 16;
-const PLOT_BOTTOM = 120;
-const PUBLISHED_DOT_Y = 131;
-const DATE_LABEL_Y = 152;
+const PLOT_BOTTOM = 160;
+const PUBLISHED_DOT_Y = 171;
+const DATE_LABEL_Y = 192;
 const DAYS_PER_WEEK = 7;
 /** 週別のとき、日付ラベルを出す間隔（週）。 */
 const WEEK_LABEL_EVERY = 4;
@@ -334,10 +335,10 @@ export function LineChart(props: LineChartProps) {
           ))}
         </svg>
       </div>
-      <p className={styles.hint}>{t('chart.tap.hint')}</p>
-      <p id={fixedRowId} className={styles.fixedRow} data-part="fixed-row" aria-live="polite">
-        {fixedRow}
-      </p>
+      {/*
+        並びは 図 → 凡例 → タップの案内 → 固定行（凡例を図の直下に置く。レビュー C-8）。
+        案内を固定行の直前に置く決まり（E-19）は保つ。
+      */}
       <ul className={styles.legend}>
         <li className={styles.legendItem}>
           <svg className={styles.swatch} aria-hidden="true" width={24} height={8}>
@@ -378,6 +379,10 @@ export function LineChart(props: LineChartProps) {
           </li>
         ) : null}
       </ul>
+      <p className={styles.hint}>{t('chart.tap.hint')}</p>
+      <p id={fixedRowId} className={styles.fixedRow} data-part="fixed-row" aria-live="polite">
+        {fixedRow}
+      </p>
     </div>
   );
 }
