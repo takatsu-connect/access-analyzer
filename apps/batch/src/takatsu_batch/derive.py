@@ -409,7 +409,9 @@ def _derive_summaries(
             (post_id, milestone, reached)
             for milestone, reached in sorted(milestones(published).items())
         )
-        if pv_30d is not None and post.published_on >= own_cutoff:
+        # M-24: 著者自身のふだんを表すので、広告の記事は入れない（載せ方で読まれ方が決まるため。
+        # 比べる相手の「多くの記事」も広告を除いている。助言 2026-11-05-build3-screens-text.md B-5）
+        if pv_30d is not None and post.published_on >= own_cutoff and not post.is_ad:
             own_values[post.author_slug].append(pv_30d)
     for author_slug in sorted(author_slugs):
         values = own_values.get(author_slug, [])

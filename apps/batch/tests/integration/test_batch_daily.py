@@ -341,7 +341,8 @@ def test_i_b_01_confirmed_and_derived_tables(harness: Harness, query: Query) -> 
         select author_slug, base_date, own_median_30d, eligible_count
         from internal.author_summary order by 1
         """
-    ) == [("author-a", D, None, 1), ("author-b", D, None, 1), ("author-c", D, None, 1)]
+        # author-c の記事 105 は広告なので、M-24 の本数に入れない（助言 B-5）。
+    ) == [("author-a", D, None, 1), ("author-b", D, None, 1), ("author-c", D, None, 0)]
     assert query(
         """
         select source, first_seen_on, last_seen_on, last_sessions

@@ -811,7 +811,8 @@ def test_derive_article_milestone(out: DeriveOutput) -> None:
 
 def test_derive_author_summary_has_one_row_per_author(out: DeriveOutput) -> None:
     # aoi: 101 は pv_30d が None、202 の 1 本だけ → 5 本未満で None。minato: 該当なし
-    assert out.author_summary == [("aoi", BASE, None, 1), ("minato", BASE, None, 0)]
+    # aoi の 30 日の値がある記事は広告の 202 だけで、M-24 には入れない（助言 B-5）ので 0 本。
+    assert out.author_summary == [("aoi", BASE, None, 0), ("minato", BASE, None, 0)]
 
 
 def test_derive_sns_source_unmapped_takes_the_narrowest_period(out: DeriveOutput) -> None:
@@ -895,6 +896,31 @@ def test_derive_author_summary_own_median_uses_recent_posts_with_pv_30d() -> Non
     }
     # aoi: [10, 20, 30, 40, 50] の中央値。12 を含めれば 35、11 を外せば 4 本で None になる
     assert result.author_summary == [("aoi", BASE, Decimal(30), 5), ("minato", BASE, None, 1)]
+
+
+def test_derive_author_summary_own_median_leaves_out_ad_posts() -> None:
+    """M-24 は著者自身のふだん。広告の記事は 30 日の値があっても入れない（助言 B-5）。"""
+    posts = [
+        _post(31, "aoi", date(2026, 1, 10)),
+        _post(32, "aoi", date(2026, 2, 10)),
+        _post(33, "aoi", date(2026, 3, 10)),
+        _post(34, "aoi", date(2026, 4, 10)),
+        _post(35, "aoi", date(2026, 5, 10)),
+        _post(36, "aoi", date(2026, 6, 10), is_ad=True),
+    ]
+    stored = {
+        (31, date(2026, 1, 10)): 10,
+        (32, date(2026, 2, 10)): 20,
+        (33, date(2026, 3, 10)): 30,
+        (34, date(2026, 4, 10)): 40,
+        (35, date(2026, 5, 10)): 50,
+        (36, date(2026, 6, 10)): 9000,
+    }
+    result = _empty_run(posts, stored)
+    # 広告の記事にも 30 日の値は付く（記事ごとの数字は出す）。
+    assert {row[0]: row[5] for row in result.article_summary}[36] == 9000
+    # 中央値は広告を除いた 5 本 [10, 20, 30, 40, 50] から。含めれば 35 で 6 本になる。
+    assert result.author_summary == [("aoi", BASE, Decimal(30), 5)]
 
 
 def test_derive_without_posts_still_writes_site_rows() -> None:
