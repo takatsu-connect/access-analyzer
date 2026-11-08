@@ -25,6 +25,9 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           token_format: access_token
+          # 既定の範囲（cloud-platform）では GA4 Data API が 403（ACCESS_TOKEN_SCOPE_INSUFFICIENT）を返す（2026-11-08 に確認）。
+          # 読み取りだけの範囲に絞る。日次バッチは資格情報ファイルを使い、GA4 の部品が自分で範囲を求める。
+          access_token_scopes: https://www.googleapis.com/auth/analytics.readonly
           create_credentials_file: false
       - name: GA4 Data API を 1 回呼ぶ（直近 7 日の PV）
         env:
