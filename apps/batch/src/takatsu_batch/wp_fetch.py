@@ -27,24 +27,25 @@ from takatsu_batch.config import (
     WP_USER_AGENT,
 )
 from takatsu_batch.db import AuthorRow, PostRow, PriorState
+from takatsu_batch.env import WpRelayTarget
 from takatsu_batch.errors import BatchValidationError
 from takatsu_batch.models import BatchModel
 
-_API_ROOT: Final = f"{SITE_ORIGIN}/wp-json/wp/v2"
+API_ROOT: Final = f"{SITE_ORIGIN}/wp-json/wp/v2"
 _SITE_PREFIX: Final = f"{SITE_ORIGIN}/"
 _RETRY_BASE_SECONDS: Final = 1.0
 _RETRY_STATUS: Final = frozenset({429, 500, 502, 503, 504})
 # 1 つの一覧で読むページの上限（100 件 × 50 ページ）。応答のヘッダの値で読み続けないため
-_MAX_PAGES: Final = 50
+MAX_PAGES: Final = 50
 _SUNDAY: Final = 6
-_CATEGORY_FIELDS: Final = "id,name,parent"
-_TAG_FIELDS: Final = "id,name"
-_POST_FIELDS: Final = (
+CATEGORY_FIELDS: Final = "id,name,parent"
+TAG_FIELDS: Final = "id,name"
+POST_FIELDS: Final = (
     "id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected"
 )
-_ID_FIELDS: Final = "id"
-_ID_AUTHOR_FIELDS: Final = "id,author"
-_USER_FIELDS: Final = "name,slug,link"
+ID_FIELDS: Final = "id"
+ID_AUTHOR_FIELDS: Final = "id,author"
+USER_FIELDS: Final = "name,slug,link"
 
 
 class _WpCategory(BatchModel):
@@ -135,8 +136,11 @@ class WpClient:
         http: httpx.Client,
         sleep: Callable[[float], None],
         clock: Callable[[], float],
+        *,
+        relay: WpRelayTarget | None = None,
     ) -> None:
         self._http = http
+        self._relay = relay
         self._sleep = sleep
         self._clock = clock
         self._last_request_at: float | None = None
@@ -154,11 +158,18 @@ class WpClient:
     def _send_once(self, path: str, params: Mapping[str, str | int]) -> httpx.Response:
         self._wait_interval()
         self.requests += 1
+        url = f"{API_ROOT}{path}"
+        headers = {"User-Agent": WP_USER_AGENT}
+        if self._relay is not None:
+            # 中継の失敗時も直接接続には戻さない（ADR 0011 §6）
+            url = f"{self._relay.url.get_secret_value()}/api/relay"
+            headers["X-WP-Path"] = path
+            headers["Authorization"] = f"Bearer {self._relay.token.get_secret_value()}"
         try:
             return self._http.get(
-                f"{_API_ROOT}{path}",
+                url,
                 params=dict(params),
-                headers={"User-Agent": WP_USER_AGENT},
+                headers=headers,
                 follow_redirects=False,
                 timeout=30.0,
             )
@@ -198,7 +209,7 @@ class WpClient:
 
 def _total_pages(response: httpx.Response) -> int:
     value = response.headers.get("X-WP-TotalPages", "")
-    if not value.isascii() or not value.isdigit() or int(value) > _MAX_PAGES:
+    if not value.isascii() or not value.isdigit() or int(value) > MAX_PAGES:
         raise BatchValidationError
     return int(value)
 
@@ -257,7 +268,7 @@ def _modified_after(prior: PriorState, full: bool) -> datetime | None:
 
 
 def _fetch_posts(client: WpClient, since: datetime | None) -> list[_WpPost]:
-    params: dict[str, str | int] = {"status": "publish", "_fields": _POST_FIELDS}
+    params: dict[str, str | int] = {"status": "publish", "_fields": POST_FIELDS}
     if since is not None:
         params["modified_after"] = tz.format_utc(since)
     posts: list[_WpPost] = []
@@ -276,7 +287,7 @@ def _fetch_posts_by_id(client: WpClient, post_ids: Sequence[int]) -> list[_WpPos
     for chunk in batched(post_ids, WP_PER_PAGE, strict=False):
         params: dict[str, str | int] = {
             "status": "publish",
-            "_fields": _POST_FIELDS,
+            "_fields": POST_FIELDS,
             "include": ",".join(str(post_id) for post_id in chunk),
         }
         for body in client.get_pages("/posts", params):
@@ -293,7 +304,7 @@ def _parse_gmt(value: str) -> datetime:
 
 
 def _fetch_id_list(client: WpClient, with_author: bool) -> list[_WpPostId]:
-    fields = _ID_AUTHOR_FIELDS if with_author else _ID_FIELDS
+    fields = ID_AUTHOR_FIELDS if with_author else ID_FIELDS
     ids: list[_WpPostId] = []
     for body in client.get_pages("/posts", {"status": "publish", "_fields": fields}):
         ids.extend(_POST_IDS.validate_json(body))
@@ -305,7 +316,7 @@ def _fetch_id_list(client: WpClient, with_author: bool) -> list[_WpPostId]:
 
 
 def _fetch_author(client: WpClient, author_id: int) -> _WpUser:
-    response = client.get(f"/users/{author_id}", {"_fields": _USER_FIELDS})
+    response = client.get(f"/users/{author_id}", {"_fields": USER_FIELDS})
     user = _WpUser.model_validate_json(response.content)
     _check_site_url(user.link)
     return user
@@ -315,7 +326,7 @@ def fetch(client: WpClient, prior: PriorState, base_date: date, *, full: bool) -
     """カテゴリ、タグ、差分の記事、ID 一覧、必要な著者の順に取る（03 §4）。"""
     categories = _build_categories(
         item
-        for body in client.get_pages("/categories", {"_fields": _CATEGORY_FIELDS})
+        for body in client.get_pages("/categories", {"_fields": CATEGORY_FIELDS})
         for item in _CATEGORIES.validate_json(body)
     )
     if not categories and prior.post_categories:
@@ -323,7 +334,7 @@ def fetch(client: WpClient, prior: PriorState, base_date: date, *, full: bool) -
         raise BatchValidationError
     tags = tuple(
         (item.id, html.unescape(item.name))
-        for body in client.get_pages("/tags", {"_fields": _TAG_FIELDS})
+        for body in client.get_pages("/tags", {"_fields": TAG_FIELDS})
         for item in _TAGS.validate_json(body)
     )
     fetched = _fetch_posts(client, _modified_after(prior, full))

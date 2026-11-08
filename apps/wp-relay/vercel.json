@@ -1,0 +1,8 @@
+{
+  "regions": ["hnd1"],
+  "functions": {
+    "api/relay.ts": {
+      "maxDuration": 25
+    }
+  }
+}

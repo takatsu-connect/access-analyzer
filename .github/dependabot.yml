@@ -44,3 +44,14 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+
+  # WP の中継（ADR 0011 の L-5）。開発時の依存だけ
+  - package-ecosystem: npm
+    directory: /apps/wp-relay
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5

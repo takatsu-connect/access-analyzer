@@ -30,6 +30,8 @@ ENV_EXAMPLE_NAMES = {
     "GA4_PROPERTY_ID",
     "SUPABASE_BATCH_DB_URL",
     "VERCEL_DEPLOY_HOOK_URL",
+    "WP_RELAY_URL",
+    "WP_RELAY_TOKEN",
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
     "LOCAL_BATCH_WRITER_PASSWORD",
@@ -170,11 +172,13 @@ def check_workflow(path: Path) -> None:
         body = "\n".join(strip_comment(line) for line in body_lines)
         if has_schedule and "github.ref == 'refs/heads/main'" not in body:
             fail(path, f"schedule のあるワークフローのジョブ {job} に main の条件がない")
-        uses_secret_env = re.search(r"secrets\.(SUPABASE_BATCH_DB_URL|VERCEL_DEPLOY_HOOK_URL)", body)
+        uses_secret_env = re.search(r"secrets\.(SUPABASE_BATCH_DB_URL|VERCEL_DEPLOY_HOOK_URL|WP_RELAY_)", body)
         if uses_secret_env and not re.search(r"^    environment:\s*production\s*$", body, re.MULTILINE):
             fail(path, f"ジョブ {job} が Environment の Secret を参照するのに environment: production がない")
         if "secrets.SUPABASE_BATCH_DB_URL" in body and (name != "daily.yml" or job not in DB_URL_JOBS):
             fail(path, f"ジョブ {job} が SUPABASE_BATCH_DB_URL を参照している（daily と backfill だけ）")
+        if "secrets.WP_RELAY_" in body and (name != "daily.yml" or job not in DB_URL_JOBS):
+            fail(path, f"ジョブ {job} が WP_RELAY_ の Secret を参照している（daily と backfill だけ）")
         if name == "daily.yml" and job == "publish_only":
             if re.search(r"secrets\.(?!VERCEL_DEPLOY_HOOK_URL\b)", body) or "id-token" in body:
                 fail(path, "publish_only に Deploy Hook 以外の Secret か id-token がある")

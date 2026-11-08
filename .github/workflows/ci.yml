@@ -81,6 +81,29 @@ jobs:
       - name: pnpm run check
         run: pnpm run check
 
+  # ---- WP の中継（ADR 0011）: 型検査と Vitest。上流は偽の fetch で、対象サイトに接続しない ----
+  wp-relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/wp-relay
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/wp-relay/.nvmrc
+      - name: pnpm を有効にする（corepack）
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack enable
+      - name: 依存を入れる
+        run: pnpm install --frozen-lockfile
+      - name: pnpm run check
+        run: pnpm run check
+
   # ---- 結合（I-DB、I-B）と E2E（E）。Supabase ローカルにフィクスチャを入れて BI をビルドする ----
   integration:
     runs-on: ubuntu-24.04
@@ -197,4 +220,7 @@ jobs:
         run: corepack enable
       - name: pnpm audit（高以上で失敗）
         working-directory: apps/web
+        run: pnpm audit --audit-level=high
+      - name: pnpm audit（apps/wp-relay。高以上で失敗）
+        working-directory: apps/wp-relay
         run: pnpm audit --audit-level=high

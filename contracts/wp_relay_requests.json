@@ -1,0 +1,59 @@
+[
+  {
+    "kind": "categories",
+    "path": "/categories",
+    "query": { "_fields": "id,name,parent", "per_page": "100", "page": "1" }
+  },
+  {
+    "kind": "tags",
+    "path": "/tags",
+    "query": { "_fields": "id,name", "per_page": "100", "page": "1" }
+  },
+  {
+    "kind": "posts_modified_after",
+    "path": "/posts",
+    "query": {
+      "status": "publish",
+      "_fields": "id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected",
+      "modified_after": "2026-11-02T18:30:15Z",
+      "per_page": "100",
+      "page": "1"
+    }
+  },
+  {
+    "kind": "posts_full",
+    "path": "/posts",
+    "query": {
+      "status": "publish",
+      "_fields": "id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected",
+      "per_page": "100",
+      "page": "1"
+    }
+  },
+  {
+    "kind": "posts_by_id",
+    "path": "/posts",
+    "query": {
+      "status": "publish",
+      "_fields": "id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected",
+      "include": "2,3",
+      "per_page": "100",
+      "page": "1"
+    }
+  },
+  {
+    "kind": "id_list",
+    "path": "/posts",
+    "query": { "status": "publish", "_fields": "id", "per_page": "100", "page": "1" }
+  },
+  {
+    "kind": "id_list_with_author",
+    "path": "/posts",
+    "query": { "status": "publish", "_fields": "id,author", "per_page": "100", "page": "1" }
+  },
+  {
+    "kind": "author",
+    "path": "/users/7",
+    "query": { "_fields": "name,slug,link" }
+  }
+]

@@ -6,7 +6,7 @@ JSON を正とする。実行時には読まず、Python と TypeScript のテ�
 import json
 from pathlib import Path
 
-from takatsu_batch import config
+from takatsu_batch import config, wp_fetch
 
 CONTRACT = Path(__file__).resolve().parents[3] / "contracts" / "constants.json"
 
@@ -32,11 +32,25 @@ def test_python_constants_match_contract() -> None:
         "ARTICLE_AXES": list(config.ARTICLE_AXES),
         "AUTHOR_AXES": list(config.AUTHOR_AXES),
         "WINDOW_PERIOD_IDS": list(config.WINDOW_IDS),
+        # 中継（apps/wp-relay）の許可リストとの突き合わせ（ADR 0011）
+        "WP_RELAY": {
+            "SITE_API_ROOT": wp_fetch.API_ROOT,
+            "USER_AGENT": config.WP_USER_AGENT,
+            "PER_PAGE": config.WP_PER_PAGE,
+            "MAX_PAGES": wp_fetch.MAX_PAGES,
+            "POST_FIELDS": wp_fetch.POST_FIELDS,
+            "ID_FIELDS": wp_fetch.ID_FIELDS,
+            "ID_AUTHOR_FIELDS": wp_fetch.ID_AUTHOR_FIELDS,
+            "CATEGORY_FIELDS": wp_fetch.CATEGORY_FIELDS,
+            "TAG_FIELDS": wp_fetch.TAG_FIELDS,
+            "USER_FIELDS": wp_fetch.USER_FIELDS,
+        },
     }
 
 
 def test_contract_holds_no_secret_like_values() -> None:
-    # 公開してよい設定だけを置く。URL は対象サイトの origin だけ
+    # 公開してよい設定だけを置く。URL は対象サイトの origin と API のルート、User-Agent の連絡先だけ
     text = CONTRACT.read_text(encoding="utf-8")
-    assert text.count("https://") == 1
+    assert text.count("https://") == 3
+    assert text.count("+https://github.com/") == 1
     assert "supabase" not in text.lower()

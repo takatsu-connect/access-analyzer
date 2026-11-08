@@ -11,5 +11,17 @@
   "SITE_AXES": ["sns", "new_returning", "local", "channel", "device_pv", "device_sessions"],
   "ARTICLE_AXES": ["channel", "sns", "device"],
   "AUTHOR_AXES": ["channel", "sns"],
-  "WINDOW_PERIOD_IDS": ["last7", "prev7", "last28", "prev28", "last90", "prev90"]
+  "WINDOW_PERIOD_IDS": ["last7", "prev7", "last28", "prev28", "last90", "prev90"],
+  "WP_RELAY": {
+    "SITE_API_ROOT": "https://takatsu-connect.com/wp-json/wp/v2",
+    "USER_AGENT": "takatsu-connect-access-analyzer/0.1 (+https://github.com/takatsu-connect/access-analyzer)",
+    "PER_PAGE": 100,
+    "MAX_PAGES": 50,
+    "POST_FIELDS": "id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected",
+    "ID_FIELDS": "id",
+    "ID_AUTHOR_FIELDS": "id,author",
+    "CATEGORY_FIELDS": "id,name,parent",
+    "TAG_FIELDS": "id,name",
+    "USER_FIELDS": "name,slug,link"
+  }
 }

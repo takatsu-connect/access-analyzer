@@ -81,24 +81,24 @@ CLI の引数と `vercel link` の挙動は事実票になく未確認。実行�
 | `status` | `publish` のみ |
 | `_fields` | パスごとに完全一致。`/posts`: `id,date_gmt,modified_gmt,link,title.rendered,author,categories,tags,content.protected`、`id`、`id,author`。`/categories`: `id,name,parent`。`/tags`: `id,name`。`/users/<id>`: `name,slug,link`（§9） |
 | `per_page` | `^[0-9]{1,3}$` で 1〜100 |
-| `page` | `^[0-9]{1,2}$` で 1〜50（`_MAX_PAGES`） |
+| `page` | `^[0-9]{1,2}$` で 1〜50（`MAX_PAGES`） |
 | `modified_after` | `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`（`tz.format_utc` の出力） |
 | `include` | `^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9}){0,99}$`（1〜100 個の ID） |
 
-`_fields` を完全一致にするので、バッチの `_*_FIELDS` を変えるときは中継も同時に変える。突き合わせは `contracts/constants.json` に定数を置き、07 S-16 と同じ形で両方のテストから検査する。
+`_fields` を完全一致にするので、バッチの `*_FIELDS` を変えるときは中継も同時に変える。突き合わせは `contracts/constants.json` に定数を置き、07 S-16 と同じ形で両方のテストから検査する。
 
-**バッチの正規のリクエストとの突き合わせ**（wp_fetch.py の呼び出しの読み取り。実機では未実行）。`per_page`（`WP_PER_PAGE` = 100）と `page`（1〜`_MAX_PAGES`）は `get_pages` が足す。
+**バッチの正規のリクエストとの突き合わせ**（wp_fetch.py の呼び出しの読み取り。実機では未実行）。`per_page`（`WP_PER_PAGE` = 100）と `page`（1〜`MAX_PAGES`）は `get_pages` が足す。
 
 | 呼び出し | パス | 送るキー | `_fields` の値 | 許可リスト |
 | --- | --- | --- | --- | --- |
-| `_fetch_posts`（差分あり） | `/posts` | `status`、`_fields`、`modified_after`、`per_page`、`page` | `_POST_FIELDS` | 通る |
-| `_fetch_posts`（全件） | `/posts` | `status`、`_fields`、`per_page`、`page` | `_POST_FIELDS` | 通る |
-| `_fetch_posts_by_id` | `/posts` | `status`、`_fields`、`include`（100 個まで）、`per_page`、`page` | `_POST_FIELDS` | 通る |
-| `_fetch_id_list`（`with_author=False`） | `/posts` | `status`、`_fields`、`per_page`、`page` | `_ID_FIELDS`（`id`） | 通る |
-| `_fetch_id_list`（`with_author=True`） | `/posts` | `status`、`_fields`、`per_page`、`page` | `_ID_AUTHOR_FIELDS`（`id,author`） | 通る |
-| カテゴリの取得 | `/categories` | `_fields`、`per_page`、`page` | `_CATEGORY_FIELDS` | 通る |
-| タグの取得 | `/tags` | `_fields`、`per_page`、`page` | `_TAG_FIELDS` | 通る |
-| `_fetch_author` | `/users/<id>` | `_fields` のみ（`client.get` で直接呼ぶので `per_page` と `page` はない） | `_USER_FIELDS` | 通る |
+| `_fetch_posts`（差分あり） | `/posts` | `status`、`_fields`、`modified_after`、`per_page`、`page` | `POST_FIELDS` | 通る |
+| `_fetch_posts`（全件） | `/posts` | `status`、`_fields`、`per_page`、`page` | `POST_FIELDS` | 通る |
+| `_fetch_posts_by_id` | `/posts` | `status`、`_fields`、`include`（100 個まで）、`per_page`、`page` | `POST_FIELDS` | 通る |
+| `_fetch_id_list`（`with_author=False`） | `/posts` | `status`、`_fields`、`per_page`、`page` | `ID_FIELDS`（`id`） | 通る |
+| `_fetch_id_list`（`with_author=True`） | `/posts` | `status`、`_fields`、`per_page`、`page` | `ID_AUTHOR_FIELDS`（`id,author`） | 通る |
+| カテゴリの取得 | `/categories` | `_fields`、`per_page`、`page` | `CATEGORY_FIELDS` | 通る |
+| タグの取得 | `/tags` | `_fields`、`per_page`、`page` | `TAG_FIELDS` | 通る |
+| `_fetch_author` | `/users/<id>` | `_fields` のみ（`client.get` で直接呼ぶので `per_page` と `page` はない） | `USER_FIELDS` | 通る |
 
 03 §4 に代替として書かれた `orderby` と `order` は、wp_fetch.py の呼び出しに現れないので許可しない。
 
@@ -210,7 +210,7 @@ security.md の「WP REST API への問い合わせは日次バッチだけ」�
 
 ### 9. /users/<id> の slug
 
-- **`_fields` から slug を外せない。** wp_fetch.py では、`_WpUser.slug` が必須項目で、`AuthorRow` のキー（`authors[user.slug]`）と `PostRow.author_slug` に使われ、書き込みの対象になる行に入る。したがって「バッチは slug を保存しない」は成り立たない。`_USER_FIELDS` は `name,slug,link` のままとし、中継の許可値もこれに合わせる。
+- **`_fields` から slug を外せない。** wp_fetch.py では、`_WpUser.slug` が必須項目で、`AuthorRow` のキー（`authors[user.slug]`）と `PostRow.author_slug` に使われ、書き込みの対象になる行に入る。したがって「バッチは slug を保存しない」は成り立たない。`USER_FIELDS` は `name,slug,link` のままとし、中継の許可値もこれに合わせる。
 - 中継は `/users/<id>` の本文を素通しするだけで、slug をログに出さず保存もしない。公開の REST API がもともと返す値なので、中継によって新しく開示される情報はない。
 - slug の扱いは要件で判断済みで、新しい逸脱ではない（監査 L-1）。NFR-35 は「表示名と著者ページの URL（slug）」とし、「slug は WordPress では多くの場合ログイン名と同じため、著者ページへのリンク先にだけ使い、画面に文字列として出さない」としている。FR-30 も「著者 slug はサイト上で公開されており守りにならず」としている。
 - 監査で確認された現状: slug は `internal.wp_author.author_slug` の主キーで、`public.pub_author` が anon に公開している。BI では文字として出さず href に使う。ページのデータと S-02e の `<option value>` にも載る。
@@ -264,7 +264,7 @@ security-auditor のレビューを受け（docs/security/audits/2026-11-09-wp-r
 | traceability.md | 関係する NFR の行 | 中継と ADR 0011 を追加 |
 | docs/operations/ | 環境、デプロイ手順、運用手順 | 中継の CLI でのデプロイ、トークンのローテーションと過去のデプロイの削除、中継の停止手順、失敗時の切り分け、実行回数の目安と使用量の点検 |
 | .github/dependabot.yml | `updates` | `/apps/wp-relay` を対象に追加（L-5。文書ではないがこの ADR に伴う変更） |
-| .github/workflows/audit.yml、ci.yml | 依存の監査、lint、テスト | `apps/wp-relay` を対象に追加（L-5） |
+| .github/workflows/audit.yml、ci.yml | 依存の監査、型検査、テスト | `apps/wp-relay` を対象に追加（L-5） |
 
 ## 未確認の事項
 

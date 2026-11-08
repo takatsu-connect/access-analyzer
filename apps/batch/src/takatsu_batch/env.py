@@ -22,11 +22,24 @@ _LOCAL_HOSTS: Final = frozenset({"localhost", "127.0.0.1"})
 _URL_SCHEMES: Final = frozenset({"postgresql", "postgres"})
 _ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 _HOOK_URL_PREFIX: Final = "https://api.vercel.com/v1/integrations/deploy/"
+# 中継のオリジンだけを受ける。ユーザー情報、パス、クエリ、フラグメント、空白や制御文字は合わない
+_RELAY_ORIGIN: Final = re.compile(r"(https?)://([a-z0-9.-]+)(?::([0-9]{1,5}))?")
+_MAX_PORT: Final = 65535
+# HTTP のヘッダの値に入れられる、空白以外の ASCII だけ。h11 のエラーに値が載らないように先に止める。
+# 長さは 32 バイト以上の乱数の 16 進表現（ADR 0011 §3）
+_RELAY_TOKEN: Final = re.compile(r"[\x21-\x7e]{64,}")
 
 
 class DbTarget(BatchModel):
     url: SecretStr
     is_local: bool
+
+
+class WpRelayTarget(BatchModel):
+    """WP の取得を経由させる中継（ADR 0011）。URL も公開のログに出さないので SecretStr で持つ。"""
+
+    url: SecretStr
+    token: SecretStr
 
 
 class BatchEnv(BatchModel):
@@ -35,6 +48,7 @@ class BatchEnv(BatchModel):
     deploy_hook_url: SecretStr
     base_date: date | None = None
     github_run_id: str | None = None
+    wp_relay: WpRelayTarget | None = None
 
 
 class _BatchEnvInput(BatchModel):
@@ -43,6 +57,8 @@ class _BatchEnvInput(BatchModel):
     VERCEL_DEPLOY_HOOK_URL: SecretStr
     BASE_DATE: date | None = None
     GITHUB_RUN_ID: str | None = None
+    WP_RELAY_URL: SecretStr | None = None
+    WP_RELAY_TOKEN: SecretStr | None = None
 
     @field_validator("BASE_DATE", mode="before")
     @classmethod
@@ -94,6 +110,26 @@ def _is_ascii_digits(value: str) -> bool:
     return value.isascii() and value.isdigit()
 
 
+def _load_wp_relay(url: SecretStr | None, token: SecretStr | None) -> WpRelayTarget | None:
+    """両方なしなら直接接続（None）。片方だけは設定の誤りとして止める（ADR 0011 §6）。"""
+    if url is None and token is None:
+        return None
+    if url is None or token is None:
+        raise BatchValidationError
+    matched = _RELAY_ORIGIN.fullmatch(url.get_secret_value())
+    if matched is None:
+        raise BatchValidationError
+    scheme, host, port = matched.groups()
+    # http は結合テスト用。ホストが完全に一致するときだけ
+    if scheme == "http" and host not in _LOCAL_HOSTS:
+        raise BatchValidationError
+    if port is not None and int(port) > _MAX_PORT:
+        raise BatchValidationError
+    if _RELAY_TOKEN.fullmatch(token.get_secret_value()) is None:
+        raise BatchValidationError
+    return WpRelayTarget(url=url, token=token)
+
+
 def load_batch_env(environ: Mapping[str, str]) -> BatchEnv:
     """daily と backfill に必要な環境変数。"""
     values = _BatchEnvInput.model_validate(
@@ -105,7 +141,9 @@ def load_batch_env(environ: Mapping[str, str]) -> BatchEnv:
     if values.GITHUB_RUN_ID is not None and not _is_ascii_digits(values.GITHUB_RUN_ID):
         raise BatchValidationError
     _check_hook_url(values.VERCEL_DEPLOY_HOOK_URL)
+    wp_relay = _load_wp_relay(values.WP_RELAY_URL, values.WP_RELAY_TOKEN)
     return BatchEnv(
+        wp_relay=wp_relay,
         db=parse_db_url(values.SUPABASE_BATCH_DB_URL),
         ga4_property_id=values.GA4_PROPERTY_ID,
         deploy_hook_url=values.VERCEL_DEPLOY_HOOK_URL,

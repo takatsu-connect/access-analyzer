@@ -76,6 +76,8 @@ jobs:
           GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
           BASE_DATE: ${{ inputs.base_date }}
+          WP_RELAY_URL: ${{ secrets.WP_RELAY_URL }}
+          WP_RELAY_TOKEN: ${{ secrets.WP_RELAY_TOKEN }}
         run: python -m takatsu_batch daily
 
   backfill:
@@ -114,6 +116,8 @@ jobs:
           BASE_DATE: ${{ inputs.base_date }}
           BACKFILL_FROM: ${{ inputs.from }}
           BACKFILL_TO: ${{ inputs.to }}
+          WP_RELAY_URL: ${{ secrets.WP_RELAY_URL }}
+          WP_RELAY_TOKEN: ${{ secrets.WP_RELAY_TOKEN }}
         # from と to が空なら引数を付けない（03 §10。バッチが既定値を決める）
         run: |
           set -euo pipefail

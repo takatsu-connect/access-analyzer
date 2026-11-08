@@ -49,3 +49,6 @@ jobs:
       - name: pnpm audit（高以上で失敗）
         working-directory: apps/web
         run: pnpm audit --audit-level=high
+      - name: pnpm audit（apps/wp-relay。高以上で失敗）
+        working-directory: apps/wp-relay
+        run: pnpm audit --audit-level=high

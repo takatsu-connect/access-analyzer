@@ -13,6 +13,8 @@ const CONTRACTS_PATH = path.resolve(
 );
 const contracts = JSON.parse(readFileSync(CONTRACTS_PATH, 'utf8')) as Record<string, unknown>;
 const exported = config as Record<string, unknown>;
+// WP_RELAY はバッチと中継（apps/wp-relay）の間の定数で、BI は使わない（ADR 0011）
+const BI_CONTRACT_KEYS = Object.keys(contracts).filter((key) => key !== 'WP_RELAY');
 
 // BI だけの設定値（バッチは使わないので JSON にはない）。値は 05 §2.3〜§2.7 と 04 §3.1。
 // config.ts に定数を足すときは、JSON かこの一覧のどちらかに足す。どちらにもない定数は下の検査で落ちる。
@@ -29,7 +31,7 @@ describe('contracts/constants.json と src/lib/config.ts', () => {
     expect(Object.keys(contracts).length).toBeGreaterThan(0);
   });
 
-  it.each(Object.keys(contracts))('%s が JSON と一致する', (key) => {
+  it.each(BI_CONTRACT_KEYS)('%s が JSON と一致する', (key) => {
     expect(exported[key]).toEqual(contracts[key]);
   });
 
@@ -51,7 +53,7 @@ describe('contracts/constants.json と src/lib/config.ts', () => {
   it('config.ts の定数は、JSON にあるものと、BI だけの設定値の一覧にあるものだけ', () => {
     const constantNames = Object.keys(exported).filter((name) => /^[A-Z0-9_]+$/.test(name));
     expect(constantNames.sort()).toEqual(
-      [...Object.keys(contracts), ...Object.keys(BI_ONLY_CONSTANTS)].sort(),
+      [...BI_CONTRACT_KEYS, ...Object.keys(BI_ONLY_CONSTANTS)].sort(),
     );
   });
 

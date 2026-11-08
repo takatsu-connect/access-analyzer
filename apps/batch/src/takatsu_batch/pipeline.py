@@ -132,7 +132,7 @@ def _run_steps(request: RunRequest, env: BatchEnv, deps: Deps, tracker: _Tracker
             prior = db.read_prior_state(conn)
 
     with tracker.scope("wp_fetch"):
-        tracker.wp_client = wp_fetch.WpClient(deps.http, deps.sleep, deps.clock)
+        tracker.wp_client = wp_fetch.WpClient(deps.http, deps.sleep, deps.clock, relay=env.wp_relay)
         wp = wp_fetch.fetch(tracker.wp_client, prior, base_date, full=full)
         # GA4 の取得と集計は、基準日までに公開された記事だけを対象にする
         posts = wp.measurable_posts(base_date)
