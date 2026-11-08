@@ -97,6 +97,10 @@ npx --yes supabase@3.0.0 db push
 
 ### 手順 4: batch_writer のパスワードを設定する（依頼者の確認が要る）
 
+スクリプトを使うのが簡単である。`python ops/set_batch_writer_password.py` は、パスワードを作り、SCRAM-SHA-256 の検証子にして本番に設定し、手順 5 の Secret `SUPABASE_BATCH_DB_URL` まで登録する（平文は画面にも SQL にも出ない）。前提は、`npx supabase@3.0.0 link` 済みで、Supabase CLI が対象のプロジェクトの見えるアカウントでログインしていること、`gh` がこのリポジトリに書き込めること、手順 5 の Environment `production` があること。`login` は対話できる端末で実行する（Claude Code の `!` では動かない）。
+
+スクリプトを使わないときは、次の手作業で行う。
+
 1. 自分の PC で、英数字 40 文字のランダムな値を作る（ADR 0009: URL エンコードの要らない英数字、32 文字以上）。
 
 ```
