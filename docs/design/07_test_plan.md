@@ -1,8 +1,8 @@
 # 07 テスト計画
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-07
-- 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0006、ADR 0008、ADR 0009
+- 更新日: 2026-11-09
+- 関係: docs/requirements/06_acceptance.md（受入基準）、01_tech_stack.md §7・§8、02_data_model.md、03_data_pipeline.md、04_api.md、05_screens.md、06_security.md、ADR 0003、ADR 0004、ADR 0006、ADR 0008、ADR 0009、ADR 0011（レビュー中）
 - 読者: qa-engineer（テストの実装と受入の実施）、backend-engineer / frontend-engineer（単体テストの実装）、devops-engineer（CI の検査）
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（U-27〜U-29、I-DB-15・I-DB-16、I-B-11 を追加。I-DB-01・05・07、I-B-09、E-04、S-10・S-14、U-22 を修正）
@@ -127,6 +127,20 @@
 
 実装: `apps/batch/tests/integration/`。I-B-01〜I-B-09 は `pipeline.run_batch` をテストのプロセスの中で呼び、I-B-11 は本物のエントリを子プロセスで動かす（`tests/support/entry_harness.py` が偽物を差し込み、壊し方を 1 つだけ起こす）。I-B-04 の「ワークフローは失敗で終わる」は、終了コード 1 で確かめる。
 
+### 5.1 WP 取得の中継（ADR 0011）
+
+中継のテストは偽の上流で行い、本物の WordPress に接続しない（NFR-72、ADR 0011 §7）。既存の ID は振り直さず、中継の項目には `R-` を使う。テストの実装との対応と実行結果は未確認（実装監査はテスト名の Grep だけで、実行は CI の `wp-relay` ジョブと `apps/batch` のテストで確かめる）。
+
+| ID | 対象 | 確かめること | 関係 |
+| --- | --- | --- | --- |
+| R-01 | 認証 | トークンの不一致・欠落、環境変数の未設定や空で 401。本文は空。検査はトークン → メソッド → パスとクエリの順で、未認証の相手にメソッドや値の検証結果を返さない | ADR 0011 §3、NFR-44 |
+| R-02 | 許可リスト | GET 以外は 405。パスの完全一致（`..`、エンコード、末尾の `/` を拒否）。表にないキー、重複、必須のキーの欠落、値の形の誤りで 400 | ADR 0011 §2 |
+| R-03 | 転送 | 転送先が定数のオリジンに固定される。クエリは検証済みの組から作る。受信ヘッダを転送しない。リダイレクトを追わない。中継の中で再試行しない | ADR 0011 §2、NFR-72 |
+| R-04 | 応答 | 返すのは状態コード、2xx の本文、形の合う `X-WP-Total` と `X-WP-TotalPages` と固定のヘッダだけ。4 MB 超で 413、接続不可で 502、20 秒超で 504 | ADR 0011 §4 |
+| R-05 | ログ | 1 行に `outcome`、`status`、`duration_ms` だけ。トークン、クエリの値、パスの ID、本文を出さない | ADR 0011 §5、NFR-44 |
+| R-06 | バッチの中継あり・なし | 両方とも未設定なら直接接続で `Authorization` と `X-WP-Path` を送らない。片方だけの設定と URL の形の誤りは起動時に失敗し、値をメッセージに入れない。中継の失敗時に直接接続へ切り替えない | ADR 0011 §6 |
+| R-07 | 定数の一致 | `_fields` の許可値と `User-Agent` を `contracts/constants.json` に置き、S-16 と同じ形で両方のテストから検査する | ADR 0011 §2、S-16 |
+
 ## 6. E2E（Playwright、プレビュー環境）
 
 CI 内の `next build`（Supabase ローカルのフィクスチャ）に対して実行する。Preview URL には E-01〜E-05 だけ（スモーク。デプロイ工程で行う。§11）。
@@ -202,7 +216,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 | A-08 | 運用: 失敗通知の受信（GitHub のメール。Q-12 確定）、再実行で復旧、60 日停止対策の確認手順、`publish_only` での再生成（Preview 相当の環境で） | FR-74、NFR-70、NFR-71、NFR-11、NFR-73 |
 | A-09 | 秘密: Google Cloud の鍵一覧に JSON 鍵がない、Vercel / Actions の環境変数以外に受け渡し経路がない、リポジトリ履歴に鍵・トークンがない | NFR-40、NFR-41、NFR-44 |
 | A-10 | 無料枠: 初回公開後 1 か月の請求 | NFR-60 |
-| A-11 | 本番の DB 接続（CI のローカル環境に pooler と TLS がないため）。前提: TLS の基準は ADR 0009 の確認項目 1 の結果で第 1（verify-full + 固定した CA）に確定している。第 3 の `require` では実施しない。`alter role batch_writer login password ...` の後、Actions のランナー（`workflow_dispatch` の初回 `backfill`）から pooler に接続して書き込めること。採用した基準で TLS が通ること。`require_auth=scram-sha-256` と `connection limit 2` が pooler 経由で問題ないこと。実行ログに接続文字列の部品が出ていないこと。`supabase/checks/batch_writer_privileges.sql` を本番の SQL エディタで実行して 0 行であること（W-8）。Environment `production` の配備ブランチが main だけで、リポジトリの Secret に同名の値が残っておらず、main 以外のブランチのワークフローからその Secret を使えないこと（W-3。結果の値を記録しない） | NFR-43、NFR-44、NFR-45、ADR 0009 |
+| A-11 | 本番の DB 接続（CI のローカル環境に pooler と TLS がないため）。前提: TLS の基準は ADR 0009 の確認項目 1 の結果で第 1（verify-full + 固定した CA）に確定している。第 3 の `require` では実施しない。`alter role batch_writer login password ...` の後、Actions のランナー（`workflow_dispatch` の初回 `backfill`）から pooler に接続して書き込めること。採用した基準で TLS が通ること。`require_auth=scram-sha-256` と `connection limit 2` が pooler 経由で問題ないこと。実行ログに接続文字列の部品が出ていないこと。`supabase/checks/batch_writer_privileges.sql` を本番の SQL エディタで実行して 0 行であること（W-8）。Environment `production` の配備ブランチが main だけで、リポジトリの Secret に同名の値が残っておらず、main 以外のブランチのワークフローからその Secret を使えないこと（W-3。結果の値を記録しない）。中継（ADR 0011）について、初回 `backfill` の wp_fetch が中継経由で成功すること、関数が `api/relay` の 1 つでプレビューがなく、トークンなしの要求が 401 で、リージョンが hnd1 であること（docs/operations/deploy.md 手順 8.5。確認のためだけの問い合わせを WordPress に流さない）。`per_page=100` の応答の実サイズを 1 回確かめること | NFR-43、NFR-44、NFR-45、NFR-72、ADR 0009、ADR 0011 |
 
 ## 9. 受入基準との対応表
 
@@ -320,6 +334,7 @@ CI 内の `next build`（Supabase ローカルのフィクスチャ）に対し�
 - FR-05（CSV）、FR-61（シェア）を初回に含めるかで、U / E の項目を追加する。
 - Q-36 は確定（2026-11-03）。I-DB-07 の対象（`pub_site_period_breakdown` の channel / device_pv / device_sessions）と U-22（G19、G20）に反映済み。E-05 の S-01 の期待値は 05 §3 の確定した構成に従う。
 - 複数の Python 版や OS での `requirements.txt` の扱い（ADR 0004）、pooler の TLS と `executemany`（ADR 0009）は実装時と A-11 で確認する。
+- 中継の未確認の事項（実環境での `redirect: "manual"` の 3xx の見え方、Next.js なしの構成でのハンドラの動作、hnd1 の出口 IP）は ADR 0011 の未確認の事項と A-11 で確かめる。
 - U-30 の期待値、I-B-11 (h) と S-10 の Dependabot の検査は、ADR 0009 の V-1、V-6 の確認結果で調整する。Dependabot が pip-compile のハッシュを再生成するかは初回の PR で確かめる（自動化しない）。
 - 「Standard Protection」（06 §2.1、M-6）が Hobby で設定できるかの確認結果により、Preview スモーク（E-01〜E-05）の実行方法（Vercel Authentication のバイパストークンの要否）を決める。
 - 構築 3 の残り（2026-11-06）:

@@ -1,7 +1,7 @@
 # デプロイ手順（初回の本番化と通常の更新）
 
 - 状態: 草案
-- 更新日: 2026-11-07
+- 更新日: 2026-11-09
 
 ## 0. この文書の使い方
 
@@ -21,7 +21,8 @@
 | 6 | Vercel のプロジェクトと環境変数 | 変える（Vercel） | 20 分 |
 | 7 | Deploy Hook と Standard Protection | 変える（Vercel、GitHub） | 10 分 |
 | 8 | `DAILY_ENABLED` と `publish_only` の試し | 変える（GitHub） | 10 分 |
-| 9 | 初回の backfill | 変える（Supabase のデータ、Vercel のデプロイ） | 20 分 |
+| 8.5 | WordPress 取得の中継のデプロイ（`apps/wp-relay`。CLI で main から。ADR 0011） | 変える（Vercel、GitHub） | 30 分 |
+| 9 | 初回の backfill（手順 8.5 が前提。直前に `DAILY_ENABLED` を `true` にする） | 変える（Supabase のデータ、Vercel のデプロイ） | 20 分 |
 | 10 | A-11 の実機確認 | 一部変える（確認用の一時ブランチ） | 30 分 |
 | 11 | JSON 鍵と一時的なロールを消す | 変える（GCP、ローカル） | 10 分 |
 
@@ -154,7 +155,7 @@ Environment のブランチ制限が organization のプランで使えないと
 
 ### 手順 6: Vercel のプロジェクトと環境変数（依頼者の確認が要る）
 
-1. Vercel（Hobby）で Add New → Project → GitHub の `takatsu-connect/access-analyzer` を選ぶ。Vercel の GitHub App のインストールでは「Only select repositories」にしてこのリポジトリだけを許可する。
+1. Vercel（Small Piece チーム、Pro）で Add New → Project → GitHub の `takatsu-connect/access-analyzer` を選ぶ。Vercel の GitHub App のインストールでは「Only select repositories」にしてこのリポジトリだけを許可する。
 2. 設定:
    - Root Directory: `apps/web`
    - Framework Preset: Next.js
@@ -187,6 +188,8 @@ Environment のブランチ制限が organization のプランで使えないと
 
 ### 手順 8: DAILY_ENABLED と publish_only の試し（依頼者の確認が要る）
 
+> **順序の注記**: `publish_only` は WordPress を読まないので、この手順は中継なしで通る。一方、手順 9 の backfill と schedule の `daily` は、手順 8.5 で中継を入れるまで wp_fetch で失敗する（国外制限。ADR 0011）。この手順の試しが終わったら `DAILY_ENABLED` を `false` に戻し、手順 8.5 に進む。`true` のままだと、JST 17:00 と 18:00 の `daily` が失敗してメールが届く。
+
 1. Settings → Secrets and variables → Actions → Variables → New repository variable。名前 `DAILY_ENABLED`、値 `true`。
 
 ```
@@ -205,9 +208,183 @@ gh workflow run daily.yml --repo takatsu-connect/access-analyzer --ref main -f m
 
 戻し方: `gh variable set DAILY_ENABLED --body false --repo takatsu-connect/access-analyzer`（または変数を消す）。以後の schedule はジョブが skipped になり、失敗のメールも出ない。
 
+### 手順 8.5: WordPress 取得の中継のデプロイ（依頼者の確認が要る）
+
+対象サイトは国外からの API アクセスを禁止しているので、Actions のバッチは WordPress を日本の IP の中継（Vercel の関数、hnd1）経由で読む（ADR 0011）。この手順が終わるまで、手順 9 の backfill は wp_fetch で失敗する。
+
+#### 前提
+
+- 中継は Vercel プロジェクト `takatsu-connect-wp-relay`（Small Piece チーム、Pro）。BI とは別のプロジェクトで、環境変数を共有しない。Supabase の接続情報と GA4 の認証を持たせない。
+- **Git 連携を付けない。** プレビューも作らない。fork や未 merge のブランチのコードが Vercel の上で動く経路をなくすため（ADR 0011 §1）。Actions からもデプロイしない。
+- コマンドはリポジトリの最上位を起点に、Git Bash で実行する（`<` のリダイレクトを使うため）。
+- `apps/wp-relay` の中に秘密のファイル（`.env` など）を置かない。`vercel deploy` が `.gitignore` 済みのファイルをアップロードするかは未確認（実装監査の未確認の項目）。
+
+実行の前に、次を依頼者が Vercel の画面で確かめる。
+
+1. Settings → Git で、Git の接続がない。あれば外す（現状の有無は未確認）。
+2. Settings → Deployment Protection で、Vercel Authentication が有効で、範囲が Standard Protection である（プレビューの URL を閉じる次の層。production ドメインは保護されないので、認証は中継のトークンで行う）。
+3. 同じ画面の Protection Bypass for Automation に秘密が残っていない。残っていれば無効化する（試験のときに作ったものを残さない）。
+4. Deployments に試験のときのデプロイが残っていれば削除する。削除の画面操作は未確認（§4）。
+
+#### トークンを作って Vercel に登録する
+
+トークンは 64 文字の英数字をランダムに作り、画面に出さない。一時ファイルは `credentials/`（.gitignore 済み）にだけ置く。
+
+1. トークンを作る（出力なし）。
+
+```
+python -c "import secrets,string,pathlib; a=string.ascii_letters+string.digits; pathlib.Path('credentials/wp_relay_token.txt').write_bytes(''.join(secrets.choice(a) for _ in range(64)).encode())"
+```
+
+2. 長さを確かめる。`64` と出る（値は出ない）。
+
+```
+wc -c credentials/wp_relay_token.txt
+```
+
+3. クリップボードに入れる（画面に出さない）。
+
+```
+clip.exe < credentials/wp_relay_token.txt
+```
+
+4. Vercel の `takatsu-connect-wp-relay` の Settings → Environment Variables で、名前 `WP_RELAY_TOKEN`、環境は **Production だけ**、種類は **Sensitive** にして貼り付ける。Preview と Development には入れない。Sensitive で登録できるかは未確認で、できなければここで止めて親に相談する。
+5. 登録の後、クリップボードを別の文字列で上書きする。ファイルはこの手順の Secret の登録まで残す。
+
+#### main のチェックアウトからデプロイする
+
+1. main に切り替えて最新にする。
+
+```
+git switch main
+```
+
+```
+git pull --ff-only origin main
+```
+
+2. 未コミットの変更がないことを確かめる。何か出たら進まない。
+
+```
+git status --short
+```
+
+3. デプロイするコミットを確かめる。次の 2 つが同じ値であること。
+
+```
+git rev-parse HEAD
+```
+
+```
+git rev-parse origin/main
+```
+
+4. そのコミットの CI が成功していることを確かめる（main には必須チェックがないので、失敗したコミットも main に入りうる。実装監査 L-2）。`<SHA>` は上の値。`wp-relay` の行が `success` であること。行がない、実行中、失敗のときは進まない。
+
+```
+gh api "repos/takatsu-connect/access-analyzer/commits/<SHA>/check-runs?per_page=100" --jq ".check_runs[] | [.name, .conclusion] | @tsv"
+```
+
+5. `apps/wp-relay` に秘密のファイルがないことを一覧で確かめる。
+
+```
+ls -A apps/wp-relay
+```
+
+6. `apps/wp-relay` に移り、Small Piece チームの `takatsu-connect-wp-relay` にリンクする。別のプロジェクトを選ばない。新しいプロジェクトを作らない。`vercel link` の挙動と Vercel CLI の版の指定は未確認なので、実行前に `vercel link --help` と `vercel deploy --help` で確かめる。
+
+```
+cd apps/wp-relay
+```
+
+```
+vercel link
+```
+
+7. リポジトリに入らないことを確かめる。`.vercel` と表示されること。何も表示されなければ進まない。
+
+```
+git check-ignore .vercel
+```
+
+8. Settings → Git で、リンクの結果 Git の接続が付いていないことをもう一度確かめる。
+9. production へデプロイする。**`--prod` なしの `vercel` や `vercel deploy` は使わない**（プレビューができる）。
+
+```
+vercel deploy --prod
+```
+
+環境変数は、登録の後のデプロイに入る。トークンを登録する前にデプロイした場合は、もう一度この手順でデプロイする。
+
+#### GitHub の Environment に Secret を登録する
+
+リポジトリの最上位に戻り、Environment `production` にだけ登録する。リポジトリの Secrets に置かない。
+
+1. `WP_RELAY_URL` を登録する。プロンプトに production ドメインのオリジンを入れる（`https://<production ドメイン>`。末尾の `/` とパスを付けない。バッチの起動時の検証で拒否される）。デプロイごとの URL を入れない。
+
+```
+gh secret set WP_RELAY_URL --repo takatsu-connect/access-analyzer --env production
+```
+
+2. `WP_RELAY_TOKEN` を登録する。
+
+```
+gh secret set WP_RELAY_TOKEN --repo takatsu-connect/access-analyzer --env production < credentials/wp_relay_token.txt
+```
+
+3. 一時ファイルを消す。
+
+```
+rm credentials/wp_relay_token.txt
+```
+
+4. 片方だけの登録はバッチの起動時の検証で失敗するので、次の確かめ方で 2 つそろっていることを見る。
+
+#### 確かめ方
+
+中継の動作の確認で WordPress に問い合わせない（ADR 0011 §7）。下の 401 の確認はトークンの検査で止まり、WordPress には届かない。
+
+| 項目 | 確かめ方 | 期待 |
+| --- | --- | --- |
+| 関数が 1 つ | そのデプロイの画面の Functions / Output | `api/relay` だけ。`package.json` や `tests/` が配信の対象になっていないことも見る（配信の有無は未確認の事項） |
+| プレビューがない | Deployments の一覧 | production のデプロイだけ |
+| トークンなしで 401 | `curl -s -o /dev/null -w "%{http_code}\n" https://<production ドメイン>/api/relay` を 1 回 | `401` |
+| トークンが読めている | 上の 1 回に対応する Vercel のログの `outcome` | `unauthorized`。`misconfigured` なら環境変数が効いていない（どちらも応答は 401 で、応答からは区別できない） |
+| リージョンが hnd1 | そのデプロイの関数の詳細、またはログのリージョンの表示（画面の項目名は未確認） | `hnd1` |
+| Bypass の秘密がない | Settings → Deployment Protection | Protection Bypass for Automation が無効 |
+| Secret の置き場 | `gh secret list --repo takatsu-connect/access-analyzer --env production` | `WP_RELAY_URL` と `WP_RELAY_TOKEN` が出る |
+| リポジトリの Secrets にない | `gh secret list --repo takatsu-connect/access-analyzer` | 上の 2 つの名前が出ない |
+
+中継を通した実際の取得は、手順 9 の backfill で確かめる。あわせて手順 10 で `per_page=100` の応答の大きさ（ADR 0011 §4）を 1 回確かめる。確かめ方は未確認で、値を記録する手段がログの範囲にあるかを含めて手順 10 の前に決める。
+
+#### 戻し方
+
+- 中継への呼び出しをやめる: Environment の 2 つの Secret を消す。
+
+```
+gh secret delete WP_RELAY_URL --repo takatsu-connect/access-analyzer --env production
+```
+
+```
+gh secret delete WP_RELAY_TOKEN --repo takatsu-connect/access-analyzer --env production
+```
+
+バッチは直接接続に戻り、国外制限でこの手順の前と同じ wp_fetch の失敗になる。失敗のメールを止めるときは `DAILY_ENABLED` を `false` にする。
+
+- 中継そのものを止める: runbook.md §14.1。GitHub の Secret を消すだけでは、第三者が持つトークンは無効にならない。
+- コードを戻す: **過去のデプロイへのロールバック（Instant Rollback / Promote）をしない。** 過去のデプロイが旧トークンを受け付ける状態に戻りうるため。main で `git revert` し、この手順でそのコミットを新しくデプロイする。
+
 ### 手順 9: 初回の backfill（依頼者の確認が要る）
 
+- **前提: 手順 8.5 が終わっていること。** 中継がないと wp_fetch で失敗する。
 - JST 15:30 より後に始める（前日の GA4 のデータがそろってから。03 §2）。JST 17:00 の schedule と重なっても `concurrency` で順番待ちになり、backfill の後の daily は同じ基準日の成功を見て何もせずに終わる。
+- **`DAILY_ENABLED` を backfill の直前に `true` にする。** 2026-11-09 時点の値は `false`（依頼者の情報）で、ワークフローのジョブの `if` がこの変数を条件にしているため、`false` のままではジョブが動かない。`true` にした時点から schedule の `daily` も動く。
+
+```
+gh variable set DAILY_ENABLED --body true --repo takatsu-connect/access-analyzer
+```
+
+backfill を実行する。
 
 ```
 gh workflow run daily.yml --repo takatsu-connect/access-analyzer --ref main -f mode=backfill
@@ -264,6 +441,7 @@ main 以外のブランチからの確認:
 | バッチ（`apps/batch`） | 同上 | 次の schedule（JST 17:00）から新しいコードで動く。すぐ確かめるなら `mode=daily` を手動で実行（同じ基準日の成功があれば何もしない） |
 | 画面の文言、設定値（`ui-text.ts`、`config.ts`） | 同上 | BI は push でビルドされる。バッチの設定値は次の実行から |
 | マイグレーション（`supabase/migrations`） | PR で入れ、CI の I-DB を通し、merge の後に手順 3 の `db push` を依頼者が実行する（依頼者の確認が要る） | `db push` の後の次のバッチから |
+| 中継（`apps/wp-relay`） | PR で入れ、`wp-relay` ジョブが通ってから main に merge する。公開の入口と認証に触れる変更は security-auditor の監査を受ける。その後、手順 8.5 の「main のチェックアウトからデプロイする」を依頼者が実行する（依頼者の確認が要る） | CLI でデプロイした時点。merge だけでは出ない。バッチの `_fields` やパラメータを変えるときは中継も同時に直す（合わないと 400 で失敗） |
 | 依存（Dependabot の PR） | runbook.md §12 | merge の後 |
 | ワークフロー（`.github/workflows/`） | PR で入れ、security-auditor の監査を受けてから merge する（CLAUDE.md） | merge の後 |
 
@@ -277,6 +455,7 @@ main 以外のブランチからの確認:
 | BI の表示（デプロイ） | Vercel の Deployments で、前の正常な本番デプロイを選び、本番に戻す（Instant Rollback / Promote。Hobby で使える範囲は未確認。§4）。その後、原因のコミットを `git revert` して push する（`push --force` はルールセットで禁止） |
 | BI のビルドの失敗 | 何もしなくても前のデプロイが残る。直した後に `publish_only` で作り直す（runbook.md §3） |
 | バッチのコード | `git revert` して push する。次の実行から戻る。急ぐなら `DAILY_ENABLED=false` で止めてから戻す |
+| 中継のコード | 過去のデプロイへ戻さない（旧トークンが有効に戻りうる）。`git revert` して push し、手順 8.5 で新しくデプロイする |
 | データ（誤った集計が書かれた） | コードを直してから `backfill`（全期間を取り直す。runbook.md §4） |
 | マイグレーション | 戻すためのマイグレーションを PR で入れ、`db push`（手で戻さない） |
 | 秘密が漏れた | runbook.md §9 |
@@ -289,3 +468,5 @@ main 以外のブランチからの確認:
 4. Vercel の Hobby で、前の本番デプロイへ戻す操作（Instant Rollback）がどこまで使えるか。旧デプロイの削除の手順（06 §2.4）を runbook.md §9 に書いたが、画面の操作は未確認。
 5. データが空の本番の Supabase で BI のビルドと `check:build` が通るか（手順 6 の 6）。通らない場合でも手順 9 で解消する見込み。
 6. Vercel のビルドが `packageManager: pnpm@10.6.5` を使うか（corepack の要否）。
+7. 中継（手順 8.5）について未確認のこと: `vercel link` と `vercel deploy --prod` の挙動と CLI の版、`vercel deploy` がアップロードするファイル（`.gitignore` 済みのものを含むか。含むなら `.vercelignore` を足す）、`package.json` や `tests/` の配信の有無、`WP_RELAY_TOKEN` を Sensitive で登録できるか、過去のデプロイの削除の画面操作、関数のリージョンの表示の場所、Vercel の基盤のログの項目と保持期間、hnd1 の出口 IP が日本であり続けるか、Firewall のレート制限と費用の上限や通知、Pro の追加費用の有無。
+8. main に必須のステータスチェックを設けるか（実装監査 L-2。依頼者が決める。設けるまでは手順 8.5 の CI の確認が歯止めになる）。

@@ -1,8 +1,8 @@
 # 06 セキュリティ
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-07
-- 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36（初回対象外）、ADR 0002、ADR 0003、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0009、docs/operations/initial_setup.md
+- 更新日: 2026-11-09
+- 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36（初回対象外）、ADR 0002、ADR 0003、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0009、ADR 0011（レビュー中）、docs/operations/initial_setup.md
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: バッチを Python に（ADR 0004）、書き込みを専用ロール `batch_writer` と接続文字列 `SUPABASE_BATCH_DB_URL` に（ADR 0009）、除外リストの変更を SQL エディタに（ADR 0005）。service role キーを配らない形に変更
@@ -10,6 +10,7 @@
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。§5 を置き換え、§1、§2、§3、§4、§12、§13 の除外リストの記述を外した
   - 2026-11-04: tech-writer の整合確認。Q-12 の確定を反映（§3、§10、§13）。TLS の基準を第 1 に合わせた（§3、§13）
   - 2026-11-07: D-17 を ADR 0010 で確定。§6 の CSP を実装の値にし、§7 に値を文字として描く規則と検索語の扱いを足し、§13 から D-17 を外した
+  - 2026-11-09: §11 に WP REST API の中継（ADR 0011）の項目を足した
 
 ## 1. 守る資産と前提
 
@@ -166,6 +167,13 @@ NFR-45 と security.md「GitHub Actions」をワークフローの形に落と�
 ## 11. 対象サイトへの配慮
 
 - WP REST API は日次バッチだけ、1 秒以上の間隔、差分取得（03 §4）。`User-Agent` に連絡先（リポジトリ URL）を入れる。
+- バッチは WP REST API を日本の IP の中継（`apps/wp-relay`、Vercel の関数、hnd1）経由で読む（ADR 0011。レビュー中）。対象サイトの国外制限は緩めない。中継は経路であり、問い合わせの主体はバッチのまま（NFR-72）。
+  - 認証: 共有トークン `WP_RELAY_TOKEN`。置き場は Environment `production` の Secret と Vercel の Production の環境変数だけ（NFR-44）。接続先 `WP_RELAY_URL` も Environment の Secret に置く。未設定なら全拒否（fail closed）。Deployment Protection を認証の手段にしない。
+  - 入力: メソッドは GET、パスとクエリは許可リストの完全一致（ADR 0011 §2）。転送先は定数で、入力から作らない。ログイン画面、`wp-admin`、`xmlrpc.php` には届かない。
+  - 中継に cron、ヘルスチェック、事前取得、再試行を持たせない。受けた 1 リクエストが WP への最大 1 リクエストになる。
+  - ログは `outcome`、`status`、`duration_ms` だけ。トークン、クエリの値、著者の ID、本文を出さない。Vercel の基盤のログの項目と保持期間は未確認（ADR 0011 §5）。
+  - 手順はコードで強制できないものを含むので、docs/operations/deploy.md 手順 8.5 と runbook.md §8.6、§9.4、§14 に従う（Git 連携なし、プレビューなし、過去のデプロイの削除、ロールバックの禁止）。
+  - §2、§3、§7〜§9、§12、§13 への反映は ADR 0011 の確定のときに行う。
 - 対象サイトと本番 BI に能動的な試験（スキャン、負荷試験）をしない。E2E テストはプレビュー環境と、WP REST API のモックに対して行う（07_test_plan.md、2 回目）。
 - 対象サイトの WordPress を変更する操作はしない。
 
