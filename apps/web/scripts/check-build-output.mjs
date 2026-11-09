@@ -22,6 +22,8 @@ const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const NEXT_DIR = path.join(WEB_ROOT, '.next');
 const STATIC_DIR = path.join(NEXT_DIR, 'static');
 const APP_DIR = path.join(NEXT_DIR, 'server', 'app');
+const ADAPTER_DIR = path.join(NEXT_DIR, 'output', 'functions');
+const FALLBACK_MARK = '.prerender-fallback';
 
 // ブラウザに配信される形の出力（HTML、RSC のデータ、robots.txt などの本文）。
 const SERVED_EXTENSIONS = ['.html', '.rsc', '.body'];
@@ -101,40 +103,23 @@ try {
 }
 
 const staticFiles = listFiles(STATIC_DIR);
-const servedFiles = listFiles(APP_DIR).filter((file) =>
-  SERVED_EXTENSIONS.some((extension) => file.endsWith(extension)),
-);
+// next build の直後は .next/server/app に HTML がある。Vercel のアダプタはこれを
+// .next/output/functions の <ページ>.prerender-fallback.html に移すので、そちらも見る。
+const isServed = (file) => SERVED_EXTENSIONS.some((extension) => file.endsWith(extension));
+const fromApp = listFiles(APP_DIR).filter(isServed);
+const useAdapter = !fromApp.some((file) => file.endsWith('.html')) && existsSync(ADAPTER_DIR);
+const SERVED_ROOT = useAdapter ? ADAPTER_DIR : APP_DIR;
+const servedFiles = useAdapter
+  ? listFiles(ADAPTER_DIR).filter((file) => path.basename(file).includes(FALLBACK_MARK))
+  : fromApp;
 const htmlFiles = servedFiles.filter((file) => file.endsWith('.html'));
 if (staticFiles.length === 0 || htmlFiles.length === 0) {
-  // 原因を追えるよう、個数と拡張子の内訳だけを出す（ファイルの中身と環境変数は出さない）。
-  const extensions = new Map();
-  for (const file of listFiles(APP_DIR)) {
-    const extension = path.extname(file);
-    extensions.set(extension, (extensions.get(extension) ?? 0) + 1);
-  }
-  const whereHtml = {};
-  for (const dir of [
-    path.join(NEXT_DIR, 'output'),
-    path.join(NEXT_DIR, 'adapter'),
-    path.join(WEB_ROOT, '.vercel'),
-    path.join(WEB_ROOT, '..', '..', '.vercel'),
-  ]) {
-    if (!existsSync(dir)) continue;
-    const all = listFiles(dir);
-    const html = all.filter((file) => file.endsWith('.html'));
-    whereHtml[path.relative(WEB_ROOT, dir).replaceAll('\\', '/')] = {
-      files: all.length,
-      html: html.length,
-      top: readdirSync(dir).sort().slice(0, 12),
-      sample: html.slice(0, 4).map((file) => path.relative(dir, file).replaceAll('\\', '/')),
-    };
-  }
-  notReady(
-    `ビルド出力が空。pnpm run build をやり直す。` +
-      ` static=${staticFiles.length} html=${htmlFiles.length}` +
-      ` app の内訳=${JSON.stringify([...extensions])}` +
-      ` HTML の場所=${JSON.stringify(whereHtml)}`,
-  );
+  notReady('ビルド出力が空。pnpm run build をやり直す。');
+}
+
+/** 出力の置き場所によらない、ページのファイル名（index.html、articles/1.html など）。 */
+function pageName(file) {
+  return path.relative(SERVED_ROOT, file).replaceAll('\\', '/').replace(FALLBACK_MARK, '');
 }
 
 const failures = [];
@@ -164,7 +149,7 @@ for (const file of htmlFiles) {
 // 4: どの HTML も同じ時点のデータ（基準日と更新時刻が 1 種類）。
 const statuses = new Map();
 for (const file of htmlFiles) {
-  const name = path.relative(APP_DIR, file).replaceAll('\\', '/');
+  const name = pageName(file);
   const match = DATA_STATUS.exec(readFileSync(file, 'utf8'));
   if (match === null) {
     if (!NO_LAYOUT.includes(name)) fail('DataStatus の文がない', relative(file));
@@ -183,11 +168,9 @@ if (statuses.size > 1) {
 // 5: HTML の大きさ（E-17）。
 const sizeLines = [];
 for (const limit of SIZE_LIMITS) {
-  const targets = htmlFiles.filter((file) =>
-    limit.match(path.relative(APP_DIR, file).replaceAll('\\', '/')),
-  );
+  const targets = htmlFiles.filter((file) => limit.match(pageName(file)));
   if (targets.length === 0) {
-    fail(`${limit.name} の HTML がない`, '.next/server/app');
+    fail(`${limit.name} の HTML がない`, relative(SERVED_ROOT));
     continue;
   }
   const sized = targets.map((file) => ({
