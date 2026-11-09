@@ -106,7 +106,20 @@ const servedFiles = listFiles(APP_DIR).filter((file) =>
 );
 const htmlFiles = servedFiles.filter((file) => file.endsWith('.html'));
 if (staticFiles.length === 0 || htmlFiles.length === 0) {
-  notReady('ビルド出力が空。pnpm run build をやり直す。');
+  // 原因を追えるよう、個数と拡張子の内訳だけを出す（ファイルの中身と環境変数は出さない）。
+  const extensions = new Map();
+  for (const file of listFiles(APP_DIR)) {
+    const extension = path.extname(file);
+    extensions.set(extension, (extensions.get(extension) ?? 0) + 1);
+  }
+  const vercelOutput = path.join(WEB_ROOT, '.vercel', 'output');
+  notReady(
+    `ビルド出力が空。pnpm run build をやり直す。` +
+      ` static=${staticFiles.length} html=${htmlFiles.length}` +
+      ` app の内訳=${JSON.stringify([...extensions])}` +
+      ` .next=${JSON.stringify(readdirSync(NEXT_DIR).sort())}` +
+      ` .vercel/output=${existsSync(vercelOutput)}`,
+  );
 }
 
 const failures = [];
