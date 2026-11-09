@@ -167,9 +167,24 @@ def _masked_rows(
     return rows
 
 
+def _site_days_with_gaps_filled(
+    site: Mapping[date, tuple[int, int]],
+) -> dict[date, tuple[int, int]]:
+    """GA4 は全指標が 0 の日の行を返さないので、途中の抜けを 0 の日として埋める。
+
+    最初と最後の日より外は埋めない。末尾の抜けは GA4 の未確定かもしれず、0 と断定できないため。
+    """
+    if not site:
+        return {}
+    first, last = min(site), max(site)
+    span = (first + timedelta(days=offset) for offset in range((last - first).days + 1))
+    return {day: site.get(day, (0, 0)) for day in span}
+
+
 def _derive_daily(raw: DailyRaw, output: DeriveOutput) -> None:
-    days = sorted(raw.site.keys() | raw.channel.keys() | raw.device_pv.keys())
-    output.site_daily = [(day, *raw.site[day]) for day in sorted(raw.site)]
+    site = _site_days_with_gaps_filled(raw.site)
+    days = sorted(site.keys() | raw.channel.keys() | raw.device_pv.keys())
+    output.site_daily = [(day, *site[day]) for day in sorted(site)]
     for day in days:
         output.site_daily_channel.extend(
             _masked_rows(raw.channel.get(day, Counter()), CHANNEL_BUCKETS, (day,))
@@ -185,7 +200,7 @@ def _derive_daily(raw: DailyRaw, output: DeriveOutput) -> None:
     output.article_daily = [
         (post_id, day, pageviews) for (post_id, day), pageviews in sorted(raw.article.items())
     ]
-    output.article_daily_scope_days = sorted(raw.site)
+    output.article_daily_scope_days = sorted(site)
 
 
 def _merged_article_daily(

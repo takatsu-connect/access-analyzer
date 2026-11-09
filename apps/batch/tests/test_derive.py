@@ -23,6 +23,7 @@ from takatsu_batch.derive import (
     DbRow,
     DeriveOutput,
     _merged_article_daily,
+    _site_days_with_gaps_filled,
     cumulative,
     derive,
     freshness,
@@ -940,6 +941,28 @@ def test_derive_without_posts_still_writes_site_rows() -> None:
     assert result.article_milestone == []
     assert result.author_summary == []
     assert result.sns_source_unmapped == []
+
+
+# --- GA4 が行を返さない日（全指標が 0）---
+
+
+def test_site_days_fills_interior_gaps_with_zero() -> None:
+    site = {date(2025, 11, 3): (1, 1), date(2025, 11, 6): (8, 3)}
+    assert _site_days_with_gaps_filled(site) == {
+        date(2025, 11, 3): (1, 1),
+        date(2025, 11, 4): (0, 0),
+        date(2025, 11, 5): (0, 0),
+        date(2025, 11, 6): (8, 3),
+    }
+
+
+def test_site_days_does_not_extend_past_the_last_returned_day() -> None:
+    site = {date(2026, 11, 6): (10, 5)}
+    assert _site_days_with_gaps_filled(site) == site
+
+
+def test_site_days_empty_stays_empty() -> None:
+    assert _site_days_with_gaps_filled({}) == {}
 
 
 # --- 内部表の値と今回の取得の重ね合わせ ---
