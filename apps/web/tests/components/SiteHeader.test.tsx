@@ -112,7 +112,7 @@ describe('SkipLink', () => {
 describe('SiteFooter と CommonNotes', () => {
   it('フッタは名称と、「この BI について」の閉じた折りたたみ', () => {
     const { container } = render(<SiteFooter />);
-    expect(container.querySelector('footer')?.textContent).toContain('高津コネクト アクセス BI');
+    expect(container.querySelector('footer')?.textContent).toContain('高津コネクト 読まれ方ノート');
     const details = container.querySelector('details');
     expect(details?.hasAttribute('open')).toBe(false);
     expect(details?.querySelector('summary')?.textContent).toBe('この BI について');
