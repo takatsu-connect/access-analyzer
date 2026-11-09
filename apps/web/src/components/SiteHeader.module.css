@@ -3,19 +3,41 @@
   background: var(--color-surface);
 }
 
+/* 題名の帯。画面の端まで色を敷き、文字の左端は .inner の中身にそろえる。 */
+.brand {
+  padding-inline: max(var(--space-4), calc((100% - var(--content-max-width)) / 2 + var(--space-4)));
+  background: var(--color-band);
+}
+
 .inner {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-3) var(--space-4) var(--space-1);
+  padding: 0 var(--space-4);
 }
 
+/* フォーカスの枠が文字に触れないよう左右に padding を持たせ、負の margin で左端を保つ。 */
 .title {
-  display: inline-block;
-  color: var(--color-text);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  margin-inline: calc(var(--space-2) * -1);
+  padding-inline: var(--space-2);
+  color: var(--color-on-band);
   font-size: var(--font-size-lg);
   font-weight: 700;
   line-height: var(--line-height-tight);
   text-decoration: none;
+}
+
+.title:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* 帯の上では既定の枠（--shade-5）が見えないので、色を替えて内側に描く。 */
+.title:focus-visible {
+  outline-color: var(--color-on-band);
+  outline-offset: -2px;
 }
 
 .list,
@@ -23,7 +45,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0 var(--space-1);
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -58,6 +80,17 @@
 .subLink[aria-current] {
   border-bottom-color: var(--shade-5);
   font-weight: 700;
+}
+
+/* 主タブの現在地には地も敷く（期間の選択と同じ段）。サブナビは一段弱く、太字と線だけ。 */
+.link[aria-current] {
+  background: var(--color-tab-current);
+}
+
+/* 帯に接するタブで枠が消えないよう、内側に描く。 */
+.link:focus-visible,
+.subLink:focus-visible {
+  outline-offset: -2px;
 }
 
 /*

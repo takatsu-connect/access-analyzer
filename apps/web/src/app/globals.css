@@ -26,6 +26,11 @@
   --shade-4: #3074b8;
   --shade-5: #1a4c8b;
 
+  /* ヘッダの題名の帯と、現在のタブの地（レビュー 2026-11-10-header） */
+  --color-band: var(--shade-5);
+  --color-on-band: var(--color-surface);
+  --color-tab-current: var(--shade-1);
+
   /* 間隔 */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -74,6 +79,10 @@
     --shade-3: #2d69ab;
     --shade-4: #5697dc;
     --shade-5: #a3cbf5;
+
+    --color-band: var(--shade-2);
+    --color-on-band: var(--color-text);
+    --color-tab-current: var(--shade-2);
   }
 }
 

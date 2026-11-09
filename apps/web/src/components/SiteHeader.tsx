@@ -84,10 +84,12 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
 
   return (
     <header className={styles.header}>
-      <div className={styles.inner}>
+      <div className={styles.brand}>
         <Link href="/" prefetch={false} className={styles.title}>
           {t('site.title')}
         </Link>
+      </div>
+      <div className={styles.inner}>
         <nav aria-label={t('nav.aria')}>
           <ul className={styles.list}>
             {NAV_ITEMS.map((item) => {
