@@ -112,13 +112,28 @@ if (staticFiles.length === 0 || htmlFiles.length === 0) {
     const extension = path.extname(file);
     extensions.set(extension, (extensions.get(extension) ?? 0) + 1);
   }
-  const vercelOutput = path.join(WEB_ROOT, '.vercel', 'output');
+  const whereHtml = {};
+  for (const dir of [
+    path.join(NEXT_DIR, 'output'),
+    path.join(NEXT_DIR, 'adapter'),
+    path.join(WEB_ROOT, '.vercel'),
+    path.join(WEB_ROOT, '..', '..', '.vercel'),
+  ]) {
+    if (!existsSync(dir)) continue;
+    const all = listFiles(dir);
+    const html = all.filter((file) => file.endsWith('.html'));
+    whereHtml[path.relative(WEB_ROOT, dir).replaceAll('\\', '/')] = {
+      files: all.length,
+      html: html.length,
+      top: readdirSync(dir).sort().slice(0, 12),
+      sample: html.slice(0, 4).map((file) => path.relative(dir, file).replaceAll('\\', '/')),
+    };
+  }
   notReady(
     `ビルド出力が空。pnpm run build をやり直す。` +
       ` static=${staticFiles.length} html=${htmlFiles.length}` +
       ` app の内訳=${JSON.stringify([...extensions])}` +
-      ` .next=${JSON.stringify(readdirSync(NEXT_DIR).sort())}` +
-      ` .vercel/output=${existsSync(vercelOutput)}`,
+      ` HTML の場所=${JSON.stringify(whereHtml)}`,
   );
 }
 
