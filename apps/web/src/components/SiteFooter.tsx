@@ -4,7 +4,7 @@ import { Details } from './Details';
 import styles from './SiteFooter.module.css';
 
 /**
- * 全ページ共通のフッタ（05 §2.7）。名称と、「この BI について」の折りたたみ
+ * 全ページ共通のフッタ（05 §2.7）。名称と、「読まれ方ノートについて」の折りたたみ
  * （データの出所、更新、問い合わせ先）。
  */
 export function SiteFooter() {

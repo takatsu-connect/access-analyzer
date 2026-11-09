@@ -114,7 +114,7 @@ const baseDictionary = {
   'nav.aria': 'ページの移動',
   'nav.articles.aria': '記事のページ',
   'skip.toMain': '本文へ移動',
-  'footer.about': 'この BI について',
+  'footer.about': '読まれ方ノートについて',
   'footer.about.source':
     '数字は Google アナリティクス（GA4）と、高津コネクトが公開している記事の情報から作っています。',
   'footer.about.update': '毎日 1 回、自動で更新します。',
