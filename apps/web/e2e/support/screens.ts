@@ -28,35 +28,79 @@ export type Screen = {
   status: 200 | 404;
   /** h1 の文言（05 §1 の「問い」）。 */
   h1: string;
+  /** ページの title（05 §2.7。「{画面の名前} | サイトの名前」、トップと 404 はサイトの名前だけ）。 */
+  title: string;
 };
 
-function screen(id: string, path: string, h1: string, status: 200 | 404 = 200): Screen {
-  return { id, path, status, h1 };
+function screen(
+  id: string,
+  path: string,
+  h1: string,
+  title: string,
+  status: 200 | 404 = 200,
+): Screen {
+  return { id, path, status, h1, title };
+}
+
+/** 05 §2.7 の形の title。name がなければサイトの名前だけ。 */
+function pageTitle(name?: string): string {
+  return name === undefined ? t('site.title') : `${name} | ${t('site.title')}`;
 }
 
 /** 全画面（S-01〜S-08 と 404）。記事詳細は 3 種、著者とタグは HTML の形の名前を持つものも含む。 */
 export const SCREENS: readonly Screen[] = [
-  screen('S-01', '/', t('s01.h1')),
-  screen('S-02e', '/articles', t('s02e.h1')),
-  screen('S-02a', '/articles/top', t('s02a.h1')),
-  screen('S-02b', '/articles/new', t('s02b.h1')),
-  screen('S-02c', '/articles/long', t('s02c.h1')),
-  screen('S-02d', '/articles/recent', t('s02d.h1')),
-  screen('S-03（通常）', '/articles/111', t('s03.h1')),
-  screen('S-03（30 日未満）', '/articles/101', t('s03.h1')),
-  screen('S-03（数え始める前）', '/articles/107', t('s03.h1')),
-  screen('S-03（題名が HTML の形）', '/articles/102', t('s03.h1')),
-  screen('S-04', '/authors', t('s04.h1')),
-  screen('S-05', '/authors/author-a', t('s05.h1', { name: '架空 一郎' })),
-  screen('S-05（期間内の公開なし）', '/authors/author-c', t('s05.h1', { name: '架空 三太' })),
-  screen('S-05（名前が HTML の形）', '/authors/author-d', t('s05.h1', { name: HTML_LIKE.author })),
-  screen('S-06', '/categories', t('s06.h1')),
-  screen('S-06b', '/categories/seasonal', t('s06b.h1')),
-  screen('S-07', '/tags', t('s07.h1')),
-  screen('S-07b', '/tags/51', t('s07b.h1', { name: '散歩' })),
-  screen('S-07b（名前が javascript:）', '/tags/52', t('s07b.h1', { name: HTML_LIKE.tag })),
-  screen('S-08', '/activity', t('s08.h1')),
-  screen('404', '/no-such-page', t('notFound.h1'), 404),
+  screen('S-01', '/', t('s01.h1'), pageTitle()),
+  screen('S-02e', '/articles', t('s02e.h1'), pageTitle(t('s02e.name'))),
+  screen('S-02a', '/articles/top', t('s02a.h1'), pageTitle(t('s02a.name'))),
+  screen('S-02b', '/articles/new', t('s02b.h1'), pageTitle(t('s02b.name'))),
+  screen('S-02c', '/articles/long', t('s02c.h1'), pageTitle(t('s02c.name'))),
+  screen('S-02d', '/articles/recent', t('s02d.h1'), pageTitle(t('s02d.name'))),
+  // 記事詳細の title は記事の題名（画面の名前の代わり）。
+  screen('S-03（通常）', '/articles/111', t('s03.h1'), pageTitle('架空の記事 111 地域の防災訓練')),
+  screen(
+    'S-03（30 日未満）',
+    '/articles/101',
+    t('s03.h1'),
+    pageTitle('架空の記事 101 商店街の朝市だより'),
+  ),
+  screen(
+    'S-03（数え始める前）',
+    '/articles/107',
+    t('s03.h1'),
+    pageTitle('架空の記事 107 昔の地図を歩く'),
+  ),
+  screen('S-03（題名が HTML の形）', '/articles/102', t('s03.h1'), pageTitle(HTML_LIKE.title)),
+  screen('S-04', '/authors', t('s04.h1'), pageTitle(t('s04.h1'))),
+  screen(
+    'S-05',
+    '/authors/author-a',
+    t('s05.h1', { name: '架空 一郎' }),
+    pageTitle(t('s05.title', { name: '架空 一郎' })),
+  ),
+  screen(
+    'S-05（期間内の公開なし）',
+    '/authors/author-c',
+    t('s05.h1', { name: '架空 三太' }),
+    pageTitle(t('s05.title', { name: '架空 三太' })),
+  ),
+  screen(
+    'S-05（名前が HTML の形）',
+    '/authors/author-d',
+    t('s05.h1', { name: HTML_LIKE.author }),
+    pageTitle(t('s05.title', { name: HTML_LIKE.author })),
+  ),
+  screen('S-06', '/categories', t('s06.h1'), pageTitle(t('s06.name'))),
+  screen('S-06b', '/categories/seasonal', t('s06b.h1'), pageTitle(t('s06b.name'))),
+  screen('S-07', '/tags', t('s07.h1'), pageTitle(t('s07.name'))),
+  screen('S-07b', '/tags/51', t('s07b.h1', { name: '散歩' }), pageTitle(t('s07b.name'))),
+  screen(
+    'S-07b（名前が javascript:）',
+    '/tags/52',
+    t('s07b.h1', { name: HTML_LIKE.tag }),
+    pageTitle(t('s07b.name')),
+  ),
+  screen('S-08', '/activity', t('s08.h1'), pageTitle(t('s08.name'))),
+  screen('404', '/no-such-page', t('notFound.h1'), pageTitle(), 404),
 ];
 
 /** 横スクロールを許す画面（S-06b の格子だけ。05 §7.2）。 */

@@ -47,6 +47,17 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     }
   });
 
+  test('E-05: 全画面（404 を含む）の title が 05 §2.7 の形（トップと 404 はサイトの名前だけ）', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    // layout の title.template は同じ階層の page（トップ）に効かない。画面ごとに実物の title を見る。
+    for (const screen of SCREENS) {
+      await page.goto(screen.path);
+      await expect.soft(page, `${screen.id} の title`).toHaveTitle(screen.title);
+    }
+  });
+
   test('E-05: ナビゲーションが 6 項目で、順位表・設定・ログイン・反応の項目がない', async ({
     page,
   }) => {
