@@ -1,7 +1,7 @@
 # ADR 0010: CSP の `script-src`（静的生成のインラインスクリプト）
 
 - 状態: 確定（2026-11-07。security-auditor は条件つきで認め、依頼者が確認 1〜4 に回答した）
-- 更新日: 2026-11-07
+- 更新日: 2026-11-09
 - 関係: NFR-91、06_security.md §6・§13（D-17）、ADR 0006（静的生成）、ADR 0008「結果」（`style-src` は確定、`script-src` は実装時に決める）、07_test_plan.md E-01・S-11
 - 監査: docs/security/audits/2026-11-05-csp-script-src.md（条件つきで認める。致命的 0、高 1、中 4、低 4）
 - 変更履歴:
@@ -80,7 +80,7 @@
   4. CSP に `object-src 'none'` を足す。ほかの値（`default-src 'self'`、`connect-src 'self'`、`img-src 'self' data:`、`form-action 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`style-src 'self'`）は変えない。`'unsafe-inline'` が現れるのは `script-src` の 1 か所だけにし、`'unsafe-eval'`、`data:`、`blob:`、`https:`、`*` を `script-src` に入れない。
   5. E2E（E-01）で、画面の種類ごとに、CSP の指示の集合が期待値と完全に一致すること、CSP 違反が 0 件であること、インラインの script が Next.js の出す形（チャンクの登録と `self.__next_f`）だけであること、`on*` の属性と `javascript:` の URL がないことを確かめる。HTML として解釈されうる文字列（`<img src=x onerror=…>` と、そのエンティティの形）を題名や名前に持つフィクスチャを入れ、文字として描かれることを確かめる。
   6. JSX の外の出口を lint で禁止する: `innerHTML`、`outerHTML`、`insertAdjacentHTML`、`srcdoc`、`setHTMLUnsafe`、`createContextualFragment`、`document.write`、`document.writeln`、`eval`、`new Function`、文字列を渡す `setTimeout`。あわせて、規則を素通りする書き方を禁止する（2026-11-06）: DOM 要素への props のスプレッド、オブジェクトに書いた `dangerouslySetInnerHTML`、`createElement` と `cloneElement`（import も）、`setAttribute` の全般、`location.assign`、`location.replace`、`window.open`、`href` への代入。規則ごとに「落ちるべき書き方」を `apps/web/tests/lint/eslint-config.test.ts` で確かめる。
-  7. lint の無効化コメント（`eslint-disable`）を使えなくする（`noInlineConfig`）。lint、E2E、下の 8 のビルド後の検査を、CI の必須チェックにする（デプロイ工程）。ビルド後の検査は日次の本番ビルドでも走らせ、失敗したらビルドを失敗させる（前日の版が残る）。
+  7. lint の無効化コメント（`eslint-disable`）を使えなくする（`noInlineConfig`）。lint、E2E、下の 8 のビルド後の検査は、push ごとに CI で実行する。main の必須チェックにはしない（2026-11-09 に依頼者が決定。監査 2026-11-09-pre-launch の M-1 への回答）。理由: 書き込むのは依頼者と Claude Code だけで main に直接 push する運用であり、必須にすると変更のたびに PR が要る。受け入れるリスク: 検査に失敗したコミットも main に入り、lint と E2E の失敗では本番の更新は止まらない。第三者が入れる経路ではなく、書き込み権限を持つ側の誤りの話である。補う手段: CI の失敗に気づいたら直ちに直す。ビルド後の検査は Vercel の Build Command（`pnpm run build && pnpm run check:build`）で本番ビルドでも走らせ、失敗したらビルドを失敗させる（前日の版が残る）。運用が複数人になったら必須チェックに見直す。
   8. `script-src-attr 'none'`（イベントハンドラの属性の実行を止める指示）を実機で試し、成り立てば足す。成り立たなければ、その結果をこの ADR に記録する。途中経過（2026-11-05）: 仮の 1 画面では、`script-src-attr 'none'` と `object-src 'none'` を足しても CSP 違反は 0 件で、操作も効いた。`next.config.ts` に入れてある。全種類の画面での確認は E2E（上の 5）で行う。結果（2026-11-06）: 全 21 画面で CSP 違反 0 件、onclick 属性のハンドラが動かず違反が出ることを Chromium で確認した。WebKit だけ、期間の選択（select）で `style-src-attr` の違反が 1 件出る（操作は効く。原因と実機の Safari で出るかは未確認。E2E は fixme）。
 - 見直す条件（どれかに当たれば、案 A のままにしない）:
   - ログイン、Cookie、ブラウザに渡る秘密を足すとき。
