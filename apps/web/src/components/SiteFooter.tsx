@@ -10,8 +10,9 @@ import { SiteIcon } from './SiteIcon';
 /**
  * 全ページ共通のフッタ（05 §2.7）。名称と、「読まれ方ノートについて」の折りたたみ
  * （データの出所、更新、問い合わせ先）と、小さな字の制作者のリンク（ADR 0012）。
+ * BI 自身の閲覧を計測しているときは、そのことを折りたたみの中に書く（FR-77、ADR 0013）。
  */
-export function SiteFooter() {
+export function SiteFooter({ analyticsEnabled = false }: { analyticsEnabled?: boolean }) {
   return (
     <footer className={styles.footer}>
       <div className={styles.inner}>
@@ -22,6 +23,7 @@ export function SiteFooter() {
         <Details summary={t('footer.about')}>
           <p className={styles.line}>{t('footer.about.source')}</p>
           <p className={styles.line}>{t('footer.about.update')}</p>
+          {analyticsEnabled && <p className={styles.line}>{t('footer.about.analytics')}</p>}
           <p className={styles.line}>{t('footer.about.contact')}</p>
         </Details>
         <p className={styles.credit}>

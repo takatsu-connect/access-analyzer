@@ -3,10 +3,13 @@ import type { ReactNode } from 'react';
 
 import { CommonNotes } from '@/components/CommonNotes';
 import { DataStatus } from '@/components/DataStatus';
+import { GaPageView } from '@/components/GaPageView';
+import { GaScript } from '@/components/GaScript';
 import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SkipLink } from '@/components/SkipLink';
 import { getEventArticleIds, getPageMeta } from '@/data';
+import { measurementIdFromEnv } from '@/lib/analytics';
 import { t } from '@/lib/ui-text';
 
 import './globals.css';
@@ -33,9 +36,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const { baseDate, finishedAt, isStale, measureStart } = await getPageMeta();
   // 記事詳細のヘッダの現在地（主な種類がイベントの記事は「イベント記事」）。ビルド時のデータで決める。
   const eventArticleIds = await getEventArticleIds();
+  // BI 自身の閲覧の計測（FR-77、ADR 0013）。測定 ID がなければ何も出さない。
+  const measurementId = measurementIdFromEnv();
   return (
     <html lang="ja">
       <body>
+        {measurementId !== null && (
+          <>
+            <GaScript measurementId={measurementId} />
+            <GaPageView measurementId={measurementId} />
+          </>
+        )}
         <SkipLink targetId={MAIN_ID} />
         <SiteHeader eventArticleIds={eventArticleIds} />
         <div className={styles.beforeMain}>
@@ -47,7 +58,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <div className={styles.afterMain}>
           <CommonNotes measureStart={measureStart} />
         </div>
-        <SiteFooter />
+        <SiteFooter analyticsEnabled={measurementId !== null} />
       </body>
     </html>
   );

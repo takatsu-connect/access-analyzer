@@ -306,6 +306,19 @@ describe('eslint.config.mjs（ADR 0010 の歯止め）', () => {
   );
 
   it(
+    'script 要素を描けるのは gtag.js の部品だけで、その部品も a は描けない（ADR 0013）',
+    async () => {
+      const script = 'export const View = ({ url }: { url: string }) => <script src={url} />;\n';
+      expect(await ruleIds(script, 'src/components/GaScript.tsx')).not.toContain(
+        'react/forbid-elements',
+      );
+      const link = 'export const View = ({ url }: { url: string }) => <a href={url} />;\n';
+      expect(await ruleIds(link, 'src/components/GaScript.tsx')).toContain('react/forbid-elements');
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
     'a 要素を描けるのは、リンク先を検証する部品だけ',
     async () => {
       const code = 'export const View = ({ url }: { url: string }) => <a href={url} />;\n';

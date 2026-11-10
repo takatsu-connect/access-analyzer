@@ -1,7 +1,7 @@
 # 06 セキュリティ
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-09
+- 更新日: 2026-11-10
 - 参照: .claude/rules/security.md（原本）、NFR-20〜NFR-22、NFR-30〜NFR-45、NFR-91、FR-36（初回対象外）、ADR 0002、ADR 0003、ADR 0004、ADR 0005（保留）、ADR 0006、ADR 0009、ADR 0011（レビュー中）、docs/operations/initial_setup.md
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
@@ -11,6 +11,7 @@
   - 2026-11-04: tech-writer の整合確認。Q-12 の確定を反映（§3、§10、§13）。TLS の基準を第 1 に合わせた（§3、§13）
   - 2026-11-07: D-17 を ADR 0010 で確定。§6 の CSP を実装の値にし、§7 に値を文字として描く規則と検索語の扱いを足し、§13 から D-17 を外した
   - 2026-11-09: §11 に WP REST API の中継（ADR 0011）の項目を足した
+  - 2026-11-10: §6 の CSP に、BI 自身の閲覧の計測（GA4、ADR 0013）のときだけ足す送り先を書いた
 
 ## 1. 守る資産と前提
 
@@ -114,7 +115,7 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 
 | ヘッダ | 値 | 備考 |
 | --- | --- | --- |
-| Content-Security-Policy | `default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'` | 外部スクリプト・外部接続なし（Supabase にはブラウザから接続しない）。`style-src` は `'self'`（2026-11-03、ADR 0008。React の `style` prop を lint で禁止する。07 §7 S-03）。`script-src` の `'unsafe-inline'` は、App Router の静的生成が出すインラインの script のため（2026-11-07、ADR 0010 で確定。nonce は静的生成と両立せず、hash は配り方が未確認）。かわりに、`script-src-attr 'none'` でイベントハンドラの属性を止め、値を HTML として描く書き方を lint で禁止し（無効化コメントも不可）、E2E で CSP の指示の集合の完全一致、インラインの script の形、HTML の形の文字列が文字として出ることを確かめる（ADR 0010 の 1〜8）。第三者のスクリプト（Vercel の Web Analytics、Speed Insights、Toolbar を含む）は足さない |
+| Content-Security-Policy | `default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-attr 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'` | 外部スクリプト・外部接続なし（Supabase にはブラウザから接続しない）。`style-src` は `'self'`（2026-11-03、ADR 0008。React の `style` prop を lint で禁止する。07 §7 S-03）。`script-src` の `'unsafe-inline'` は、App Router の静的生成が出すインラインの script のため（2026-11-07、ADR 0010 で確定。nonce は静的生成と両立せず、hash は配り方が未確認）。かわりに、`script-src-attr 'none'` でイベントハンドラの属性を止め、値を HTML として描く書き方を lint で禁止し（無効化コメントも不可）、E2E で CSP の指示の集合の完全一致、インラインの script の形、HTML の形の文字列が文字として出ることを確かめる（ADR 0010 の 1〜8）。第三者のスクリプト（Vercel の Web Analytics、Speed Insights、Toolbar を含む）は足さない。例外は BI 自身の閲覧の計測（GA4、FR-77、ADR 0013）で、本番で `BI_GA4_MEASUREMENT_ID` があるときだけ、`script-src` に `https://www.googletagmanager.com`、`img-src` に同じものと `https://*.google-analytics.com`、`connect-src` にそれらと `https://*.google.com` を足す（値は `apps/web/src/lib/csp.ts`） |
 | X-Content-Type-Options | `nosniff` | |
 | Referrer-Policy | `strict-origin-when-cross-origin` | takatsu-connect.com への遷移で BI の URL パスを送らない |
 | X-Frame-Options | `DENY` | CSP の frame-ancestors と二重 |

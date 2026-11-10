@@ -217,4 +217,18 @@ export default defineConfig([
       ],
     },
   },
+  {
+    name: 'access-analyzer/ga-script',
+    // gtag.js の script 要素を描く、ただ 1 つの部品（ADR 0013）。src は検査済みの測定 ID から作る固定の URL。
+    files: ['src/components/GaScript.tsx'],
+    rules: {
+      'react/forbid-elements': ['error', { forbid: ['a', 'iframe', 'object', 'embed', 'base'] }],
+    },
+  },
+  {
+    name: 'access-analyzer/ga-page-view',
+    // gtag.js は dataLayer に積まれた arguments オブジェクトだけを命令として読む（配列では動かない）。
+    files: ['src/components/GaPageView.tsx'],
+    rules: { 'prefer-rest-params': 'off' },
+  },
 ]);

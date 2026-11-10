@@ -1,26 +1,11 @@
 import type { NextConfig } from 'next';
 
-// 応答ヘッダ（docs/design/06_security.md §6、NFR-91）。CSP の値はこの定数だけに書く。
-//
-// script-src の 'unsafe-inline' は ADR 0010 の判断（2026-11-07 に確定）。App Router の
-// 静的生成は HTML にインラインの script（RSC のデータ）を出し、'self' だけではハイドレーションが
-// 止まるため（e2e/csp.spec.ts で確認）。かわりに、値を HTML として描く出口を lint で塞ぐ
-// （eslint.config.mjs）。'unsafe-inline' を許すのは script-src だけで、'unsafe-eval' は足さない。
-// script-src-attr 'none' は、イベントハンドラの属性（onerror= など）の実行を止める。
-// style-src は 'self' に確定済み（ADR 0008）。
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "script-src-attr 'none'",
-  "style-src 'self'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'none'",
-].join('; ');
+import { measurementIdFromEnv } from './src/lib/analytics';
+import { buildContentSecurityPolicy } from './src/lib/csp';
+
+// 応答ヘッダ（docs/design/06_security.md §6、NFR-91）。CSP の値は src/lib/csp.ts だけに書く。
+// GA4 の測定 ID（BI_GA4_MEASUREMENT_ID）があるときだけ、Google の送り先を足す（ADR 0013）。
+const CONTENT_SECURITY_POLICY = buildContentSecurityPolicy(measurementIdFromEnv() !== null);
 
 const SECURITY_HEADERS = [
   { key: 'Content-Security-Policy', value: CONTENT_SECURITY_POLICY },

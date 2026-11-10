@@ -121,6 +121,8 @@ const baseDictionary = {
   'footer.about.source':
     '数字は Google アナリティクス（GA4）と、高津コネクトが公開している記事の情報から作っています。',
   'footer.about.update': '毎日 1 回、自動で更新します。',
+  'footer.about.analytics':
+    'この画面がどのくらい見られているかを知るため、Google アナリティクスを使っています。Cookie を使いますが、名前やメールアドレスなど、見ている人が誰かが分かる情報は集めません。',
   'footer.about.contact': 'お問い合わせは、高津コネクトの運営までお願いします。',
   'footer.credit': '制作',
   'footer.credit.link': 'Small Piece',
