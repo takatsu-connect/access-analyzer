@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Heatmap } from '@/components/charts';
 import type { HeatmapCell, HeatmapProps } from '@/components/charts';
-import { heatLevels } from '@/components/charts/heat-levels';
+import { heatLevels, heatLevelsAgainst } from '@/components/charts/heat-levels';
 import type { Masked } from '@/lib/page-data';
 
 import { expectChartBasics, parts } from './helpers';
@@ -40,6 +40,17 @@ function fixedRow(container: HTMLElement): string {
 }
 
 describe('heatLevels', () => {
+  it('heatLevelsAgainst: 格子の外の値を、マス全体と同じ基準で段階にする。端の外は 1 と 5', () => {
+    // マスの値と同じなら、マスと同じ段階。
+    expect(heatLevelsAgainst(VALUES, [0, 5, 10, 20, 40])).toEqual([1, 2, 3, 4, 5]);
+    // いちばん小さいマスより小さければ 1、いちばん大きいマスより大きければ 5。伏せ値は null。
+    expect(heatLevelsAgainst(VALUES, [-1, 100, null])).toEqual([1, 5, null]);
+    // 間の値は、それより小さいマスの数で決まる（7 は 0 と 5 の 2 つ → 3）。
+    expect(heatLevelsAgainst(VALUES, [7])).toEqual([3]);
+    // マスが伏せ値だけなら、段階は付けない。
+    expect(heatLevelsAgainst([[null, null]], [3])).toEqual([null]);
+  });
+
   it('伏せ値を除いた値の分位で 5 段階に分ける。最小は 1、最大は 5', () => {
     expect(heatLevels(VALUES)).toEqual([
       [1, 2, 3],
@@ -250,14 +261,20 @@ describe('Heatmap（U-24）', () => {
       expect(parts(container, 'mean-row-label')).toHaveLength(0);
     });
 
-    it('右端に行の数、下端に列の数の平均のマスを足し、角は空ける。濃淡は付けない', () => {
+    it('右端に行の数、下端に列の数の平均のマスを足し、角は空ける。濃淡はマスと同じ基準', () => {
       const { container } = render(<Heatmap {...withMeans()} />);
       const means = parts(container, 'mean-cell');
       expect(means).toHaveLength(2 + 3);
-      for (const node of means) {
-        expect(node.getAttribute('class')).not.toMatch(/shade\d/);
-        expect(node.hasAttribute('data-level')).toBe(false);
-      }
+      // マスは [0, 5, 10, 20, 40]（伏せ値を除く）。平均 5 はマスの 5 と同じ段階 2、10 は 3。
+      // 25 はそれより小さいマスが 4 つで、いちばん大きい 40 と同じ段階 5。伏せ値の平均は濃淡なし。
+      expect(means.map((node) => node.getAttribute('data-level'))).toEqual([
+        '2',
+        'masked',
+        '3',
+        'masked',
+        '5',
+      ]);
+      expect(means[0]?.getAttribute('class')).toContain('shade2');
       // 格子のマスは 6 つのまま。
       expect(parts(container, 'cell')).toHaveLength(6);
       expect(parts(container, 'mean-col-label')[0]?.textContent).toBe('平均');
@@ -271,11 +288,31 @@ describe('Heatmap（U-24）', () => {
       expect(parts(container, 'masked-mark')).toHaveLength(1 + 2);
     });
 
+    it('平均の列と行は、マスから少し離して置く', () => {
+      const { container } = render(<Heatmap {...withMeans()} />);
+      const xOf = (node: Element | undefined): number => parseFloat(node?.getAttribute('x') ?? '');
+      const widthOf = (node: Element | undefined): number =>
+        parseFloat(node?.getAttribute('width') ?? '');
+      const yOf = (node: Element | undefined): number => Number(node?.getAttribute('y'));
+      const lastCell = cell(container, 1, 2);
+      const rowMean = parts(container, 'mean-cell').find(
+        (node) => node.getAttribute('data-kind') === 'rowMean',
+      );
+      const colMean = parts(container, 'mean-cell').find(
+        (node) => node.getAttribute('data-kind') === 'colMean',
+      );
+      // 右端の列は、最後のマスの右端より右から始まる。
+      expect(xOf(rowMean)).toBeGreaterThan(xOf(lastCell) + widthOf(lastCell));
+      // 下端の行は、最後の行の下端（y + 28）より下から始まる。
+      expect(yOf(colMean)).toBeGreaterThan(yOf(lastCell) + 28);
+    });
+
     it('平均の濃淡の段階は、格子のマスだけで決まる（平均を渡しても変わらない）', () => {
       const levelsOf = (container: HTMLElement): string[] =>
         parts(container, 'cell').map((item) => item.getAttribute('data-level') ?? '');
       const plain = render(<Heatmap {...props()} />);
       const before = levelsOf(plain.container);
+      // 平均を足しても、マスの段階は変わらない（平均は分位の母集団に入れない）。
       plain.unmount();
       expect(levelsOf(render(<Heatmap {...withMeans()} />).container)).toEqual(before);
     });

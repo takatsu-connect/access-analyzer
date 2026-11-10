@@ -306,9 +306,9 @@ test.describe('表の決まり（E-07〜E-10、E-15）', () => {
     expect(await maskedShapes(page)).toHaveLength(1);
     expect((await maskedShapes(page))[0]).toMatch(new RegExp(`\\|${MASKED_TEXT}$`));
     // 曜日 × 時間帯も 2 マス（一次と二次）。
-    await expect(page.locator('[data-part="heatmap-wide"] rect[data-level="masked"]')).toHaveCount(
-      2,
-    );
+    await expect(
+      page.locator('[data-part="heatmap-wide"] rect[data-part="cell"][data-level="masked"]'),
+    ).toHaveCount(2);
     // 図の中の伏せ値も同じ文言。
     const chartMasked = await page
       .locator('svg text[data-part="masked"]')

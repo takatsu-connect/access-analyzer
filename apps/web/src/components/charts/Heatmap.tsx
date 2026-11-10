@@ -7,7 +7,7 @@ import { formatNumber } from '@/lib/format';
 import { t } from '@/lib/ui-text';
 
 import { percent, round2 } from './geometry';
-import { heatLevels } from './heat-levels';
+import { heatLevels, heatLevelsAgainst } from './heat-levels';
 import type { HeatLevel } from './heat-levels';
 import styles from './Heatmap.module.css';
 import type { HeatmapCell, HeatmapProps } from './types';
@@ -16,6 +16,10 @@ import type { HeatmapCell, HeatmapProps } from './types';
 const HEADER_HEIGHT = 18;
 const CELL_HEIGHT = 28;
 const HEADER_BASELINE = 12;
+// 平均の行の前の隙間（px）。Heatmap.module.css の --heatmap-mean-gap と同じ値にする。
+const MEAN_GAP = 8;
+// 平均の列の前の隙間（列の幅に対する割合）。列の幅は画面の幅で変わるので割合で持つ。
+const MEAN_GAP_COLS = 0.3;
 const LEVELS: readonly HeatLevel[] = [1, 2, 3, 4, 5];
 const SWATCH_SIZE = 12;
 
@@ -110,10 +114,25 @@ export function Heatmap({
 
   const levels = heatLevels(values, scale);
   const hasMasked = values.some((cells) => cells.some((value) => value === null));
-  const cellWidth = 100 / totalCols;
-  const leftOf = (col: number): number => round2(col * cellWidth);
-  const centerOf = (col: number): number => round2((col + 0.5) * cellWidth);
-  const topOf = (row: number): number => HEADER_HEIGHT + row * CELL_HEIGHT;
+  // 平均の列・行は、濃淡の段階をマスと同じ基準（マス全体の分位）で付ける。
+  const rowMeanLevels = rowMeans === undefined ? [] : heatLevelsAgainst(values, rowMeans.values);
+  const colMeanLevels = colMeans === undefined ? [] : heatLevelsAgainst(values, colMeans.values);
+  const levelAt = (position: Position): HeatLevel | null => {
+    const kind = kindOf(position);
+    if (kind === 'rowMean') return rowMeanLevels[position.row] ?? null;
+    if (kind === 'colMean') return colMeanLevels[position.col] ?? null;
+    return levels[position.row]?.[position.col] ?? null;
+  };
+  // 平均の列と行は、マスとの境目が分かるよう少し離す。
+  const colGap = rowMeans === undefined ? 0 : MEAN_GAP_COLS;
+  const cellWidth = 100 / (totalCols + colGap);
+  const colStart = (col: number): number => (col >= colCount ? col + colGap : col);
+  const leftOf = (col: number): number => round2(colStart(col) * cellWidth);
+  const centerOf = (col: number): number => round2((colStart(col) + 0.5) * cellWidth);
+  const topOf = (row: number): number =>
+    HEADER_HEIGHT + row * CELL_HEIGHT + (row >= rowCount ? MEAN_GAP : 0);
+  const plotHeight =
+    HEADER_HEIGHT + totalRows * CELL_HEIGHT + (colMeans === undefined ? 0 : MEAN_GAP);
 
   const currentKind = kindOf(current);
   const currentCell: HeatmapCell = {
@@ -142,13 +161,16 @@ export function Heatmap({
     if (inRange(next)) setSelected(next);
   };
 
-  /** 平均のマス（濃淡なし、数字は常に出す）。 */
+  /** 平均のマス（マスと同じ基準の濃淡。数字は狭い画面でも出す）。 */
   const meanCell = (position: Position, key: string) => {
     const value = valueAt(position);
+    const level = levelAt(position);
+    const levelClass = level === null ? styles.masked : LEVEL_CLASS[level];
     return (
       <g key={key}>
         <rect
-          className={`${styles.cell} ${styles.mean}`}
+          className={`${styles.cell} ${levelClass}`}
+          data-level={level ?? 'masked'}
           data-part="mean-cell"
           data-kind={kindOf(position)}
           data-row={position.row}
@@ -160,7 +182,11 @@ export function Heatmap({
           onClick={() => setSelected(position)}
         />
         <text
-          className={value === null ? styles.maskedMark : styles.meanValue}
+          className={
+            value === null
+              ? styles.maskedMark
+              : `${styles.meanValue} ${level !== null && level >= 4 ? styles.onStrong : styles.onWeak}`
+          }
           data-part={value === null ? 'masked-mark' : 'mean-value'}
           x={percent(centerOf(position.col))}
           y={topOf(position.row) + CELL_HEIGHT / 2}
@@ -183,7 +209,10 @@ export function Heatmap({
             </span>
           ))}
           {colMeans === undefined ? null : (
-            <span className={`${styles.rowLabel} ${styles.meanLabel}`} data-part="mean-row-label">
+            <span
+              className={`${styles.rowLabel} ${styles.meanLabel} ${styles.meanRowLabel}`}
+              data-part="mean-row-label"
+            >
               {colMeans.label}
             </span>
           )}
@@ -196,7 +225,7 @@ export function Heatmap({
           aria-describedby={fixedRowId}
           onKeyDown={onKeyDown}
         >
-          <svg className={styles.svg} role="img" height={HEADER_HEIGHT + totalRows * CELL_HEIGHT}>
+          <svg className={styles.svg} role="img" height={plotHeight}>
             <title>{title}</title>
             {colLabels.map((label, col) =>
               col % colLabelEvery === 0 ? (
