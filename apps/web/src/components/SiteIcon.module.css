@@ -1,0 +1,19 @@
+/*
+ * サイトのアイコン（SiteIcon.tsx）。色は親サイト（高津コネクト）のアイコンの色で固定し、
+ * ライトとダークで変えない（アイコン自体が白い地を持つので、どちらの背景でも形が見える）。
+ */
+.header,
+.footer {
+  display: block;
+  flex: none;
+}
+
+.header {
+  width: 2rem;
+  height: 2rem;
+}
+
+.footer {
+  width: 1.5rem;
+  height: 1.5rem;
+}

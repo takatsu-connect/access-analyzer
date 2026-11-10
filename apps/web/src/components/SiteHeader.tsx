@@ -7,6 +7,7 @@ import { t } from '@/lib/ui-text';
 import type { UiTextKey } from '@/lib/ui-text';
 
 import styles from './SiteHeader.module.css';
+import { SiteIcon } from './SiteIcon';
 import { useRenderedPathname } from './useRenderedPathname';
 
 type NavItem = { label: UiTextKey; href: string };
@@ -86,7 +87,8 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
     <header className={styles.header}>
       <div className={styles.brand}>
         <Link href="/" prefetch={false} className={styles.title}>
-          {t('site.title')}
+          <SiteIcon size="header" />
+          <span>{t('site.title')}</span>
         </Link>
       </div>
       <div className={styles.inner}>
