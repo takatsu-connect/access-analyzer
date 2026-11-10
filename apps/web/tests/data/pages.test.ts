@@ -20,7 +20,13 @@ import {
   listAuthorSlugs,
   listTagIds,
 } from '@/data/pages';
-import { AD_CATEGORY_ID, MAX_MONTHS, MEASURE_START } from '@/lib/config';
+import {
+  AD_CATEGORY_ID,
+  ARTICLE_CATEGORY_ID,
+  EVENT_CATEGORY_ID,
+  MAX_MONTHS,
+  MEASURE_START,
+} from '@/lib/config';
 import { formatPeriodLabel } from '@/lib/format';
 import type { ArticleListKind } from '@/lib/page-data';
 import {
@@ -42,10 +48,12 @@ import {
   AUTHOR_X,
   AUTHOR_X_NAME,
   BUILT_AT,
+  EVENT_ONLY_POST_ID,
   makeCache,
   MAP_CATEGORY_ID,
   SATO,
   TANAKA,
+  withEventOnly,
 } from './fixture';
 
 const LIST_KINDS: ArticleListKind[] = ['top', 'new', 'long', 'recent', 'search'];
@@ -286,6 +294,7 @@ describe('buildArticleList（S-02）', () => {
     for (let id = 1000; id < 1060; id += 1) {
       big.posts.push({ ...template, post_id: id });
       big.articleSummary.push({ ...templateSummary, post_id: id });
+      big.postCategories.push({ post_id: id, category_id: 3 });
       big.articlePeriod.push({
         post_id: id,
         period_id: 'last7',
@@ -338,6 +347,7 @@ describe('buildArticleList（S-02）', () => {
     for (let id = 2000; id < 2015; id += 1) {
       big.posts.push({ ...template, post_id: id });
       big.articleSummary.push({ ...templateSummary, post_id: id });
+      big.postCategories.push({ post_id: id, category_id: 3 });
     }
     expect(buildArticleList(big, 'recent', BUILT_AT).posts).toHaveLength(10);
   });
@@ -347,7 +357,7 @@ describe('buildArticleList（S-02）', () => {
     expect(data.posts.map((post) => post.id)).toEqual([101, 102, 103, 104, 105, 106]);
     expect(data.posts.find((post) => post.id === 105)).toMatchObject({
       isAd: true,
-      categoryIds: [6],
+      categoryIds: [6, ARTICLE_CATEGORY_ID],
       tagIds: [201],
     });
     expect(data.pvByPeriod?.last7).toEqual([40, 5, 60, 12, 20, 90]);
@@ -389,10 +399,125 @@ describe('buildArticleList（S-02）', () => {
     expect(data.categories.find((category) => category.id === 3)).toEqual({
       id: 3,
       name: 'グルメ',
-      parentId: 1,
+      parentId: ARTICLE_CATEGORY_ID,
       path: '記事 > グルメ',
     });
     expect(data.benchmark).toEqual({ p25: 100, p50: 200, p75: 300 });
+  });
+});
+
+describe('記事の種類（「記事」タブと「イベント記事」タブ。2026-11-10）', () => {
+  const eventOnly = () => withEventOnly(makeCache());
+  const listIds = (
+    cache: ReturnType<typeof makeCache>,
+    kind: ArticleListKind,
+    section: 'article' | 'event',
+  ) => buildArticleList(cache, kind, BUILT_AT, undefined, section).posts.map((post) => post.id);
+
+  it('記事タブは記事の親か子に属する記事だけ、イベント記事タブはイベントの親か子に属する記事だけ', () => {
+    const cache = eventOnly();
+    // 106 はイベントだけ。103 は両方。105 は記事+広告。
+    expect(listIds(cache, 'search', 'article')).toEqual([101, 102, 103, 104, 105]);
+    expect(listIds(cache, 'search', 'event')).toEqual([103, EVENT_ONLY_POST_ID]);
+  });
+
+  it('両方に属する記事は、両方のタブに出る', () => {
+    const cache = makeCache();
+    expect(listIds(cache, 'search', 'article')).toContain(103);
+    expect(listIds(cache, 'search', 'event')).toContain(103);
+  });
+
+  it('どちらにも属さない記事は、どちらのタブにも出ない', () => {
+    const cache = eventOnly();
+    cache.postCategories = cache.postCategories.filter((link) => link.post_id !== 102);
+    for (const section of ['article', 'event'] as const) {
+      expect(listIds(cache, 'search', section)).not.toContain(102);
+    }
+  });
+
+  it('一覧の種類ごとの規則（広告を除く、鮮度、上位）は、イベント記事タブでも同じ', () => {
+    const cache = eventOnly();
+    expect(listIds(cache, 'top', 'event')).toEqual([103, EVENT_ONLY_POST_ID]);
+    expect(listIds(cache, 'long', 'event')).toEqual([EVENT_ONLY_POST_ID]);
+    expect(listIds(cache, 'new', 'event')).toEqual([103, EVENT_ONLY_POST_ID]);
+    expect(listIds(cache, 'recent', 'event')).toEqual([103, EVENT_ONLY_POST_ID]);
+    expect(listIds(cache, 'top', 'article')).not.toContain(EVENT_ONLY_POST_ID);
+  });
+
+  it('section を持ち、絞り込みのカテゴリはそのタブの親とその子だけ（path の順）', () => {
+    const cache = makeCache();
+    const article = buildArticleList(cache, 'search', BUILT_AT, undefined, 'article');
+    const event = buildArticleList(cache, 'search', BUILT_AT, undefined, 'event');
+    expect(article.section).toBe('article');
+    expect(event.section).toBe('event');
+    expect(article.filterCategoryIds).toEqual([ARTICLE_CATEGORY_ID, 3]);
+    expect(event.filterCategoryIds).toEqual([EVENT_CATEGORY_ID]);
+    // カテゴリの列の path を引くための一覧は、すべてのカテゴリのまま。
+    expect(event.categories).toHaveLength(6);
+  });
+
+  it('一覧の分布の 1 行は、そのタブの種類の分布。行がなければ null', () => {
+    const cache = makeCache();
+    expect(buildArticleList(cache, 'new', BUILT_AT, undefined, 'article').benchmark).toEqual({
+      p25: 100,
+      p50: 200,
+      p75: 300,
+    });
+    expect(buildArticleList(cache, 'new', BUILT_AT, undefined, 'event').benchmark).toEqual({
+      p25: 50,
+      p50: 80,
+      p75: 120,
+    });
+    const noEvent = makeCache();
+    noEvent.benchmarkCurve = noEvent.benchmarkCurve.filter((row) => row.scope !== 'kind:event');
+    expect(buildArticleList(noEvent, 'new', BUILT_AT, undefined, 'event').benchmark).toBeNull();
+  });
+
+  it('全体ダッシュボードの分布は、全体（all）のまま', () => {
+    const cache = makeCache();
+    cache.benchmarkCurve = cache.benchmarkCurve.map((row) =>
+      row.scope === 'kind:article' ? { ...row, p25: 1, p50: 1, p75: 1 } : row,
+    );
+    expect(buildDashboard(cache, BUILT_AT).benchmark30).toMatchObject({ p25: 100, p75: 300 });
+  });
+
+  it('記事詳細は、記事の主な種類の曲線と比べる', () => {
+    const cache = eventOnly();
+    // イベントだけの記事: イベントの曲線。n = 2 は行がない。
+    const event = buildArticleDetail(cache, EVENT_ONLY_POST_ID, BUILT_AT);
+    expect(event?.benchmarkSection).toBe('event');
+    expect(event?.benchmark?.p25.slice(0, 2)).toEqual([5, null]);
+    expect(event?.benchmark?.p50[29]).toBe(80);
+    expect(event?.benchmark?.populationSize).toBe(31);
+    // 両方に属する記事: 記事と比べる。
+    const both = buildArticleDetail(cache, 103, BUILT_AT);
+    expect(both?.benchmarkSection).toBe('article');
+    expect(both?.benchmark?.p50[29]).toBe(200);
+  });
+
+  it('記事詳細: どちらにも属さない記事は全体と比べ、種類の曲線がなければ比較できない扱い', () => {
+    const none = eventOnly();
+    none.postCategories = none.postCategories.filter((link) => link.post_id !== 102);
+    none.benchmarkCurve = none.benchmarkCurve.map((row) =>
+      row.scope === 'all' ? { ...row, p50: row.p50 + 1 } : row,
+    );
+    const detail = buildArticleDetail(none, 102, BUILT_AT);
+    expect(detail?.benchmarkSection).toBeNull();
+    expect(detail?.benchmark?.p50[29]).toBe(201);
+
+    const noEvent = eventOnly();
+    noEvent.benchmarkCurve = noEvent.benchmarkCurve.filter((row) => row.scope !== 'kind:event');
+    const event = buildArticleDetail(noEvent, EVENT_ONLY_POST_ID, BUILT_AT);
+    expect(event?.benchmarkSection).toBe('event');
+    expect(event?.benchmark).toBeNull();
+  });
+
+  it('イベント記事タブの JSON もスキーマを通る', () => {
+    const cache = eventOnly();
+    for (const kind of LIST_KINDS) {
+      const data = buildArticleList(cache, kind, BUILT_AT, undefined, 'event');
+      expect(articleListDataSchema.safeParse(data).success).toBe(true);
+    }
   });
 });
 
@@ -668,11 +793,12 @@ describe('カテゴリ（S-06、S-06b）', () => {
   const cache = makeCache();
   const parentIds = (axes: { parent: { id: number } }[]) => axes.map((axis) => axis.parent.id);
 
-  it('軸は親の ID の順で、広告の軸（AD_CATEGORY_ID の親）を最後に置く', () => {
+  it('軸は固定の順（記事、イベント、ほかの親を ID の順）で、広告の軸（AD_CATEGORY_ID の親）を最後に置く', () => {
     const data = buildCategories(cache, BUILT_AT);
     expect(data.axes).toEqual([
-      { parent: { id: 1, name: '記事' }, children: [{ id: 3, name: 'グルメ' }] },
-      { parent: { id: 7, name: 'イベント' }, children: [] },
+      // 固定の順（04 §3）: 記事、イベント、ほかの親（ID の順）、広告。
+      { parent: { id: ARTICLE_CATEGORY_ID, name: '記事' }, children: [{ id: 3, name: 'グルメ' }] },
+      { parent: { id: EVENT_CATEGORY_ID, name: 'イベント' }, children: [] },
       // 広告の親より ID が大きくても、広告の前に置く。
       { parent: { id: MAP_CATEGORY_ID, name: 'マップ' }, children: [] },
       { parent: { id: AD_CATEGORY_ID, name: '広告' }, children: [{ id: 6, name: 'PR' }] },
@@ -682,13 +808,13 @@ describe('カテゴリ（S-06、S-06b）', () => {
 
   it('配下の記事がすべて広告でも、AD_CATEGORY_ID でない親は広告の軸にしない', () => {
     const allAds = makeCache();
-    // イベント（7）に属する記事（103、106）を、どちらも広告にする。
+    // イベント（EVENT_CATEGORY_ID）に属する記事（103、106）を、どちらも広告にする。
     allAds.posts = allAds.posts.map((post) =>
       post.post_id === 103 || post.post_id === 106 ? { ...post, is_ad: true } : post,
     );
     expect(parentIds(buildCategories(allAds, BUILT_AT).axes)).toEqual([
-      1,
-      7,
+      ARTICLE_CATEGORY_ID,
+      EVENT_CATEGORY_ID,
       MAP_CATEGORY_ID,
       AD_CATEGORY_ID,
     ]);
@@ -699,31 +825,35 @@ describe('カテゴリ（S-06、S-06b）', () => {
     noAds.posts = noAds.posts.map((post) => ({ ...post, is_ad: false }));
     noAds.postCategories = noAds.postCategories.filter((link) => link.category_id !== 6);
     expect(parentIds(buildCategories(noAds, BUILT_AT).axes)).toEqual([
-      1,
-      7,
+      ARTICLE_CATEGORY_ID,
+      EVENT_CATEGORY_ID,
       MAP_CATEGORY_ID,
       AD_CATEGORY_ID,
     ]);
   });
 
-  it('AD_CATEGORY_ID の親カテゴリがなければ、広告の軸はない（ID の昇順のまま）', () => {
+  it('AD_CATEGORY_ID の親カテゴリがなければ、広告の軸はない（記事、イベント、ほかの親の順のまま）', () => {
     // AD_CATEGORY_ID のカテゴリが、そもそもない。
     const without = makeCache();
     without.categories = without.categories.filter(
       (category) =>
         category.category_id !== AD_CATEGORY_ID && category.parent_id !== AD_CATEGORY_ID,
     );
-    expect(parentIds(buildCategories(without, BUILT_AT).axes)).toEqual([1, 7, MAP_CATEGORY_ID]);
+    expect(parentIds(buildCategories(without, BUILT_AT).axes)).toEqual([
+      ARTICLE_CATEGORY_ID,
+      EVENT_CATEGORY_ID,
+      MAP_CATEGORY_ID,
+    ]);
 
     // AD_CATEGORY_ID のカテゴリが、親でなく子カテゴリ。
     const asChild = makeCache();
     asChild.categories = asChild.categories.map((category) =>
       category.category_id === AD_CATEGORY_ID
-        ? { ...category, parent_id: 1, path: '記事 > 広告' }
+        ? { ...category, parent_id: ARTICLE_CATEGORY_ID, path: '記事 > 広告' }
         : category,
     );
     const axes = buildCategories(asChild, BUILT_AT).axes;
-    expect(parentIds(axes)).toEqual([1, 7, MAP_CATEGORY_ID]);
+    expect(parentIds(axes)).toEqual([ARTICLE_CATEGORY_ID, EVENT_CATEGORY_ID, MAP_CATEGORY_ID]);
     expect(axes[0]?.children.map((child) => child.id).sort((a, b) => a - b)).toEqual([
       3,
       6,
@@ -741,7 +871,23 @@ describe('カテゴリ（S-06、S-06b）', () => {
       median30: 210.5,
       median30Count: 2,
     });
-    expect(data.period.last7?.[7]?.median30).toBeNull();
+    expect(data.period.last7?.[EVENT_CATEGORY_ID]?.median30).toBeNull();
+  });
+
+  it('決まっていない親は、記事とイベントのあと、広告の前に ID の順で並ぶ', () => {
+    const extra = makeCache();
+    extra.categories.push(
+      { category_id: 2, name: 'お知らせ', parent_id: null, path: 'お知らせ' },
+      { category_id: 500, name: '特集', parent_id: null, path: '特集' },
+    );
+    expect(parentIds(buildCategories(extra, BUILT_AT).axes)).toEqual([
+      ARTICLE_CATEGORY_ID,
+      EVENT_CATEGORY_ID,
+      2,
+      MAP_CATEGORY_ID,
+      500,
+      AD_CATEGORY_ID,
+    ]);
   });
 
   it('季節: 月は古い順。月ごとの読まれた回数', () => {
@@ -749,11 +895,16 @@ describe('カテゴリ（S-06、S-06b）', () => {
     expect(data.months).toEqual(['m2025-10', 'm2026-10', 'm2026-11']);
     expect(data.pvByMonth).toEqual({
       3: { 'm2025-10': 300, 'm2026-10': 175 },
-      7: { 'm2026-10': 328 },
+      [EVENT_CATEGORY_ID]: { 'm2026-10': 328 },
     });
     // 軸の順は、カテゴリの画面と同じ（広告の軸が最後）。
     expect(data.axes).toEqual(buildCategories(cache, BUILT_AT).axes);
-    expect(parentIds(data.axes)).toEqual([1, 7, MAP_CATEGORY_ID, AD_CATEGORY_ID]);
+    expect(parentIds(data.axes)).toEqual([
+      ARTICLE_CATEGORY_ID,
+      EVENT_CATEGORY_ID,
+      MAP_CATEGORY_ID,
+      AD_CATEGORY_ID,
+    ]);
   });
 });
 
@@ -835,11 +986,11 @@ describe('buildActivity（S-08）', () => {
   it('公開本数と、カテゴリ別の公開本数（1 本以上のカテゴリだけ）', () => {
     expect(data.posting).toMatchObject({ last7: { postCount: 1 }, prev28: { postCount: 1 } });
     expect(data.categoryMix.last7).toEqual([
-      { categoryId: 1, path: '記事', postCountPublished: 1 },
+      { categoryId: ARTICLE_CATEGORY_ID, path: '記事', postCountPublished: 1 },
       { categoryId: 3, path: '記事 > グルメ', postCountPublished: 1 },
     ]);
     expect(data.categoryMix['m2026-10']).toEqual([
-      { categoryId: 7, path: 'イベント', postCountPublished: 1 },
+      { categoryId: EVENT_CATEGORY_ID, path: 'イベント', postCountPublished: 1 },
     ]);
   });
 });

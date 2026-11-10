@@ -6,7 +6,7 @@ import { DataStatus } from '@/components/DataStatus';
 import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SkipLink } from '@/components/SkipLink';
-import { getPageMeta } from '@/data';
+import { getEventArticleIds, getPageMeta } from '@/data';
 import { t } from '@/lib/ui-text';
 
 import './globals.css';
@@ -31,11 +31,13 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // ビルド時に 1 回だけ読む（静的生成）。DataStatus は Client Component なので、使う値だけを渡す。
   const { baseDate, finishedAt, isStale, measureStart } = await getPageMeta();
+  // 記事詳細のヘッダの現在地（主な種類がイベントの記事は「イベント記事」）。ビルド時のデータで決める。
+  const eventArticleIds = await getEventArticleIds();
   return (
     <html lang="ja">
       <body>
         <SkipLink targetId={MAIN_ID} />
-        <SiteHeader />
+        <SiteHeader eventArticleIds={eventArticleIds} />
         <div className={styles.beforeMain}>
           <DataStatus meta={{ baseDate, finishedAt, isStale }} />
         </div>

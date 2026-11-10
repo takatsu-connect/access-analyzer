@@ -10,6 +10,7 @@ import {
   buildCommon,
   byPeriod,
   compareJa,
+  compareParentIds,
   comparableIds,
   rowsOf,
   selectableIds,
@@ -61,6 +62,9 @@ export function buildActivity(cache: PubCache, builtAt: Date): ActivityData {
   const comparable = comparableIds(common);
   const authorBySlug = new Map(cache.authors.map((author) => [author.author_slug, author]));
   const pathById = new Map(cache.categories.map((row) => [row.category_id, row.path]));
+  const parentById = new Map(cache.categories.map((row) => [row.category_id, row.parent_id]));
+  // 親（いちばん上）の ID。カテゴリは二階層。
+  const rootOf = (id: number): number => parentById.get(id) ?? id;
 
   const data: ActivityData = {
     ...common,
@@ -96,19 +100,29 @@ export function buildActivity(cache: PubCache, builtAt: Date): ActivityData {
         (row) => row.post_count_published > 0,
       );
       if (rows.length === 0) return undefined;
-      return rows
-        .map((row) => {
-          const path = pathById.get(row.category_id);
-          if (path === undefined) {
-            throw new Error('pub_category_period に、pub_category にないカテゴリがあります');
-          }
-          return {
-            categoryId: row.category_id,
-            path,
-            postCountPublished: row.post_count_published,
-          };
-        })
-        .sort((a, b) => compareJa(a.path, b.path) || a.categoryId - b.categoryId);
+      return (
+        rows
+          .map((row) => {
+            const path = pathById.get(row.category_id);
+            if (path === undefined) {
+              throw new Error('pub_category_period に、pub_category にないカテゴリがあります');
+            }
+            return {
+              categoryId: row.category_id,
+              path,
+              postCountPublished: row.post_count_published,
+            };
+          })
+          // 親の固定の順（compareParentIds）、同じ親の中は親が先で、子は path の順。
+          .sort(
+            (a, b) =>
+              compareParentIds(rootOf(a.categoryId), rootOf(b.categoryId)) ||
+              Number(rootOf(a.categoryId) !== a.categoryId) -
+                Number(rootOf(b.categoryId) !== b.categoryId) ||
+              compareJa(a.path, b.path) ||
+              a.categoryId - b.categoryId,
+          )
+      );
     }),
   };
   return checkPage(activityDataSchema, data, 'activityDataSchema');

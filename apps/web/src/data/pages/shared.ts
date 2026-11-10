@@ -3,10 +3,18 @@
  *
  * ここの関数はどれも、引数だけから結果が決まる（Supabase を読まない。時刻は引数で受ける）。
  */
-import { MAX_MONTHS, MEASURE_START } from '@/lib/config';
+import {
+  AD_CATEGORY_ID,
+  ARTICLE_CATEGORY_ID,
+  EVENT_CATEGORY_ID,
+  MAX_MONTHS,
+  MEASURE_START,
+} from '@/lib/config';
+import { benchmarkScopeOf, sectionsOfPost } from '@/lib/derive/sections';
 import { formatPeriodLabel } from '@/lib/format';
 import { SLUG_PATTERN } from '@/lib/query';
 import type {
+  ArticleSection,
   BenchmarkPoint,
   ByPeriod,
   Masked,
@@ -308,13 +316,67 @@ export function pvByPeriodOf(
 
 // --- 分布 ---
 
-/** 全体の分布の n 日目の行。母集団が足りなければ行がない。 */
-export function benchmarkRow(cache: PubCache, n: number): PubBenchmarkCurve | undefined {
-  return cache.benchmarkCurve.find((row) => row.scope === 'all' && row.n === n);
+/**
+ * 分布の n 日目の行。section は比べる相手（null = 全体、'article' / 'event' = その種類の記事どうし）。
+ * 母集団が足りなければ行がない。
+ */
+export function benchmarkRow(
+  cache: PubCache,
+  n: number,
+  section: ArticleSection | null = null,
+): PubBenchmarkCurve | undefined {
+  const scope = benchmarkScopeOf(section);
+  return cache.benchmarkCurve.find((row) => row.scope === scope && row.n === n);
 }
 
 /** n = 30 の 1 行（「多くの記事は ◯〜◯回」の文言用）。母集団が足りなければ null。 */
-export function benchmark30(cache: PubCache): BenchmarkPoint | null {
-  const row = benchmarkRow(cache, 30);
+export function benchmark30(
+  cache: PubCache,
+  section: ArticleSection | null = null,
+): BenchmarkPoint | null {
+  const row = benchmarkRow(cache, 30, section);
   return row === undefined ? null : { p25: row.p25, p50: row.p50, p75: row.p75 };
+}
+
+// --- 親カテゴリの並び ---
+
+/**
+ * 親カテゴリの固定の並び（04 §3、05 §7.1）: 記事、イベント、（決まっていない親を ID の順）、広告。
+ * 量の順ではなく固定の順。S-06、S-06b（図と表）、S-08（カテゴリごとの本数）で同じものを使う。
+ */
+export const PARENT_ORDER_HEAD: readonly number[] = [ARTICLE_CATEGORY_ID, EVENT_CATEGORY_ID];
+export const PARENT_ORDER_TAIL: readonly number[] = [AD_CATEGORY_ID];
+
+function parentRank(id: number): number {
+  const head = PARENT_ORDER_HEAD.indexOf(id);
+  if (head >= 0) return head;
+  const tail = PARENT_ORDER_TAIL.indexOf(id);
+  return tail >= 0 ? PARENT_ORDER_HEAD.length + 1 + tail : PARENT_ORDER_HEAD.length;
+}
+
+/** 親カテゴリの ID を、固定の並びで比べる（決まっていない親どうしは ID の順）。 */
+export function compareParentIds(a: number, b: number): number {
+  return parentRank(a) - parentRank(b) || a - b;
+}
+
+// --- 記事の種類 ---
+
+/**
+ * 記事 → 種類（記事、イベント。両方のこともある）。判定は src/lib/derive/sections.ts の
+ * sectionsOfPost だけで行う。どちらにも属さない記事は空の配列。
+ */
+export function postSections(cache: PubCache): Map<number, ArticleSection[]> {
+  const parentOf = new Map(cache.categories.map((row) => [row.category_id, row.parent_id]));
+  const linksByPost = groupRows(cache.postCategories, 'post_id');
+  return new Map(
+    cache.posts.map((post) => [
+      post.post_id,
+      sectionsOfPost(
+        (linksByPost.get(post.post_id) ?? []).map((link) => ({
+          categoryId: link.category_id,
+          parentId: parentOf.get(link.category_id) ?? null,
+        })),
+      ),
+    ]),
+  );
 }

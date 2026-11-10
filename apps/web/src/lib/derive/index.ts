@@ -29,4 +29,15 @@ export { compare, share, shareOf, tenOf } from './numbers';
 export type { Comparison } from './numbers';
 export { monthProgress, partialMonthStartDay } from './periods';
 export type { MonthProgress } from './periods';
+export {
+  ARTICLE_SECTIONS,
+  BENCHMARK_SCOPES,
+  benchmarkScopeOf,
+  primarySection,
+  SECTION_LIST_PATH,
+  SECTION_ROOT_ID,
+  sectionOfCategory,
+  sectionsOfPost,
+} from './sections';
+export type { ArticleSection } from './sections';
 export { isDelayed } from './status';

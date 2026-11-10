@@ -158,16 +158,27 @@ export type PostRow = {
 
 export type ArticleListKind = 'top' | 'new' | 'long' | 'recent' | 'search';
 
+/**
+ * 記事の種類（src/lib/derive/sections.ts）。article = 「記事」タブ（S-02a〜S-02e）、
+ * event = 「イベント記事」タブ（S-10a〜S-10e）。
+ */
+export type ArticleSection = 'article' | 'event';
+
 export type ArticleListData = PageCommon & {
+  /** どちらのタブの一覧か。posts はこの種類の記事だけ。 */
+  section: ArticleSection;
   posts: PostRow[];
   /** posts と同じ順の列指向の配列（伏せなし）。S-02b では省略する。 */
   pvByPeriod?: ByPeriod<number[]>;
   /** S-02a / S-02c: 期間ごとの上位 50 の posts の添字（多い順）。番号は画面に出さない。 */
   topIndex?: ByPeriod<number[]>;
+  /** すべてのカテゴリ（記事のカテゴリの列で path を引くのに使う）。 */
   categories: { id: number; name: string; parentId: number | null; path: string }[];
+  /** S-02e / S-10e の絞り込みに出すカテゴリ（このタブの親とその子）の ID。URL の cat の許可リストにも使う。 */
+  filterCategoryIds: number[];
   /** 名前の順。 */
   authors: { slug: string; name: string }[];
-  /** n = 30 の 1 行。母集団不足は null。 */
+  /** このタブの種類の分布の n = 30 の 1 行。母集団不足は null。 */
   benchmark: BenchmarkPoint | null;
 };
 
@@ -206,6 +217,11 @@ export type ArticleDetailData = PageCommon & {
     populationSize: number;
     populationWindow: string;
   } | null;
+  /**
+   * benchmark の比べる相手（記事の主な種類）。article = 記事どうし、event = イベント記事どうし、
+   * null = 全体（どちらの種類にも属さない記事）。
+   */
+  benchmarkSection: ArticleSection | null;
   /** 選べる期間だけ。記事では前の期間と比べない。 */
   period: BySelectablePeriod<ArticlePeriodValue>;
   breakdown: BySelectablePeriod<ArticleBreakdown>;

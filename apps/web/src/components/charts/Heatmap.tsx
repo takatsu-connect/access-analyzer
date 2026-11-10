@@ -73,6 +73,8 @@ export function Heatmap({
   rowMeans,
   colMeans,
   formatMean = formatValue,
+  showNotes = true,
+  showInitialSelection = true,
 }: HeatmapProps) {
   const fixedRowId = useId();
   const [selected, setSelected] = useState<Position | null>(null);
@@ -111,6 +113,8 @@ export function Heatmap({
   // 選んだセルが格子の外になったら（行や列の数が変わったら）、既定のセルに戻る。
   const fallback = inGrid(defaultCell) ? defaultCell : largestCell(values);
   const current = inRange(selected) ? selected : fallback;
+  // 最初の選択を出さない図は、利用者が選ぶまで枠と固定行の文を出さない。
+  const showsSelection = showInitialSelection || inRange(selected);
 
   const levels = heatLevels(values, scale);
   const hasMasked = values.some((cells) => cells.some((value) => value === null));
@@ -204,7 +208,8 @@ export function Heatmap({
       <div className={styles.grid}>
         <div className={styles.rowLabels} aria-hidden="true">
           {rowLabels.map((label, row) => (
-            <span key={`${row}-${label}`} className={styles.rowLabel}>
+            // 名前の列の幅が決まっているとき（--heatmap-label-width）は省略記号で切るので、全文を title に置く。
+            <span key={`${row}-${label}`} className={styles.rowLabel} title={label}>
               {label}
             </span>
           ))}
@@ -306,48 +311,78 @@ export function Heatmap({
             {colMeans === undefined
               ? null
               : colLabels.map((_, col) => meanCell({ row: rowCount, col }, `mean-col-${col}`))}
-            <rect
-              className={styles.selected}
-              data-part="selected"
-              x={percent(leftOf(current.col))}
-              y={topOf(current.row)}
-              width={percent(cellWidth)}
-              height={CELL_HEIGHT}
-            />
+            {showsSelection ? (
+              <rect
+                className={styles.selected}
+                data-part="selected"
+                x={percent(leftOf(current.col))}
+                y={topOf(current.row)}
+                width={percent(cellWidth)}
+                height={CELL_HEIGHT}
+              />
+            ) : null}
           </svg>
         </div>
       </div>
-      <p className={styles.hint}>{hint}</p>
+      {showNotes ? <p className={styles.hint}>{hint}</p> : null}
       <p id={fixedRowId} className={styles.fixedRow} data-part="fixed-row" aria-live="polite">
-        {cellText(currentCell)}
+        {showsSelection ? cellText(currentCell) : null}
       </p>
-      <ul className={styles.legend}>
-        <li className={styles.legendItem}>
-          <svg
-            className={styles.swatch}
-            aria-hidden="true"
-            width={SWATCH_SIZE * LEVELS.length}
-            height={SWATCH_SIZE}
-          >
-            {LEVELS.map((level) => (
-              <rect
-                key={level}
-                className={LEVEL_CLASS[level]}
-                x={(level - 1) * SWATCH_SIZE}
-                y={0}
-                width={SWATCH_SIZE}
-                height={SWATCH_SIZE}
-              />
-            ))}
-          </svg>
-          <span>{legend}</span>
+      {showNotes ? <HeatmapLegend legend={legend} hasMasked={hasMasked} /> : null}
+    </div>
+  );
+}
+
+/** 濃淡の凡例（5 段階の見本と文言。伏せ値があれば、その説明も）。 */
+function HeatmapLegend({ legend, hasMasked }: { legend: string; hasMasked: boolean }) {
+  return (
+    <ul className={styles.legend}>
+      <li className={styles.legendItem}>
+        <svg
+          className={styles.swatch}
+          aria-hidden="true"
+          width={SWATCH_SIZE * LEVELS.length}
+          height={SWATCH_SIZE}
+        >
+          {LEVELS.map((level) => (
+            <rect
+              key={level}
+              className={LEVEL_CLASS[level]}
+              x={(level - 1) * SWATCH_SIZE}
+              y={0}
+              width={SWATCH_SIZE}
+              height={SWATCH_SIZE}
+            />
+          ))}
+        </svg>
+        <span>{legend}</span>
+      </li>
+      {hasMasked ? (
+        <li className={styles.legendItem} data-part="legend-masked">
+          {t('legend.masked')}
         </li>
-        {hasMasked ? (
-          <li className={styles.legendItem} data-part="legend-masked">
-            {t('legend.masked')}
-          </li>
-        ) : null}
-      </ul>
+      ) : null}
+    </ul>
+  );
+}
+
+/**
+ * 案内と凡例だけ（図なし）。同じ意味の図を複数並べるとき、図の上に 1 回だけ置く
+ * （各 Heatmap には showNotes={false} を渡す。レビュー 2026-11-10 M-1）。
+ */
+export function HeatmapNotes({
+  hint,
+  legend,
+  hasMasked = false,
+}: {
+  hint: string;
+  legend: string;
+  hasMasked?: boolean;
+}) {
+  return (
+    <div className={styles.notes} data-part="heatmap-notes">
+      <p className={styles.hint}>{hint}</p>
+      <HeatmapLegend legend={legend} hasMasked={hasMasked} />
     </div>
   );
 }

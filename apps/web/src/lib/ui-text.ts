@@ -30,6 +30,7 @@ import { S05_TEXT } from './ui-text/screens/s05';
 import { S06_TEXT } from './ui-text/screens/s06';
 import { S07_TEXT } from './ui-text/screens/s07';
 import { S08_TEXT } from './ui-text/screens/s08';
+import { S10_TEXT } from './ui-text/screens/s10';
 
 /** 辞書に名称と注記を持つ指標（M-01〜M-27、M-30〜M-34、M-41）。 */
 export const METRIC_IDS = [
@@ -107,12 +108,14 @@ const baseDictionary = {
   'site.title': '高津コネクト 読まれ方ノート',
   'nav.dashboard': '全体',
   'nav.articles': '記事',
+  'nav.events': 'イベント記事',
   'nav.authors': 'ライター',
   'nav.categories': 'カテゴリ',
   'nav.tags': 'シリーズ',
   'nav.activity': '投稿活動',
   'nav.aria': 'ページの移動',
   'nav.articles.aria': '記事のページ',
+  'nav.events.aria': 'イベント記事のページ',
   'skip.toMain': '本文へ移動',
   'footer.about': '読まれ方ノートについて',
   'footer.about.source':
@@ -246,8 +249,15 @@ const baseDictionary = {
   'notes.band':
     '「多くの記事はこの範囲」は、公開から同じ日数がたった記事を読まれた回数の順に並べたときの、真ん中の半分です。',
   // 助言 §9 の案で直した（仮）: 「全期間の記事」→「数え始めてから公開されたすべての記事」。
+  // 2026-11-10: 記事の種類ごと（記事どうし、イベント記事どうし）に比べるように直した。
   'notes.band.detail':
-    '比べる相手は、直近 12 か月に公開された記事（広告を除く）です。30 本に満たないときは、数え始めてから公開されたすべての記事で比べ、それでも足りないときは「まだ比較できません」と出します。',
+    '比べる相手は、同じ種類の記事（記事は記事どうし、イベント記事はイベント記事どうし。広告を除く）のうち、直近 12 か月に公開されたものです。30 本に満たないときは、数え始めてから公開された同じ種類の記事で比べ、それでも足りないときは「まだ比較できません」と出します。記事とイベントの両方に入っている記事は、記事と比べます。',
+  // S-01（全体の「多くの記事は」）は、種類を分けずにすべての記事と比べる。
+  'notes.band.detail.all':
+    '比べる相手は、直近 12 か月に公開された記事（記事とイベント記事の両方。広告を除く）です。30 本に満たないときは、数え始めてから公開されたすべての記事で比べ、それでも足りないときは「まだ比較できません」と出します。',
+  // S-05: ライター全体の位置はすべての記事と、記事ごとの位置は同じ種類の記事と比べる。
+  'notes.band.detail.author':
+    'ライターの記事全体の位置は、直近 12 か月に公開されたすべての記事（記事とイベント記事の両方。広告を除く）と比べています。記事ごとの位置は、同じ種類の記事（記事は記事どうし、イベント記事はイベント記事どうし）と比べています。30 本に満たないときは、数え始めてから公開された記事に広げ、それでも足りないときは「まだ比較できません」と出します。',
   'notes.ratio': '比率（%）は、元の数が 20 未満のときは出さず、差の数だけを出します。',
   'notes.source':
     '数字は Google アナリティクス（GA4）から毎日 1 回取り込んでいます。GA4 の管理画面の値と小さな差が出ることがあります。',
@@ -556,6 +566,7 @@ export const dictionaryParts = {
   s06: S06_TEXT,
   s07: S07_TEXT,
   s08: S08_TEXT,
+  s10: S10_TEXT,
 } as const;
 
 type DictionaryParts = typeof dictionaryParts;
@@ -587,6 +598,7 @@ export const dictionary = {
   ...dictionaryParts.s06,
   ...dictionaryParts.s07,
   ...dictionaryParts.s08,
+  ...dictionaryParts.s10,
 } as const;
 
 type Dictionary = typeof dictionary;

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { buildCategories } from '@/data/pages';
+import { ARTICLE_CATEGORY_ID } from '@/lib/config';
 import type { CategoryData, CategoryPeriodValue } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 import { CategoriesScreen } from '@/screens/s06/CategoriesScreen';
@@ -29,7 +30,7 @@ describe('S-06 カテゴリ別', () => {
     setQuery('');
   });
 
-  it('見出しが 記事、イベント、マップ、広告 の順で、設計の語（軸）を出さない', () => {
+  it('見出しが固定の順（記事、イベント、マップ、広告。04 §3）で、設計の語（軸）を出さない', () => {
     setQuery('?p=last7');
     const { container } = render(<CategoriesScreen data={built()} />);
 
@@ -142,7 +143,11 @@ describe('S-06 カテゴリ別', () => {
         data={{
           ...data,
           periods,
-          period: { ...data.period, 'm2025-11': last7, 'm2025-10': { 1: value(50) } },
+          period: {
+            ...data.period,
+            'm2025-11': last7,
+            'm2025-10': { [ARTICLE_CATEGORY_ID]: value(50) },
+          },
         }}
       />,
     );
@@ -193,7 +198,10 @@ describe('S-06 カテゴリ別', () => {
     const data = built();
     const { container } = render(
       <CategoriesScreen
-        data={{ ...data, period: { ...data.period, prev7: { 1: value(50), 3: value(19) } } }}
+        data={{
+          ...data,
+          period: { ...data.period, prev7: { [ARTICLE_CATEGORY_ID]: value(50), 3: value(19) } },
+        }}
       />,
     );
 

@@ -3,9 +3,10 @@
  *
  * 記事 6 本（101 = 数え始める前に公開、105 = 広告）、著者 3 人（1 人は slug が決まった形でなく、記事もない）、
  * タグ 3 つ（203 は記事が 0 本）、期間は last7 / prev7 / last28 / prev28 と月 3 つ。基準日は 2026-11-03。
- * カテゴリの親は 4 つ（記事、イベント、マップ、広告）。広告の親の ID は設定値（AD_CATEGORY_ID）。
+ * カテゴリの親は 4 つ（記事、イベント、マップ、広告）。広告・記事・イベントの親の ID は設定値（AD_CATEGORY_ID など）。
+ * 記事の種類: 101・102・104・105 が「記事」（105 は記事+広告）、103・106 は「記事」と「イベント」の両方。
  */
-import { AD_CATEGORY_ID } from '@/lib/config';
+import { AD_CATEGORY_ID, ARTICLE_CATEGORY_ID, EVENT_CATEGORY_ID } from '@/lib/config';
 import type {
   PubArticlePeriod,
   PubArticlePeriodBreakdown,
@@ -134,6 +135,7 @@ export function addPagelessAuthor(cache: PubCache): PubCache {
   });
   cache.posts.push(post(107, [AUTHOR_X, AUTHOR_X_NAME], '2026-10-20', 15, 'mid'));
   cache.articleSummary.push(summary(107, { pv_7d: 20, pv_total: 33 }));
+  cache.postCategories.push({ post_id: 107, category_id: ARTICLE_CATEGORY_ID });
   cache.articlePeriod.push(...articlePeriods('last28', { 107: 33 }));
   cache.authorPeriod.push({
     author_slug: AUTHOR_X,
@@ -154,8 +156,23 @@ export function addSameDayPost(cache: PubCache): PubCache {
   cache.posts.push(post(SAME_DAY_POST_ID, [TANAKA, 'たなか たろう'], '2026-11-03', 1, 'new'));
   cache.articleSummary.push(summary(SAME_DAY_POST_ID, { pv_total: 4, freshness: 'new' }));
   cache.articleDaily.push({ post_id: SAME_DAY_POST_ID, day: '2026-11-03', pageviews: 4 });
+  cache.postCategories.push({ post_id: SAME_DAY_POST_ID, category_id: ARTICLE_CATEGORY_ID });
   cache.articleCumulative.push({ post_id: SAME_DAY_POST_ID, n: 1, cumulative_pv: 4 });
   cache.articlePeriod.push(...articlePeriods('last7', { [SAME_DAY_POST_ID]: 4 }));
+  return cache;
+}
+
+/** イベントだけに属する記事（記事の親を外す）。 */
+export const EVENT_ONLY_POST_ID = 106;
+
+/**
+ * 記事 106 から記事の親を外し、イベントだけの記事にする。渡した cache を書き換えて返す。
+ * 103 は記事とイベントの両方のまま。
+ */
+export function withEventOnly(cache: PubCache): PubCache {
+  cache.postCategories = cache.postCategories.filter(
+    (link) => !(link.post_id === EVENT_ONLY_POST_ID && link.category_id === ARTICLE_CATEGORY_ID),
+  );
   return cache;
 }
 
@@ -202,11 +219,11 @@ export function makeCache(): PubCache {
       post(105, sato, '2026-09-01', 64, 'mid', true),
     ],
     categories: [
-      { category_id: 1, name: '記事', parent_id: null, path: '記事' },
-      { category_id: 3, name: 'グルメ', parent_id: 1, path: '記事 > グルメ' },
+      { category_id: ARTICLE_CATEGORY_ID, name: '記事', parent_id: null, path: '記事' },
+      { category_id: 3, name: 'グルメ', parent_id: ARTICLE_CATEGORY_ID, path: '記事 > グルメ' },
       { category_id: AD_CATEGORY_ID, name: '広告', parent_id: null, path: '広告' },
       { category_id: 6, name: 'PR', parent_id: AD_CATEGORY_ID, path: '広告 > PR' },
-      { category_id: 7, name: 'イベント', parent_id: null, path: 'イベント' },
+      { category_id: EVENT_CATEGORY_ID, name: 'イベント', parent_id: null, path: 'イベント' },
       { category_id: MAP_CATEGORY_ID, name: 'マップ', parent_id: null, path: 'マップ' },
     ],
     tags: [
@@ -217,10 +234,16 @@ export function makeCache(): PubCache {
     postCategories: [
       { post_id: 101, category_id: 3 },
       { post_id: 102, category_id: 3 },
-      { post_id: 103, category_id: 7 },
+      { post_id: 103, category_id: EVENT_CATEGORY_ID },
+      // 103 と 106 は、記事とイベントの両方の親に直接付いている（両方のタブに出る）。
+      // イベントだけの記事は、テストの中で記事の親を外して作る（withEventOnly）。
+      { post_id: 103, category_id: ARTICLE_CATEGORY_ID },
       { post_id: 104, category_id: 3 },
       { post_id: 105, category_id: 6 },
-      { post_id: 106, category_id: 7 },
+      // 広告の記事は、記事の親にも付いている（本番の「記事+広告」と同じ形）。
+      { post_id: 105, category_id: ARTICLE_CATEGORY_ID },
+      { post_id: 106, category_id: EVENT_CATEGORY_ID },
+      { post_id: 106, category_id: ARTICLE_CATEGORY_ID },
     ],
     postTags: [
       { post_id: 105, tag_id: 201 },
@@ -475,7 +498,13 @@ export function makeCache(): PubCache {
     authorCategoryPeriod: [
       { author_slug: SATO, category_id: 6, period_id: 'last7', post_count: 1, pageviews: 20 },
       { author_slug: SATO, category_id: 3, period_id: 'last7', post_count: 2, pageviews: 45 },
-      { author_slug: TANAKA, category_id: 7, period_id: 'last7', post_count: 2, pageviews: 150 },
+      {
+        author_slug: TANAKA,
+        category_id: EVENT_CATEGORY_ID,
+        period_id: 'last7',
+        post_count: 2,
+        pageviews: 150,
+      },
       { author_slug: TANAKA, category_id: 3, period_id: 'last7', post_count: 1, pageviews: 12 },
     ],
     authorSummary: [
@@ -484,7 +513,7 @@ export function makeCache(): PubCache {
     ],
     categoryPeriod: [
       {
-        category_id: 1,
+        category_id: ARTICLE_CATEGORY_ID,
         period_id: 'last7',
         pageviews: 57,
         post_count_total: 3,
@@ -502,7 +531,7 @@ export function makeCache(): PubCache {
         published_post_count_30d: 0,
       },
       {
-        category_id: 7,
+        category_id: EVENT_CATEGORY_ID,
         period_id: 'last7',
         pageviews: 150,
         post_count_total: 2,
@@ -529,7 +558,7 @@ export function makeCache(): PubCache {
         published_post_count_30d: 2,
       },
       {
-        category_id: 7,
+        category_id: EVENT_CATEGORY_ID,
         period_id: 'm2026-10',
         pageviews: 328,
         post_count_total: 2,
@@ -599,6 +628,35 @@ export function makeCache(): PubCache {
         p50: 200,
         p75: 300,
         population_size: 40,
+        population_window: '2025-11-03/2026-11-03',
+      },
+      // 記事の種類ごとの分布。記事（kind:article）は全体と同じ値にして、既存の検査の値を変えない。
+      ...[1, 2, 30].map((n) => ({
+        scope: 'kind:article',
+        n,
+        p25: n === 1 ? 1 : n === 2 ? 2 : 100,
+        p50: n === 1 ? 2 : n === 2 ? 4 : 200,
+        p75: n === 1 ? 3 : n === 2 ? 6.5 : 300,
+        population_size: n === 1 ? 45 : n === 2 ? 44 : 40,
+        population_window: '2025-11-03/2026-11-03',
+      })),
+      // イベント（kind:event）は全体と違う値にする。n = 2 は母集団が足りず、行がない。
+      {
+        scope: 'kind:event',
+        n: 1,
+        p25: 5,
+        p50: 6,
+        p75: 7,
+        population_size: 33,
+        population_window: '2025-11-03/2026-11-03',
+      },
+      {
+        scope: 'kind:event',
+        n: 30,
+        p25: 50,
+        p50: 80,
+        p75: 120,
+        population_size: 31,
         population_window: '2025-11-03/2026-11-03',
       },
     ],

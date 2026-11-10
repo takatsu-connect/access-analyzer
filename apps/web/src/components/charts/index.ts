@@ -4,7 +4,7 @@
 export { BandDot } from './BandDot';
 export { Curve } from './Curve';
 export { HBar } from './HBar';
-export { Heatmap } from './Heatmap';
+export { Heatmap, HeatmapNotes } from './Heatmap';
 export { LineChart } from './LineChart';
 export { MiniBar } from './MiniBar';
 export type {

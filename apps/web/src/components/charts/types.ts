@@ -210,4 +210,14 @@ export type HeatmapProps = {
   colMeans?: HeatmapMeans;
   /** 平均のマスの数字の書式。既定は formatValue（合計のマスでも、平均は小数になりうる）。 */
   formatMean?: (value: number) => string;
+  /**
+   * 案内（hint）と凡例（legend）を図の下に描くか。既定は true。
+   * 同じ意味の図を複数並べるとき（S-06b の親ごとの図）は false にし、HeatmapNotes で 1 回だけ描く。
+   */
+  showNotes?: boolean;
+  /**
+   * 最初から選んだセルの枠と固定行の文を出すか。既定は true。
+   * false なら、利用者がセルを選ぶまで枠も文も出さない（S-06b の 2 つめ以降の親の図）。
+   */
+  showInitialSelection?: boolean;
 };

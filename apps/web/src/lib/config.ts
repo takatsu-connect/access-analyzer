@@ -14,6 +14,12 @@ export const MEASURE_START = '2025-10-08';
 /** 広告カテゴリの ID（配下の子カテゴリも広告の軸）。 */
 export const AD_CATEGORY_ID = 188;
 
+/** 「記事」の親カテゴリの ID。この親か、その子に属する記事が、記事の種類「記事」。 */
+export const ARTICLE_CATEGORY_ID = 10;
+
+/** 「イベント」の親カテゴリの ID。この親か、その子に属する記事が、記事の種類「イベント」。 */
+export const EVENT_CATEGORY_ID = 9;
+
 /** 流入チャネルの 5 区分。 */
 export const CHANNEL_BUCKETS = ['search', 'social', 'direct', 'referral', 'other'] as const;
 

@@ -14,6 +14,8 @@ export type CurveSectionProps = {
   post: ArticleDetailData['post'];
   cumulative: ArticleDetailData['cumulative'];
   benchmark: ArticleDetailData['benchmark'];
+  /** 比べる相手（記事どうし、イベント記事どうし、null は全体）。帯の文の下に一言で添える。 */
+  benchmarkSection: ArticleDetailData['benchmarkSection'];
 };
 
 /**
@@ -53,6 +55,8 @@ export function CurveSection(props: CurveSectionProps) {
   const days = curveDays(post.ageDays);
   const sentence = bandSentence(props);
   const dayLabel = (day: number): string => t('absent.dayN', { n: day });
+  const drawsBand =
+    benchmark !== null && benchmark.p25.slice(0, days).some((value) => value !== null);
 
   const rows = cumulative.slice(0, days).flatMap((value, index) => {
     if (value === null) return [];
@@ -74,6 +78,13 @@ export function CurveSection(props: CurveSectionProps) {
         }}
         dayLabel={dayLabel}
       />
+      {/*
+        比べる相手の一言は、図に帯を描くとき（描く日数の中に帯の値があるとき）に、凡例の直下に置く。
+        帯の文が「まだ比較できません」でも、帯が見えていれば誰の帯かを書く（レビュー 2026-11-10 M-4）。
+      */}
+      {drawsBand ? (
+        <Notice>{t(`s03.curve.scope.${props.benchmarkSection ?? 'all'}`)}</Notice>
+      ) : null}
       <p className={styles.lead}>{sentence ?? t('absent.band')}</p>
       {/* 帯の文が出せないときは、点も出さない（「まだ比較できません」と区分の名前を並べない）。 */}
       {sentence === null || post.band30 === null ? null : <BandDot band={post.band30} />}

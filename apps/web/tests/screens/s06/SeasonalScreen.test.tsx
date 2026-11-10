@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { buildSeasonal } from '@/data/pages';
 import type { SeasonalData } from '@/lib/page-data';
+import { t } from '@/lib/ui-text';
 import { SeasonalScreen } from '@/screens/s06/SeasonalScreen';
 
 import { BUILT_AT, makeCache } from '../../data/fixture';
@@ -83,7 +84,9 @@ describe('S-06b 月ごと × カテゴリ', () => {
 
     // 最初に選んであるのは、終わっている月のうち、いちばん新しい月（2026 年 10 月）。175 と 300。
     const text = fixedRow(view(container, 'wide'));
-    expect(text).toBe('2026 年 10 月 グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です');
+    expect(text).toBe(
+      '2026 年 10 月 記事 > グルメ: 175 回。去年の同じ月は、8 日からの数字で 300 回です',
+    );
     expect(text).not.toMatch(/[▲▼%]/);
   });
 
@@ -94,7 +97,7 @@ describe('S-06b 月ごと × カテゴリ', () => {
       <SeasonalScreen data={{ ...data, meta: { ...data.meta, measureStart: '2025-10-01' } }} />,
     );
     expect(fixedRow(view(container, 'wide'))).toBe(
-      '2026 年 10 月 グルメ: 175 回。去年の同じ月と比べて ▼ −125（−42%）',
+      '2026 年 10 月 記事 > グルメ: 175 回。去年の同じ月と比べて ▼ −125（−42%）',
     );
   });
 
@@ -106,7 +109,7 @@ describe('S-06b 月ごと × カテゴリ', () => {
     clickCell(wide, 0, 0);
 
     expect(fixedRow(wide)).toBe(
-      '2025 年 10 月 グルメ: 300 回。去年の同じ月の数字なし。2025 年 10 月は 8 日からの数字です',
+      '2025 年 10 月 記事 > グルメ: 300 回。去年の同じ月の数字なし。2025 年 10 月は 8 日からの数字です',
     );
   });
 
@@ -149,7 +152,7 @@ describe('S-06b 月ごと × カテゴリ', () => {
     expect(fixedRow(wide)).toContain('広告');
     fireEvent.click(screen.getByRole('button', { name: '子カテゴリ' }));
     // 子カテゴリは 1 行（グルメ）。既定のマス（いちばん新しい終わった月）に戻る。
-    expect(fixedRow(view(container, 'wide'))).toContain('2026 年 10 月 グルメ');
+    expect(fixedRow(view(container, 'wide'))).toContain('2026 年 10 月 記事 > グルメ');
   });
 
   it('途中までの月は、去年の同じ月と比べない', () => {
@@ -272,5 +275,169 @@ describe('S-06b 月ごと × カテゴリ', () => {
 
     expectCommonRules(container);
     expectNoSortUi(container);
+  });
+});
+
+describe('S-06b 子カテゴリの親子（2026-11-10。同じ名前の子が別の親の下にある）', () => {
+  beforeEach(() => {
+    setQuery('?axis=child');
+  });
+
+  /** イベント（9）と記事（10）の下に、同じ名前の「お祭り」がある形。 */
+  function sameNameData(): SeasonalData {
+    const data = built();
+    return {
+      ...data,
+      axes: [
+        { parent: { id: 9, name: 'イベント' }, children: [{ id: 31, name: 'お祭り' }] },
+        {
+          parent: { id: 10, name: '記事' },
+          children: [
+            { id: 41, name: 'お祭り' },
+            { id: 42, name: 'グルメ' },
+          ],
+        },
+        // 数字のある子がない親は、まとまりを出さない。
+        { parent: { id: 189, name: 'マップ' }, children: [{ id: 51, name: '駅' }] },
+      ],
+      pvByMonth: {
+        31: { 'm2026-10': 120 },
+        41: { 'm2026-10': 30 },
+        42: { 'm2026-10': 60 },
+      },
+    };
+  }
+
+  it('広い画面と狭い画面の図は、親の名前の見出しごとに分かれる', () => {
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+
+    for (const name of ['wide', 'narrow'] as const) {
+      const target = view(container, name);
+      const groups = [...target.querySelectorAll('section[data-group]')];
+      expect(groups.map((group) => group.querySelector('h2')?.textContent)).toEqual([
+        'イベント',
+        '記事',
+      ]);
+      expect(groups.map((group) => rowLabels(group as HTMLElement))).toEqual([
+        ['お祭り'],
+        ['お祭り', 'グルメ'],
+      ]);
+    }
+  });
+
+  it('狭い画面では、親の見出しを横に送る枠の外に置く', () => {
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+
+    for (const group of view(container, 'narrow').querySelectorAll('section[data-group]')) {
+      const heading = group.querySelector('h2');
+      expect(heading?.parentElement).toBe(group);
+    }
+  });
+
+  it('選んだマスの文は子の名前に親の名前を添える。最初から文を出すのは最初の親だけ（M-1）', () => {
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+    const groups = view(container, 'wide').querySelectorAll<HTMLElement>('section[data-group]');
+    const first = groups[0] as HTMLElement;
+    const second = groups[1] as HTMLElement;
+
+    expect(fixedRow(first)).toContain('2026 年 10 月 イベント > お祭り: 120 回');
+    // 2 つめの親は、マスを選ぶまで文も選んだ枠も出さない。
+    expect(fixedRow(second)).toBe('');
+    expect(second.querySelector('[data-part="selected"]')).toBeNull();
+    const months = second.querySelectorAll('[data-part="col-label"]').length;
+    clickCell(second, 0, months - 2);
+    expect(fixedRow(second)).toContain('2026 年 10 月 記事 > お祭り: 30 回');
+    expect(second.querySelector('[data-part="selected"]')).not.toBeNull();
+  });
+
+  it('案内と凡例は、親ごとの図の上に 1 回だけ（広い画面と狭い画面のそれぞれ）', () => {
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+    for (const name of ['wide', 'narrow'] as const) {
+      const target = view(container, name);
+      expect(target.querySelectorAll('[data-part="heatmap-notes"]')).toHaveLength(1);
+      const hints = [...target.querySelectorAll('p')].filter(
+        (item) => item.textContent === t('s06b.tap.hint'),
+      );
+      expect(hints).toHaveLength(1);
+      expect(target.querySelectorAll('ul')).toHaveLength(1);
+      // 案内と凡例は、最初の親の見出しより前。
+      const notes = target.querySelector('[data-part="heatmap-notes"]');
+      const firstGroup = target.querySelector('section[data-group]');
+      expect(
+        notes !== null &&
+          firstGroup !== null &&
+          (notes.compareDocumentPosition(firstGroup) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      ).toBe(true);
+    }
+  });
+
+  it('行の名前の幅はページで 1 つ（親ごとの図に同じ幅の段を当てる）。名前の全文は title にある', () => {
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+    const wide = view(container, 'wide');
+    const narrow = view(container, 'narrow');
+    // 最も長い名前（3 文字）で段が決まる。広い画面と狭い画面で同じ段。
+    expect(wide.className).toMatch(/labelW4/);
+    expect(narrow.className).toMatch(/labelW4/);
+    const titles = [...wide.querySelectorAll('section[data-group] span[title]')].map((item) =>
+      item.getAttribute('title'),
+    );
+    expect(titles).toEqual(['お祭り', 'お祭り', 'グルメ']);
+  });
+
+  it('長い名前があれば、上限の段（広い画面 w12）にする', () => {
+    const data = sameNameData();
+    const long: SeasonalData = {
+      ...data,
+      axes: data.axes.map((axis) =>
+        axis.parent.id === 10
+          ? {
+              ...axis,
+              children: [...axis.children, { id: 43, name: 'とても長い子カテゴリの名前' }],
+            }
+          : axis,
+      ),
+      pvByMonth: { ...data.pvByMonth, 43: { 'm2026-10': 5 } },
+    };
+    const { container } = render(<SeasonalScreen data={long} />);
+    expect(view(container, 'wide').className).toMatch(/labelW12/);
+  });
+
+  it('狭い画面の横に送る枠は、親ごとにある', () => {
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+    expect(
+      view(container, 'narrow').querySelectorAll(
+        'section[data-group] [data-part="scroll-from-end"]',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('同じ値の表は、親の名前の行で子の列をまとめる', () => {
+    render(<SeasonalScreen data={sameNameData()} />);
+    const table = screen.getByRole('table', {
+      name: '月ごと、カテゴリごとの読まれた回数の表',
+      hidden: true,
+    });
+    const parents = [...table.querySelectorAll('thead tr[data-row="parents"] th')].map((cell) => [
+      cell.textContent,
+      cell.getAttribute('colspan'),
+      cell.getAttribute('scope'),
+    ]);
+    expect(parents).toEqual([
+      ['イベント', '1', 'colgroup'],
+      ['記事', '2', 'colgroup'],
+    ]);
+    expect(table.querySelectorAll('colgroup')).toHaveLength(3);
+    const children = [...table.querySelectorAll('thead tr:last-child th[scope="col"]')].map(
+      (cell) => cell.textContent,
+    );
+    expect(children).toEqual(['月', 'お祭り', 'お祭り', 'グルメ']);
+  });
+
+  it('親カテゴリのときは、親の名前の行もまとまりもない', () => {
+    setQuery('');
+    const { container } = render(<SeasonalScreen data={sameNameData()} />);
+
+    expect(container.querySelector('section[data-group]')).toBeNull();
+    expect(container.querySelector('tr[data-row="parents"]')).toBeNull();
   });
 });

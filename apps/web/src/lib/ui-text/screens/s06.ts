@@ -36,6 +36,10 @@ export const S06_TEXT = {
   's06b.period.wide': '期間: 直近 24 か月',
   's06b.period.narrow': '期間: 直近 12 か月',
   's06b.chart.title': '月ごと、カテゴリごとの読まれた回数',
+  // 子カテゴリのとき、親ごとに分けた図の題。同じ名前の子が別の親の下にあるので、親の名前を添える。
+  's06b.chart.title.group': '月ごと、{parent}の子カテゴリごとの読まれた回数',
+  // 子カテゴリの名前に親を添えた形（選んだマスの文に使う）。カテゴリの path と同じ書き方。
+  's06b.child.label': '{parent} > {child}',
   // 格子の見出しに使う短い年月（2026/10）。
   's06b.month.short': '{year}/{month}',
   's06b.tap.hint': 'マスをタップすると、その月の数字に変わります',

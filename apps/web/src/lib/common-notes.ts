@@ -5,9 +5,21 @@
  * 表にないパス（S-04 のライターの一覧、404）には何も出さない。
  */
 
-/** 項目の ID。辞書の notes.* のキーに対応する（measureStart と band は「詳しく」を持つ）。 */
+/**
+ * 項目の ID。辞書の notes.* のキーに対応する（measureStart と band* は「詳しく」を持つ）。
+ * 帯は比べる相手で 3 つに分ける（2026-11-10）: band は同じ種類の記事どうし（記事の一覧、記事詳細）、
+ * bandAll は全記事（S-01）、bandAuthor はライター全体は全記事・記事ごとは同じ種類（S-05）。
+ */
 export type NoteId =
-  'pageviews' | 'measureStart' | 'masked' | 'band' | 'ratio' | 'source' | 'posting';
+  | 'pageviews'
+  | 'measureStart'
+  | 'masked'
+  | 'band'
+  | 'bandAll'
+  | 'bandAuthor'
+  | 'ratio'
+  | 'source'
+  | 'posting';
 
 /** 出す順。画面ごとの一覧も、この順に並べて返す。 */
 export const NOTE_ORDER: readonly NoteId[] = [
@@ -16,6 +28,8 @@ export const NOTE_ORDER: readonly NoteId[] = [
   'measureStart',
   'masked',
   'band',
+  'bandAll',
+  'bandAuthor',
   'ratio',
   'source',
 ];
@@ -33,15 +47,21 @@ type NoteRoute = { screen: string; pattern: RegExp; notes: readonly NoteId[] };
  * - S-08 は公開本数（WordPress の記事）だけで、読まれた回数と GA4 の数字を出さない。
  */
 export const NOTE_ROUTES: readonly NoteRoute[] = [
-  { screen: 'S-01', pattern: /^\/$/, notes: [...PAGEVIEWS, 'band', 'ratio'] },
+  { screen: 'S-01', pattern: /^\/$/, notes: [...PAGEVIEWS, 'bandAll', 'ratio'] },
   { screen: 'S-02a', pattern: /^\/articles\/top$/, notes: PAGEVIEWS },
   { screen: 'S-02b', pattern: /^\/articles\/new$/, notes: [...PAGEVIEWS, 'band'] },
   { screen: 'S-02c', pattern: /^\/articles\/long$/, notes: PAGEVIEWS },
   { screen: 'S-02d', pattern: /^\/articles\/recent$/, notes: PAGEVIEWS },
   { screen: 'S-02e', pattern: /^\/articles$/, notes: PAGEVIEWS },
+  // S-10a〜S-10e（イベント記事）は S-02a〜S-02e と同じ。
+  { screen: 'S-10a', pattern: /^\/events\/top$/, notes: PAGEVIEWS },
+  { screen: 'S-10b', pattern: /^\/events\/new$/, notes: [...PAGEVIEWS, 'band'] },
+  { screen: 'S-10c', pattern: /^\/events\/long$/, notes: PAGEVIEWS },
+  { screen: 'S-10d', pattern: /^\/events\/recent$/, notes: PAGEVIEWS },
+  { screen: 'S-10e', pattern: /^\/events$/, notes: PAGEVIEWS },
   { screen: 'S-03', pattern: /^\/articles\/[0-9]+$/, notes: [...PAGEVIEWS, 'band', 'ratio'] },
   { screen: 'S-04', pattern: /^\/authors$/, notes: [] },
-  { screen: 'S-05', pattern: /^\/authors\/[^/]+$/, notes: [...PAGEVIEWS, 'band', 'ratio'] },
+  { screen: 'S-05', pattern: /^\/authors\/[^/]+$/, notes: [...PAGEVIEWS, 'bandAuthor', 'ratio'] },
   { screen: 'S-06', pattern: /^\/categories$/, notes: [...PAGEVIEWS, 'ratio'] },
   { screen: 'S-06b', pattern: /^\/categories\/seasonal$/, notes: [...PAGEVIEWS, 'ratio'] },
   { screen: 'S-07', pattern: /^\/tags$/, notes: [...PAGEVIEWS, 'ratio'] },

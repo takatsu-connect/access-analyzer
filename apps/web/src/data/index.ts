@@ -9,6 +9,7 @@ import type {
   ArticleDetailData,
   ArticleListData,
   ArticleListKind,
+  ArticleSection,
   AuthorIndexData,
   AuthorPageData,
   CategoryData,
@@ -32,6 +33,7 @@ import {
   buildTagIndex,
   buildTagPage,
   listArticleIds,
+  listEventArticleIds,
   listAuthorSlugs,
   listTagIds,
 } from './pages';
@@ -52,8 +54,12 @@ export async function getDashboardData(): Promise<DashboardData> {
   return buildDashboard(await loadAll(), BUILT_AT);
 }
 
-export async function getArticleListData(kind: ArticleListKind): Promise<ArticleListData> {
-  return buildArticleList(await loadAll(), kind, BUILT_AT);
+/** 記事一覧。section は「記事」タブ（article）か「イベント記事」タブ（event）。 */
+export async function getArticleListData(
+  kind: ArticleListKind,
+  section: ArticleSection = 'article',
+): Promise<ArticleListData> {
+  return buildArticleList(await loadAll(), kind, BUILT_AT, undefined, section);
 }
 
 export async function getArticleDetailData(postId: number): Promise<ArticleDetailData | null> {
@@ -62,6 +68,14 @@ export async function getArticleDetailData(postId: number): Promise<ArticleDetai
 
 export async function getArticleIds(): Promise<number[]> {
   return listArticleIds(await loadAll());
+}
+
+/**
+ * 主な種類がイベントの記事の ID。レイアウトがヘッダに渡し、記事詳細の現在地を決める
+ * （静的な HTML とブラウザで同じ結果になるよう、DOM ではなくビルド時のデータで決める）。
+ */
+export async function getEventArticleIds(): Promise<number[]> {
+  return listEventArticleIds(await loadAll());
 }
 
 export async function getAuthorIndexData(): Promise<AuthorIndexData> {

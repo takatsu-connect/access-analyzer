@@ -141,6 +141,7 @@ const SCREEN_FILE_PREFIXES: Record<string, readonly string[]> = {
   s06: ['s06.', 's06b.'],
   s07: ['s07.', 's07b.'],
   s08: ['s08.'],
+  s10: ['s10a.', 's10b.', 's10c.', 's10d.', 's10e.'],
 };
 
 const parts = dictionaryParts as Record<string, Record<string, string>>;
@@ -174,6 +175,12 @@ const SCREEN_IDS = [
   's07',
   's07b',
   's08',
+  // イベント記事（S-02a〜S-02e のイベント記事版。2026-11-10）。
+  's10a',
+  's10b',
+  's10c',
+  's10d',
+  's10e',
 ];
 
 // 画面に出す文言で使わない語（05 §2.1、NFR-97）。
@@ -309,7 +316,7 @@ describe('辞書の完全性（U-19）', () => {
 });
 
 describe('辞書の部品（本体と、画面ごとのファイル。U-19）', () => {
-  it('部品は、本体と画面ごとの 7 ファイル', () => {
+  it('部品は、本体と画面ごとの 8 ファイル', () => {
     expect(Object.keys(parts)).toEqual(['base', ...Object.keys(SCREEN_FILE_PREFIXES)]);
   });
 

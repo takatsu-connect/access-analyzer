@@ -25,6 +25,7 @@ import {
   listTagIds,
 } from '@/data/pages';
 import { loadAll, VIEWS } from '@/data/pub';
+import { BENCHMARK_SCOPES } from '@/lib/derive';
 import type { ArticleListKind } from '@/lib/page-data';
 import type { PubCache } from '@/lib/pub-types';
 
@@ -84,8 +85,9 @@ describe.skipIf(!isLocalUrl(supabaseUrl))('ローカルの Supabase', () => {
     // 記事は post_id の昇順で読めている。
     const postIds = cache.posts.map((post) => post.post_id);
     expect(postIds).toEqual([...postIds].sort((a, b) => a - b));
-    // 分布は scope = all の行だけ。
-    expect(cache.benchmarkCurve.every((row) => row.scope === 'all')).toBe(true);
+    // 分布は scope が全体と記事の種類の行だけ。
+    const scopes: readonly string[] = BENCHMARK_SCOPES;
+    expect(cache.benchmarkCurve.every((row) => scopes.includes(row.scope))).toBe(true);
   });
 
   it('全ページの組み立てがスキーマを通り、大きさを記録する', () => {
