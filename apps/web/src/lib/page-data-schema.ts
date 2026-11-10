@@ -149,6 +149,9 @@ export const dashboardDataSchema = z.strictObject({
     }),
   ),
   heatmap: byPeriod(z.array(masked).length(168)),
+  heatmapMargins: byPeriod(
+    z.strictObject({ dow: z.array(masked).length(7), hour: z.array(masked).length(24) }),
+  ),
   freshness: byPeriod(z.record(freshness, z.strictObject({ postCount: count, pageviews: count }))),
   monthReferrer: byPeriod(z.array(z.strictObject({ domain: text, sessions: count }))),
   monthCity: byPeriod(z.array(z.strictObject({ region: text, city: text, sessions: count }))),

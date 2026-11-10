@@ -178,7 +178,7 @@
 | --- | --- | --- |
 | period_id | text | PK の一部、FK → period |
 | axis | text | PK の一部。`sns`（M-11、値は sessions）/ `new_returning`（M-15、値は activeUsers）/ `local`（M-14 の 3 区分、値は sessions）/ `channel`（M-10 の 5 区分、値は sessions。FR-13）/ `device_pv`（M-13 の 3 区分、値は screenPageViews。FR-14）/ `device_sessions`（M-13 の 3 区分、値は sessions。FR-14）。`channel` と `device_*` は Q-36 の確定（2026-11-03）で追加。期間ごとに GA4 から直接取る（03 §5.4 G19・G20）。日別表 `site_daily_channel` / `site_daily_device` の合算では伏せ値の分だけ過小になるため、合算しない |
-| bucket | text | PK の一部。sns: `instagram` / `facebook` / `x` / `line` / `other`。new_returning: `new` / `returning` / `unknown`。local: `kawasaki` / `japan_other` / `unknown`。channel: `search` / `social` / `direct` / `referral` / `other`。device_pv / device_sessions: `mobile` / `desktop` / `tablet` |
+| bucket | text | PK の一部。sns: `instagram` / `facebook` / `x` / `line` / `other`。new_returning: `new` / `returning` / `unknown`。local: `kawasaki` / `japan_other` / `unknown`。channel: `search` / `social` / `direct` / `referral` / `other`。device_pv / device_sessions: `mobile` / `desktop` / `tablet`。dow: `'0'`〜`'6'`（`'0'` = 日曜）。hour: `'0'`〜`'23'`（dow と hour は ADR 0003 判断 8。G8 の伏せる前の 168 セルの和。2026-11-10 追加、マイグレーション 0006） |
 | value | integer | null = 伏せ |
 | value_mask | text | |
 

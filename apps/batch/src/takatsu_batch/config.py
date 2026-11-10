@@ -12,7 +12,9 @@ type DeviceBucket = Literal["mobile", "desktop", "tablet"]
 type NewReturningBucket = Literal["new", "returning", "unknown"]
 type LocalBucket = Literal["kawasaki", "japan_other", "unknown"]
 type FreshnessBucket = Literal["new", "mid", "long"]
-type SiteAxis = Literal["sns", "new_returning", "local", "channel", "device_pv", "device_sessions"]
+type SiteAxis = Literal[
+    "sns", "new_returning", "local", "channel", "device_pv", "device_sessions", "dow", "hour"
+]
 type ArticleAxis = Literal["channel", "sns", "device"]
 type AuthorAxis = Literal["channel", "sns"]
 
@@ -91,3 +93,7 @@ WINDOW_IDS: Final[tuple[str, ...]] = tuple(
 HEATMAP_BUCKETS: Final[tuple[tuple[int, int], ...]] = tuple(
     (dow, hour) for dow in range(7) for hour in range(24)
 )
+# 曜日ごと（'0' = 日曜）と時間帯ごとの合計（site_period_breakdown の軸 dow と hour）。
+# 168 セルの伏せる前の値から作り、それぞれを 1 つの排他的区分として伏せる（ADR 0003 判断 8）。
+DOW_BUCKETS: Final[tuple[str, ...]] = tuple(str(dow) for dow in range(7))
+HOUR_BUCKETS: Final[tuple[str, ...]] = tuple(str(hour) for hour in range(24))

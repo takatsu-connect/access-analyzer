@@ -13,7 +13,17 @@ export {
   unconfirmedFrom,
 } from './dates';
 export type { YmdParts } from './dates';
-export { fold6, HEATMAP_DAYS, HEATMAP_HOURS, HEATMAP_SLOTS } from './heatmap';
+export {
+  fold6,
+  HEATMAP_DAY_ORDER,
+  HEATMAP_DAYS,
+  HEATMAP_HOURS,
+  HEATMAP_SLOTS,
+  heatmapView,
+  orderDays,
+  weekdayCounts,
+} from './heatmap';
+export type { HeatmapMargins, HeatmapMeans, HeatmapView } from './heatmap';
 export { isDisplayableDomain, safeExternalUrl } from './links';
 export { compare, share, shareOf, tenOf } from './numbers';
 export type { Comparison } from './numbers';

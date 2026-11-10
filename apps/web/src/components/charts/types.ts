@@ -154,12 +154,27 @@ export type BandDotProps = {
 // --- Heatmap（格子。S-01 の曜日 × 時間帯、S-06b の月 × カテゴリ） ---
 
 export type HeatmapCell = {
+  /**
+   * 'cell' は格子のマス。'rowMean' は右端の列（その行の平均。col = 列の数）、
+   * 'colMean' は下端の行（その列の平均。row = 行の数）。
+   */
+  kind: 'cell' | 'rowMean' | 'colMean';
   row: number;
   col: number;
+  /** 'colMean' のときは colMeans.label。 */
   rowLabel: string;
+  /** 'rowMean' のときは rowMeans.label。 */
   colLabel: string;
-  /** null は伏せ値。 */
+  /** null は伏せ値（平均では、伏せ値のマスを含む行・列）。 */
   value: Masked;
+};
+
+/** 格子の外側に足す平均の列または行（heatmapMeans の結果）。 */
+export type HeatmapMeans = {
+  /** 見出し（列なら上端、行なら左端に出す。例: 「平均」）。 */
+  label: string;
+  /** 行（または列）ごとの平均。null は出せないもの。 */
+  values: readonly Masked[];
 };
 
 export type HeatmapProps = {
@@ -189,4 +204,10 @@ export type HeatmapProps = {
    * S-06b は、カテゴリごとに季節の波が色に出るよう、カテゴリの並ぶ向き（'row' か 'col'）を渡す（助言 A-2）。
    */
   scale?: HeatScale;
+  /** 右端に足す、行ごとの平均の列（S-01）。濃淡は付けず、数字は狭い画面でも出す。 */
+  rowMeans?: HeatmapMeans;
+  /** 下端に足す、列ごとの平均の行（S-01）。濃淡は付けず、数字は狭い画面でも出す。 */
+  colMeans?: HeatmapMeans;
+  /** 平均のマスの数字の書式。既定は formatValue（合計のマスでも、平均は小数になりうる）。 */
+  formatMean?: (value: number) => string;
 };

@@ -8,7 +8,7 @@
   "NEW_RETURNING_BUCKETS": ["new", "returning", "unknown"],
   "LOCAL_BUCKETS": ["kawasaki", "japan_other", "unknown"],
   "FRESHNESS_BUCKETS": ["new", "mid", "long"],
-  "SITE_AXES": ["sns", "new_returning", "local", "channel", "device_pv", "device_sessions"],
+  "SITE_AXES": ["sns", "new_returning", "local", "channel", "device_pv", "device_sessions", "dow", "hour"],
   "ARTICLE_AXES": ["channel", "sns", "device"],
   "AUTHOR_AXES": ["channel", "sns"],
   "WINDOW_PERIOD_IDS": ["last7", "prev7", "last28", "prev28", "last90", "prev90"],

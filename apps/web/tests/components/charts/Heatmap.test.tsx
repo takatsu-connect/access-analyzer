@@ -233,4 +233,95 @@ describe('Heatmap（U-24）', () => {
   it('style 属性がなく、role="img" と <title> がある', () => {
     expectChartBasics(<Heatmap {...props()} />, TITLE);
   });
+
+  describe('平均の列と行（rowMeans / colMeans）', () => {
+    const withMeans = (): HeatmapProps =>
+      props({
+        rowMeans: { label: '平均', values: [5, null] },
+        colMeans: { label: '平均', values: [10, null, 25] },
+      });
+    const meanText = (cell: HeatmapCell): string =>
+      `${cell.kind} ${cell.rowLabel} ${cell.colLabel}: ${cell.value === null ? '伏せ値' : cell.value}`;
+
+    it('渡さなければ、平均のマスも見出しも出さない', () => {
+      const { container } = render(<Heatmap {...props()} />);
+      expect(parts(container, 'mean-cell')).toHaveLength(0);
+      expect(parts(container, 'mean-col-label')).toHaveLength(0);
+      expect(parts(container, 'mean-row-label')).toHaveLength(0);
+    });
+
+    it('右端に行の数、下端に列の数の平均のマスを足し、角は空ける。濃淡は付けない', () => {
+      const { container } = render(<Heatmap {...withMeans()} />);
+      const means = parts(container, 'mean-cell');
+      expect(means).toHaveLength(2 + 3);
+      for (const node of means) {
+        expect(node.getAttribute('class')).not.toMatch(/shade\d/);
+        expect(node.hasAttribute('data-level')).toBe(false);
+      }
+      // 格子のマスは 6 つのまま。
+      expect(parts(container, 'cell')).toHaveLength(6);
+      expect(parts(container, 'mean-col-label')[0]?.textContent).toBe('平均');
+      expect(parts(container, 'mean-row-label')[0]?.textContent).toBe('平均');
+      // 数字は狭い画面でも出す（cell-value とは別のクラス）。null は「—」。
+      expect(parts(container, 'mean-value').map((node) => node.textContent)).toEqual([
+        '5',
+        '10',
+        '25',
+      ]);
+      expect(parts(container, 'masked-mark')).toHaveLength(1 + 2);
+    });
+
+    it('平均の濃淡の段階は、格子のマスだけで決まる（平均を渡しても変わらない）', () => {
+      const levelsOf = (container: HTMLElement): string[] =>
+        parts(container, 'cell').map((item) => item.getAttribute('data-level') ?? '');
+      const plain = render(<Heatmap {...props()} />);
+      const before = levelsOf(plain.container);
+      plain.unmount();
+      expect(levelsOf(render(<Heatmap {...withMeans()} />).container)).toEqual(before);
+    });
+
+    it('平均のマスを選ぶと、固定行に kind と見出しが渡る', () => {
+      const { container } = render(<Heatmap {...withMeans()} cellText={meanText} />);
+      const mean = (kind: string, index: number): Element => {
+        const found = parts(container, 'mean-cell').filter(
+          (node) => node.getAttribute('data-kind') === kind,
+        )[index];
+        if (!found) throw new Error(`${kind} の ${index} がありません。`);
+        return found;
+      };
+      fireEvent.click(mean('rowMean', 0));
+      expect(fixedRow(container)).toBe('rowMean 日 平均: 5');
+      fireEvent.click(mean('rowMean', 1));
+      expect(fixedRow(container)).toBe('rowMean 月 平均: 伏せ値');
+      fireEvent.click(mean('colMean', 2));
+      expect(fixedRow(container)).toBe('colMean 平均 夜: 25');
+    });
+
+    it('矢印キーで平均のマスへ移れて、角には入らない', () => {
+      const { container } = render(<Heatmap {...withMeans()} cellText={meanText} />);
+      const plot = container.querySelector('[role="group"]');
+      if (!plot) throw new Error('操作の領域がありません。');
+      // 既定はいちばん大きいマス（月 夜 = 40）。右へ行くと、その行の平均。
+      expect(fixedRow(container)).toBe('cell 月 夜: 40');
+      fireEvent.keyDown(plot, { key: 'ArrowRight' });
+      expect(fixedRow(container)).toBe('rowMean 月 平均: 伏せ値');
+      // 下は角なので動かない。
+      fireEvent.keyDown(plot, { key: 'ArrowDown' });
+      expect(fixedRow(container)).toBe('rowMean 月 平均: 伏せ値');
+      fireEvent.keyDown(plot, { key: 'ArrowLeft' });
+      fireEvent.keyDown(plot, { key: 'ArrowDown' });
+      expect(fixedRow(container)).toBe('colMean 平均 夜: 25');
+      // 下端の行の End は、角ではなく最後の列。
+      fireEvent.keyDown(plot, { key: 'Home' });
+      fireEvent.keyDown(plot, { key: 'End' });
+      expect(fixedRow(container)).toBe('colMean 平均 夜: 25');
+      // 右へは角なので動かない。
+      fireEvent.keyDown(plot, { key: 'ArrowRight' });
+      expect(fixedRow(container)).toBe('colMean 平均 夜: 25');
+    });
+
+    it('平均を足しても style 属性がない', () => {
+      expectChartBasics(<Heatmap {...withMeans()} />, TITLE);
+    });
+  });
 });

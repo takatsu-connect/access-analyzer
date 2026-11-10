@@ -79,6 +79,23 @@
   fill: var(--color-surface);
 }
 
+/* 平均の列と行（S-01）。濃淡の段階と混ざらないよう、薄い地の色に固定し、数字は常に出す。 */
+.mean {
+  fill: var(--color-surface-subtle);
+}
+
+.meanValue {
+  fill: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.meanLabel {
+  font-weight: 600;
+}
+
 .maskedMark,
 .cellValue {
   font-size: 12px;

@@ -177,7 +177,8 @@ def test_i_b_01_period_tables(harness: Harness, query: Query) -> None:
         for row in query(
             """
             select axis, bucket, value, value_mask
-            from internal.site_period_breakdown where period_id = 'last7'
+            from internal.site_period_breakdown
+            where period_id = 'last7' and axis not in ('dow', 'hour')
             """
         )
     }
@@ -216,6 +217,27 @@ def test_i_b_01_period_tables(harness: Harness, query: Query) -> None:
         where period_id = 'last7' and pageviews is distinct from 0 order by 1, 2
         """
     ) == [(0, 9, None, "threshold"), (2, 21, None, "secondary")]
+
+    # 曜日ごと・時間帯ごとの合計（ADR 0003 判断 8）は、伏せる前の 168 セルから作り、
+    # それぞれ 1 つの区分として伏せる。値のある曜日・時間帯は 2 つだけなので、168 セルと同じ形。
+    assert query(
+        """
+        select axis, count(*) from internal.site_period_breakdown
+        where period_id = 'last7' and axis in ('dow', 'hour') group by axis order by axis
+        """
+    ) == [("dow", 7), ("hour", 24)]
+    assert query(
+        """
+        select axis, bucket, value, value_mask from internal.site_period_breakdown
+        where period_id = 'last7' and axis in ('dow', 'hour') and value is distinct from 0
+        order by 1, 2
+        """
+    ) == [
+        ("dow", "0", None, "threshold"),
+        ("dow", "2", None, "secondary"),
+        ("hour", "21", None, "secondary"),
+        ("hour", "9", None, "threshold"),
+    ]
 
 
 def test_i_b_01_article_and_author_tables(harness: Harness, query: Query) -> None:

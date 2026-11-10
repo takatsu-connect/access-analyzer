@@ -31,7 +31,7 @@
 | 共通（著者 slug・カテゴリ ID・月の許可リスト） | pub_author、pub_category、pub_post | author_slug、display_name / category_id、name、parent_id、path / published_on | ― |
 | S-01 全体 | pub_site_daily | day、pageviews、sessions | 全行 |
 | S-01 | pub_site_period | period_id、pageviews、sessions、active_users、engagement_seconds、days | 全行 |
-| S-01 | pub_site_period_breakdown | period_id、axis、bucket、value | 全行（axis = sns / local / new_returning / channel / device_pv / device_sessions。channel と device_* は Q-36 の確定で期間値として格納。02 §3.3） |
+| S-01 | pub_site_period_breakdown | period_id、axis、bucket、value | 全行（axis = sns / local / new_returning / channel / device_pv / device_sessions / dow / hour。channel と device_* は Q-36 の確定で期間値として格納。dow と hour はヒートマップの平均の列と行に使う（ADR 0003 判断 8）。02 §3.3） |
 | S-01 | pub_site_daily_channel、pub_site_daily_device | ― | S-01 では読まない（日別推移に内訳を描かない。期間の構成は pub_site_period_breakdown の channel / device_* から。03 §17）。ビューは 05 §4.1 行 2 のとおり存在する |
 | S-01 | pub_site_period_heatmap | period_id、dow、hour、pageviews | 全行 |
 | S-01 | pub_site_period_freshness | period_id、freshness、post_count、pageviews | 全行 |
@@ -125,6 +125,7 @@ type DashboardData = PageCommon & {
     local: Record<'kawasaki' | 'jp_other' | 'unknown', number | null>;
     newReturning: Record<'new' | 'returning' | 'unknown', number | null>;
   }>;
+  heatmapMargins: Record<PeriodId, { dow: (number | null)[]; hour: (number | null)[] }>;  // 曜日ごと 7 要素（添字 0 = 日曜）、時間帯ごと 24 要素の合計（axis = dow / hour。ADR 0003 判断 8）。行がない期間はない（平均を出さない）
   heatmap: Record<PeriodId, (number | null)[]>;      // 168 要素。index = dow * 24 + hour（dow 0 = 日曜。GA4 の dayOfWeek と同じ）。伏せは null（二次伏せを含む。L-1）
   freshness: Record<PeriodId, Record<Freshness, { postCount: number; pageviews: number }>>;   // 公開記事の合算。sitePeriod.pageviews（GA4 のサイト全体値。記事以外のページを含む）とは一致しない。注記は FR-10
   monthReferrer: Record<PeriodId, { domain: string; sessions: number }[]>;      // 確定月のみ。rank 順。T 未満の行は存在しない

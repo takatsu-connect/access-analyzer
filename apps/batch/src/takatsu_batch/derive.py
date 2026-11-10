@@ -16,8 +16,10 @@ from takatsu_batch.config import (
     BACKFILL_START,
     CHANNEL_BUCKETS,
     DEVICE_BUCKETS,
+    DOW_BUCKETS,
     EVERGREEN_MIN_DAYS_SINCE_PUBLISH,
     HEATMAP_BUCKETS,
+    HOUR_BUCKETS,
     LOCAL_BUCKETS,
     LONG_MIN_DAYS_SINCE_PUBLISH,
     MASK_THRESHOLD,
@@ -235,6 +237,27 @@ def _derive_site_period(period_id: str, raw: PeriodRaw, output: DeriveOutput) ->
         output.site_period_breakdown.extend(_masked_rows(values, buckets, (period_id, axis)))
     valid_cells = {cell: raw.heatmap[cell] for cell in HEATMAP_BUCKETS if cell in raw.heatmap}
     output.site_period_heatmap.extend(_masked_rows(valid_cells, HEATMAP_BUCKETS, (period_id,)))
+    dow_totals, hour_totals = heatmap_margins(valid_cells)
+    output.site_period_breakdown.extend(_masked_rows(dow_totals, DOW_BUCKETS, (period_id, "dow")))
+    output.site_period_breakdown.extend(
+        _masked_rows(hour_totals, HOUR_BUCKETS, (period_id, "hour"))
+    )
+
+
+def heatmap_margins(
+    cells: Mapping[tuple[int, int], int],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """曜日 × 時間帯の伏せる前の値から、曜日ごと・時間帯ごとの合計を作る（ADR 0003 判断 8）。
+
+    伏せたあとの表示値から足すと、伏せたマスの分だけ小さくなるので、伏せる前の値から作る。
+    キーは site_period_breakdown の bucket（曜日は '0' = 日曜、時間帯は '0'〜'23'）。
+    """
+    dow_totals: Counter[str] = Counter()
+    hour_totals: Counter[str] = Counter()
+    for (dow, hour), pageviews in cells.items():
+        dow_totals[str(dow)] += pageviews
+        hour_totals[str(hour)] += pageviews
+    return dict(dow_totals), dict(hour_totals)
 
 
 def _derive_article_period(

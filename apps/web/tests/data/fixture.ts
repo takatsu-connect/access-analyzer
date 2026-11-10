@@ -301,6 +301,11 @@ export function makeCache(): PubCache {
       ...siteBreakdown('last7', 'new_returning', { new: 250, returning: 140, unknown: 10 }),
       ...siteBreakdown('last7', 'device_pv', { mobile: 600, desktop: 180, tablet: null }),
       ...siteBreakdown('last7', 'device_sessions', { mobile: 300, desktop: 90, tablet: null }),
+      // 曜日ごと・時間帯ごとの合計（ADR 0003 判断 8）。下の 168 セルの伏せる前の値（日曜 1 時は 3）
+      // から作り、区分ごとに伏せたもの。時間帯は 1 時が 5 未満で伏せ、二次伏せで 0 時も伏せる。
+      // 曜日は日曜 8（5 + 3）で伏せない（マスに伏せ値があっても曜日の平均は出る）。
+      ...siteBreakdown('last7', 'dow', { '0': 8, '6': 9 }),
+      ...siteBreakdown('last7', 'hour', { '0': null, '1': null, '23': 9 }),
       // 行のない区分は 0 になる。
       ...siteBreakdown('prev7', 'channel', { search: 180 }),
       ...siteBreakdown('last28', 'channel', { search: 700, social: 300 }),

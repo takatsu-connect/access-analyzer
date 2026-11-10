@@ -40,6 +40,9 @@ export const SITE_AXES = [
   'channel',
   'device_pv',
   'device_sessions',
+  // 曜日ごと（'0' = 日曜）と時間帯ごと（'0'〜'23'）の合計。S-01 のヒートマップの平均に使う（ADR 0003 判断 8）。
+  'dow',
+  'hour',
 ] as const;
 
 /** 記事の内訳の軸。 */

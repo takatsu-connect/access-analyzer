@@ -5,7 +5,10 @@ import {
   compare,
   diffDays,
   fold6,
+  heatmapView,
   isDelayed,
+  orderDays,
+  weekdayCounts,
   isDisplayableDomain,
   latestConfirmedDay,
   monthProgress,
@@ -152,6 +155,134 @@ describe('fold6（U-17）', () => {
 
   it('168 要素でなければ例外', () => {
     expect(() => fold6([1, 2, 3])).toThrow(RangeError);
+  });
+});
+
+describe('orderDays（月曜始まり）', () => {
+  it('日曜始まり（0 = 日曜）の 7 行を、月火水木金土日の順に並べる', () => {
+    expect(orderDays(['日', '月', '火', '水', '木', '金', '土'])).toEqual([
+      '月',
+      '火',
+      '水',
+      '木',
+      '金',
+      '土',
+      '日',
+    ]);
+  });
+
+  it('7 行でなければ例外', () => {
+    expect(() => orderDays([1, 2, 3])).toThrow(RangeError);
+  });
+});
+
+describe('weekdayCounts', () => {
+  it('期間（両端を含む）に各曜日が何日あるか。添字 0 = 日曜', () => {
+    // 2026-11-01 は日曜。7 日なら各 1 日。
+    expect(weekdayCounts('2026-11-01', '2026-11-07')).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    // 2026 年 10 月（31 日。1 日は木曜）は木・金・土が 5 日。
+    expect(weekdayCounts('2026-10-01', '2026-10-31')).toEqual([4, 4, 4, 4, 5, 5, 5]);
+    expect(weekdayCounts('2026-11-03', '2026-11-03')).toEqual([0, 0, 1, 0, 0, 0, 0]);
+  });
+
+  it('日付の形が違えば例外', () => {
+    expect(() => weekdayCounts('2026/11/01', '2026-11-07')).toThrow(RangeError);
+  });
+});
+
+describe('heatmapView（マス、曜日ごと・時間帯ごとの平均）', () => {
+  // 2026 年 10 月: 日〜水が 4 日、木〜土が 5 日。
+  const OCTOBER = { start: '2026-10-01', end: '2026-10-31' } as const;
+  const cellsWith = (entries: Record<number, Masked>): Masked[] =>
+    [...new Array<undefined>(168).keys()].map((index) =>
+      index in entries ? (entries[index] ?? null) : 0,
+    );
+  const margins = (dow: Record<number, Masked>, hour: Record<number, Masked>) => ({
+    dow: [...new Array<undefined>(7).keys()].map((index) =>
+      index in dow ? (dow[index] ?? null) : 0,
+    ),
+    hour: [...new Array<undefined>(24).keys()].map((index) =>
+      index in hour ? (hour[index] ?? null) : 0,
+    ),
+  });
+
+  it("'avg' のマスは、その曜日が期間にあった日数で割る（日曜は 4、木曜は 5）", () => {
+    const view = heatmapView({
+      cells: cellsWith({ [0 * 24 + 9]: 40, [4 * 24 + 9]: 40 }),
+      margins: undefined,
+      ...OCTOBER,
+      mode: 'avg',
+    });
+    expect(view.hourly[0]?.[9]).toBe(10);
+    expect(view.hourly[4]?.[9]).toBe(8);
+    // 狭い画面の区分（8〜11 時）も同じ値から畳む。
+    expect(view.slots[0]?.[2]).toBe(10);
+  });
+
+  it("'sum' のマスは回数のまま。伏せ値は null のまま", () => {
+    const view = heatmapView({
+      cells: cellsWith({ 9: 40, 10: null }),
+      margins: undefined,
+      ...OCTOBER,
+      mode: 'sum',
+    });
+    expect(view.hourly[0]?.slice(9, 11)).toEqual([40, null]);
+    expect(view.slots[0]?.[2]).toBeNull();
+  });
+
+  it('合計がなければ、平均の列と行を出さない', () => {
+    const view = heatmapView({ cells: cellsWith({}), margins: undefined, ...OCTOBER, mode: 'sum' });
+    expect(view.hourlyMeans).toBeUndefined();
+    expect(view.slotMeans).toBeUndefined();
+  });
+
+  it("'sum' の平均: 曜日は合計 ÷ 列の数（24 か 6）、時間帯は合計 ÷ 7。マスの伏せ値に左右されない", () => {
+    const view = heatmapView({
+      // 日曜 1 時のマスは伏せ値だが、合計は伏せる前の値から作られている。
+      cells: cellsWith({ 1: null }),
+      margins: margins({ 0: 480 }, { 1: 70, 2: 14, 3: 7, 4: 28 }),
+      ...OCTOBER,
+      mode: 'sum',
+    });
+    expect(view.hourlyMeans?.rows[0]).toBe(20);
+    expect(view.slotMeans?.rows[0]).toBe(80);
+    expect(view.hourlyMeans?.cols.slice(0, 5)).toEqual([0, 10, 2, 1, 4]);
+    // 狭い画面の区分は 4 時間の合計 ÷ 7: 深夜 0〜3 時 = (0 + 70 + 14 + 7) ÷ 7 = 13。
+    expect(view.slotMeans?.cols[0]).toBe(13);
+  });
+
+  it("'avg' の平均: 曜日はさらにその曜日の日数で、時間帯は期間の日数で割る", () => {
+    const view = heatmapView({
+      cells: cellsWith({}),
+      margins: margins({ 0: 960, 4: 1200 }, { 9: 310 }),
+      ...OCTOBER,
+      mode: 'avg',
+    });
+    // 日曜: 960 ÷ 4 日 ÷ 24 = 10。木曜: 1200 ÷ 5 日 ÷ 24 = 10。
+    expect(view.hourlyMeans?.rows[0]).toBe(10);
+    expect(view.hourlyMeans?.rows[4]).toBe(10);
+    expect(view.slotMeans?.rows[4]).toBe(40);
+    // 9 時: 310 ÷ 31 日 = 10。
+    expect(view.hourlyMeans?.cols[9]).toBe(10);
+  });
+
+  it('合計が伏せ値なら、その平均は null。狭い画面の区分は 4 時間のどれかが伏せ値なら null', () => {
+    const view = heatmapView({
+      cells: cellsWith({}),
+      margins: margins({ 3: null }, { 2: null }),
+      ...OCTOBER,
+      mode: 'sum',
+    });
+    expect(view.hourlyMeans?.rows[3]).toBeNull();
+    expect(view.hourlyMeans?.cols[2]).toBeNull();
+    expect(view.slotMeans?.cols[0]).toBeNull();
+    expect(view.slotMeans?.cols[1]).toBe(0);
+  });
+
+  it('168 要素でなければ例外', () => {
+    expect(() =>
+      heatmapView({ cells: [1, 2], margins: undefined, ...OCTOBER, mode: 'sum' }),
+    ).toThrow(RangeError);
   });
 });
 

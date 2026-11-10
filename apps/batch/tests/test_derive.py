@@ -13,7 +13,9 @@ import pytest
 from takatsu_batch.config import (
     CHANNEL_BUCKETS,
     DEVICE_BUCKETS,
+    DOW_BUCKETS,
     HEATMAP_BUCKETS,
+    HOUR_BUCKETS,
     LOCAL_BUCKETS,
     NEW_RETURNING_BUCKETS,
     SNS_BUCKETS,
@@ -27,6 +29,7 @@ from takatsu_batch.derive import (
     cumulative,
     derive,
     freshness,
+    heatmap_margins,
     is_evergreen_365,
     is_recent_hot,
     is_revival,
@@ -542,7 +545,7 @@ def test_derive_site_period(out: DeriveOutput) -> None:
     ]
 
 
-def test_derive_site_period_breakdown_has_six_axes_per_period(out: DeriveOutput) -> None:
+def test_derive_site_period_breakdown_has_eight_axes_per_period(out: DeriveOutput) -> None:
     assert _of_period(out.site_period_breakdown, "last7", 0) == [
         *_rows(
             ("last7", "sns"),
@@ -587,8 +590,21 @@ def test_derive_site_period_breakdown_has_six_axes_per_period(out: DeriveOutput)
                 "tablet": (None, "threshold"),
             },
         ),
+        # 曜日ごと・時間帯ごとの合計は、伏せる前の 168 セルから作る（範囲外の (7, 0) は入れない）。
+        # (3, 14) の 2 は 168 セルでは伏せるが、合計には入る。合計でも 5 未満なので伏せ、
+        # 伏せが 1 つなので 5 以上で最小の 7 を二次伏せする。
+        *_rows(
+            ("last7", "dow"),
+            DOW_BUCKETS,
+            {"0": (10, None), "3": (None, "threshold"), "6": (None, "secondary")},
+        ),
+        *_rows(
+            ("last7", "hour"),
+            HOUR_BUCKETS,
+            {"0": (10, None), "14": (None, "threshold"), "23": (None, "secondary")},
+        ),
     ]
-    # 値のない期間も 6 軸の全バケット（5 + 3 + 3 + 5 + 3 + 3 = 22 行）を 0 で揃える
+    # 値のない期間も 8 軸の全バケット（5 + 3 + 3 + 5 + 3 + 3 + 7 + 24 = 53 行）を 0 で揃える
     for period_id in REFETCH_IDS[1:]:
         assert _of_period(out.site_period_breakdown, period_id, 0) == [
             *_rows((period_id, "sns"), SNS_BUCKETS, {}),
@@ -597,9 +613,19 @@ def test_derive_site_period_breakdown_has_six_axes_per_period(out: DeriveOutput)
             *_rows((period_id, "channel"), CHANNEL_BUCKETS, {}),
             *_rows((period_id, "device_pv"), DEVICE_BUCKETS, {}),
             *_rows((period_id, "device_sessions"), DEVICE_BUCKETS, {}),
+            *_rows((period_id, "dow"), DOW_BUCKETS, {}),
+            *_rows((period_id, "hour"), HOUR_BUCKETS, {}),
         ]
-    assert len(out.site_period_breakdown) == 22 * 8
-    assert [row[0] for row in out.site_period_breakdown[::22]] == list(REFETCH_IDS)
+    assert len(out.site_period_breakdown) == 53 * 8
+    assert [row[0] for row in out.site_period_breakdown[::53]] == list(REFETCH_IDS)
+
+
+def test_heatmap_margins_sum_the_unmasked_cells() -> None:
+    dow_totals, hour_totals = heatmap_margins({(0, 0): 3, (0, 23): 4, (6, 0): 2, (2, 9): 0})
+    # 168 セルでは 3、4、2 はどれも伏せるが、曜日・時間帯の合計は伏せる前の値の和。
+    assert dow_totals == {"0": 7, "6": 2, "2": 0}
+    assert hour_totals == {"0": 5, "23": 4, "9": 0}
+    assert heatmap_margins({}) == ({}, {})
 
 
 def test_derive_site_period_heatmap_has_168_cells_per_period(out: DeriveOutput) -> None:
@@ -928,7 +954,7 @@ def test_derive_without_posts_still_writes_site_rows() -> None:
     result = _empty_run([], {(999, date(2026, 10, 30)): 500})
     assert len(result.period_rows) == 8
     assert len(result.site_period) == 8
-    assert len(result.site_period_breakdown) == 22 * 8
+    assert len(result.site_period_breakdown) == 53 * 8
     assert len(result.site_period_heatmap) == 168 * 8
     assert result.site_daily == []
     assert result.site_daily_channel == []

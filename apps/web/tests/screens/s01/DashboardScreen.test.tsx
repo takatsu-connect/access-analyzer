@@ -559,23 +559,64 @@ describe('S-01 全体ダッシュボード: 読者はどんな人？', () => {
     const wide = part(container, '[data-part="heatmap-wide"]');
     const label = (mode: 'heat.avg' | 'heat.sum'): string =>
       t('s01.heat.label', { metric: metricLabel('M01'), mode: t(mode) });
-    // 土曜 23 時の 9 回 ÷ 7 日 = 1.3。
+    // 1 日あたりの平均は、その曜日が期間にあった日数で割る。直近 7 日は各曜日 1 日なので、
+    // 土曜 23 時の 9 回 ÷ 1 日 = 9.0。
     expect(part(wide, '[data-part="fixed-row"]').textContent).toBe(
-      t('heatmap.fixedRow', { row: '土曜', col: '23 時', label: label('heat.avg'), value: '1.3' }),
+      t('heatmap.fixedRow', { row: '土曜', col: '23 時', label: label('heat.avg'), value: '9.0' }),
     );
-    // 狭い画面用の 7 × 6 と、それぞれの図と同じ値の表（1 マス 1 行）。
+    // 狭い画面用の 7 × 6 と、それぞれの図と同じ値の表（1 マス 1 行。曜日ごとの平均 7 行と、
+    // 時間帯ごとの平均の行が足される）。
     const narrow = part(container, '[data-part="heatmap-narrow"]');
-    expect(wide.querySelectorAll('tbody tr')).toHaveLength(7 * 24);
-    expect(narrow.querySelectorAll('tbody tr')).toHaveLength(7 * 6);
+    expect(wide.querySelectorAll('tbody tr')).toHaveLength(7 * 24 + 7 + 24);
+    expect(narrow.querySelectorAll('tbody tr')).toHaveLength(7 * 6 + 7 + 6);
+    // 行は月曜始まり（月火水木金土日）。図の行の見出しも、表の最初の行も月曜。
+    expect(
+      [...wide.querySelectorAll('[aria-hidden="true"] > span')]
+        .map((node) => node.textContent)
+        .slice(0, 8),
+    ).toEqual(['月曜', '火曜', '水曜', '木曜', '金曜', '土曜', '日曜', '平均']);
+    expect(narrow.querySelector('tbody tr')?.textContent).toContain('月曜');
     // 日曜 1 時は伏せ値。それを含む区分（深夜 0〜3 時）も伏せ値になる。
-    const firstSlot = narrow.querySelector('tbody tr');
-    expect(firstSlot?.textContent).toContain('日曜');
-    expect(firstSlot?.textContent).toContain('深夜 0〜3 時');
-    expect(firstSlot?.querySelector('.masked')?.textContent).toBe('—伏せ値');
-    expect(wide.querySelector('tbody tr')?.textContent).toContain('0.7');
+    const rowsOf = (scope: Element, ...texts: string[]): Element[] =>
+      [...scope.querySelectorAll('tbody tr')].filter((row) =>
+        texts.every((text) => (row.textContent ?? '').includes(text)),
+      );
+    const sundaySlot = rowsOf(narrow, '日曜', '深夜 0〜3 時')[0];
+    expect(sundaySlot?.querySelector('.masked')?.textContent).toBe('—伏せ値');
+    expect(rowsOf(wide, '日曜', '0 時')[0]?.textContent).toContain('5.0');
+    // 平均は伏せる前の値から作った合計 ÷ マスの数。日曜の行は 1 時のマスが伏せ値でも、
+    // 曜日の合計（8）は伏せていないので出る: 8 ÷ 1 日 ÷ 24 = 0.3、狭い画面は 8 ÷ 1 日 ÷ 6 = 1.3。
+    const hourlyName = t('s01.heat.mean.row.hourly');
+    const slotName = t('s01.heat.mean.row.slot');
+    const colName = t('s01.heat.mean.col');
+    expect(rowsOf(wide, '日曜', hourlyName)[0]?.textContent).toContain('0.3');
+    expect(rowsOf(narrow, '日曜', slotName)[0]?.textContent).toContain('1.3');
+    // 時間帯の合計が伏せ値なら、その平均は「—」（狭い画面の区分は 4 時間のどれかが伏せ値なら）。
+    expect(rowsOf(wide, colName, '1 時')[0]?.querySelector('.masked')).not.toBeNull();
+    expect(rowsOf(narrow, colName, '深夜 0〜3 時')[0]?.querySelector('.masked')).not.toBeNull();
+    // 23 時: 9 ÷ 期間の日数 7 = 1.3。
+    expect(rowsOf(wide, colName, '23 時')[0]?.textContent).toContain('1.3');
+    expect(rowsOf(narrow, '月曜', slotName)).toHaveLength(1);
+    // 平均のマスを選ぶと、固定行に単位つきで出る。
+    const rowMean = wide.querySelector('[data-part="mean-cell"][data-kind="rowMean"]');
+    if (rowMean === null) throw new Error('曜日の平均のマスがありません。');
+    fireEvent.click(rowMean);
+    expect(part(wide, '[data-part="fixed-row"]').textContent).toMatch(
+      new RegExp(`^月曜（${hourlyName}）: ${label('heat.avg')} \\d`),
+    );
 
     // 折りたたみの中なので、役割ではなく文字で探す。
     fireEvent.click(within(container).getByText(t('heat.sum')));
+    expect(
+      part(part(container, '[data-part="heatmap-wide"]'), '[data-part="fixed-row"]').textContent,
+    ).toMatch(
+      // 選んだ平均のマスは切り替えでも保つ。合計の表でも、平均は小数 1 桁で出す（0 に丸めない）。
+      new RegExp(`^月曜（${hourlyName}）: ${label('heat.sum')} [\\d,]+\\.\\d$`),
+    );
+    // 合計のマスは整数のまま。
+    const maxCell = wide.querySelector('[data-part="cell"][data-row="5"][data-col="23"]');
+    if (maxCell === null) throw new Error('土曜 23 時のマスがありません。');
+    fireEvent.click(maxCell);
     expect(
       part(part(container, '[data-part="heatmap-wide"]'), '[data-part="fixed-row"]').textContent,
     ).toBe(

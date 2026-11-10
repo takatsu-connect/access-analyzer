@@ -69,7 +69,15 @@ export const S01_TEXT = {
   's01.heat.table.day': '曜日',
   's01.heat.table.time': '時間帯',
   's01.heat.note.avg':
-    '「1 日あたりの平均」は、期間の合計を期間の日数（{days} 日）で割った値です。',
+    '「1 日あたりの平均」は、その曜日の合計を、期間にその曜日があった日数で割った値です。',
+  's01.heat.mean': '平均',
+  's01.heat.mean.row.hourly': '1 時間あたりの平均',
+  's01.heat.mean.row.slot': '4 時間あたりの平均',
+  's01.heat.mean.col': '7 曜日の平均',
+  's01.heat.mean.fixedRow': '{name}（{mean}）: {label} {value}',
+  's01.heat.mean.fixedRow.masked': '{name}（{mean}）: {label} —（伏せ値）',
+  's01.heat.note.mean':
+    '右端の「平均」は、その曜日に読まれたすべての回数を、並んだマスの数で割った値です（広い画面では 1 時間あたり、狭い画面では 4 時間あたり）。いちばん下の「平均」は、その時間帯の 7 曜日の平均です。伏せ値のマスがあっても平均は出ます。平均の元になる数が小さいときは「—」です。',
   's01.device.h3': 'どんな端末で読まれたか',
   's01.device.sessions.summary': '詳しく（訪問回数で見る）',
   's01.device.sessions.title': 'どんな端末で読まれたか（訪問回数）',

@@ -29,6 +29,8 @@ import { isDisplayableDomain } from '@/lib/derive';
 
 const HEATMAP_CELLS = 7 * 24;
 
+type SiteAxis = (typeof SITE_AXES)[number];
+
 /** 1 つの期間のサイト全体の内訳。行がなければ undefined。 */
 function siteBreakdownOf(rows: readonly PubSitePeriodBreakdown[]): SiteBreakdown | undefined {
   if (rows.length === 0) return undefined;
@@ -36,7 +38,7 @@ function siteBreakdownOf(rows: readonly PubSitePeriodBreakdown[]): SiteBreakdown
   if (rows.some((row) => !knownAxes.includes(row.axis))) {
     throw new Error('pub_site_period_breakdown に、定義にない軸の行があります');
   }
-  const axis = (name: (typeof SITE_AXES)[number]) =>
+  const axis = (name: SiteAxis) =>
     rows
       .filter((row) => row.axis === name)
       .map((row) => ({ bucket: row.bucket, value: row.value }));
@@ -55,6 +57,32 @@ function siteBreakdownOf(rows: readonly PubSitePeriodBreakdown[]): SiteBreakdown
     local: bucketRecord(LOCAL_BUCKETS, axis('local')),
     newReturning: bucketRecord(NEW_RETURNING_BUCKETS, axis('new_returning')),
   };
+}
+
+/**
+ * 曜日ごと（7）と時間帯ごと（24）の合計（ADR 0003 判断 8）。軸 dow と hour の行から作る。
+ * どちらかの行が 1 つもなければ undefined（バッチがまだ作っていない期間。平均を出さない）。
+ * 行のない区分は 0、伏せ値は null。
+ */
+function heatmapMarginsOf(
+  rows: readonly PubSitePeriodBreakdown[],
+): { dow: Masked[]; hour: Masked[] } | undefined {
+  const of = (name: SiteAxis, size: number): Masked[] | undefined => {
+    const axisRows = rows.filter((row) => row.axis === name);
+    if (axisRows.length === 0) return undefined;
+    const values = new Array<Masked>(size).fill(0);
+    for (const row of axisRows) {
+      const index = Number(row.bucket);
+      if (!Number.isInteger(index) || index < 0 || index >= size || String(index) !== row.bucket) {
+        throw new Error(`pub_site_period_breakdown の軸 ${name} に、定義にない区分があります`);
+      }
+      values[index] = row.value;
+    }
+    return values;
+  };
+  const dow = of('dow', 7);
+  const hour = of('hour', 24);
+  return dow === undefined || hour === undefined ? undefined : { dow, hour };
 }
 
 /** 168 要素（index = dow * 24 + hour）。行のない時間帯は 0、伏せ値は null。 */
@@ -120,6 +148,9 @@ export function buildDashboard(cache: PubCache, builtAt: Date): DashboardData {
       siteBreakdownOf(rowsOf(cache.sitePeriodBreakdown, 'period_id', id)),
     ),
     heatmap: byPeriod(ids, (id) => heatmapOf(rowsOf(cache.siteHeatmap, 'period_id', id))),
+    heatmapMargins: byPeriod(ids, (id) =>
+      heatmapMarginsOf(rowsOf(cache.sitePeriodBreakdown, 'period_id', id)),
+    ),
     freshness: byPeriod(ids, (id) => {
       const rows = rowsOf(cache.siteFreshness, 'period_id', id);
       if (rows.length === 0) return undefined;

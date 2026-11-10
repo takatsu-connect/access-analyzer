@@ -51,6 +51,8 @@ function largestCell(values: readonly (readonly (number | null)[])[]): Position 
  *   伏せ値のセルは面の色（白）と「—」。
  * - セルの中の数字は広い画面だけ（CSS で隠す）。選んだセルの値は、図の下の固定行に出す。
  *   固定行は最初から埋まっている。
+ * - rowMeans / colMeans を渡すと、右端に行ごとの平均の列、下端に列ごとの平均の行を足す。
+ *   平均のマスは濃淡を付けず、数字は狭い画面でも出す。選ぶと固定行に出る。右下の角は空ける。
  */
 export function Heatmap({
   title,
@@ -64,6 +66,9 @@ export function Heatmap({
   formatValue = formatNumber,
   colLabelEvery = 1,
   scale = 'all',
+  rowMeans,
+  colMeans,
+  formatMean = formatValue,
 }: HeatmapProps) {
   const fixedRowId = useId();
   const [selected, setSelected] = useState<Position | null>(null);
@@ -72,31 +77,51 @@ export function Heatmap({
   const colCount = colLabels.length;
   if (rowCount === 0 || colCount === 0) return null;
 
-  const valueAt = (position: Position): number | null =>
-    values[position.row]?.[position.col] ?? null;
+  // 平均の列・行を含めた格子の大きさ。
+  const totalRows = rowCount + (colMeans === undefined ? 0 : 1);
+  const totalCols = colCount + (rowMeans === undefined ? 0 : 1);
+  const isCorner = (position: Position): boolean =>
+    position.row >= rowCount && position.col >= colCount;
+
+  const kindOf = (position: Position): HeatmapCell['kind'] => {
+    if (position.col >= colCount) return 'rowMean';
+    if (position.row >= rowCount) return 'colMean';
+    return 'cell';
+  };
+  const valueAt = (position: Position): number | null => {
+    const kind = kindOf(position);
+    if (kind === 'rowMean') return rowMeans?.values[position.row] ?? null;
+    if (kind === 'colMean') return colMeans?.values[position.col] ?? null;
+    return values[position.row]?.[position.col] ?? null;
+  };
   const inRange = (position: Position | null | undefined): position is Position =>
     position !== null &&
     position !== undefined &&
     position.row >= 0 &&
-    position.row < rowCount &&
+    position.row < totalRows &&
     position.col >= 0 &&
-    position.col < colCount;
+    position.col < totalCols &&
+    !isCorner(position);
+  const inGrid = (position: Position | null | undefined): position is Position =>
+    inRange(position) && position.row < rowCount && position.col < colCount;
   // 選んだセルが格子の外になったら（行や列の数が変わったら）、既定のセルに戻る。
-  const fallback = inRange(defaultCell) ? defaultCell : largestCell(values);
+  const fallback = inGrid(defaultCell) ? defaultCell : largestCell(values);
   const current = inRange(selected) ? selected : fallback;
 
   const levels = heatLevels(values, scale);
   const hasMasked = values.some((cells) => cells.some((value) => value === null));
-  const cellWidth = 100 / colCount;
+  const cellWidth = 100 / totalCols;
   const leftOf = (col: number): number => round2(col * cellWidth);
   const centerOf = (col: number): number => round2((col + 0.5) * cellWidth);
   const topOf = (row: number): number => HEADER_HEIGHT + row * CELL_HEIGHT;
 
+  const currentKind = kindOf(current);
   const currentCell: HeatmapCell = {
+    kind: currentKind,
     row: current.row,
     col: current.col,
-    rowLabel: rowLabels[current.row] ?? '',
-    colLabel: colLabels[current.col] ?? '',
+    rowLabel: currentKind === 'colMean' ? (colMeans?.label ?? '') : (rowLabels[current.row] ?? ''),
+    colLabel: currentKind === 'rowMean' ? (rowMeans?.label ?? '') : (colLabels[current.col] ?? ''),
     value: valueAt(current),
   };
 
@@ -107,10 +132,45 @@ export function Heatmap({
     else if (event.key === 'ArrowUp') next = { row: current.row - 1, col: current.col };
     else if (event.key === 'ArrowDown') next = { row: current.row + 1, col: current.col };
     else if (event.key === 'Home') next = { row: current.row, col: 0 };
-    else if (event.key === 'End') next = { row: current.row, col: colCount - 1 };
+    else if (event.key === 'End') {
+      // 平均の行（下端）では、右端は角なので、最後の列にする。
+      const last = current.row >= rowCount ? colCount - 1 : totalCols - 1;
+      next = { row: current.row, col: last };
+    }
     if (next === null) return;
     event.preventDefault();
     if (inRange(next)) setSelected(next);
+  };
+
+  /** 平均のマス（濃淡なし、数字は常に出す）。 */
+  const meanCell = (position: Position, key: string) => {
+    const value = valueAt(position);
+    return (
+      <g key={key}>
+        <rect
+          className={`${styles.cell} ${styles.mean}`}
+          data-part="mean-cell"
+          data-kind={kindOf(position)}
+          data-row={position.row}
+          data-col={position.col}
+          x={percent(leftOf(position.col))}
+          y={topOf(position.row)}
+          width={percent(cellWidth)}
+          height={CELL_HEIGHT}
+          onClick={() => setSelected(position)}
+        />
+        <text
+          className={value === null ? styles.maskedMark : styles.meanValue}
+          data-part={value === null ? 'masked-mark' : 'mean-value'}
+          x={percent(centerOf(position.col))}
+          y={topOf(position.row) + CELL_HEIGHT / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+        >
+          {value === null ? t('masked.dash') : formatMean(value)}
+        </text>
+      </g>
+    );
   };
 
   return (
@@ -122,6 +182,11 @@ export function Heatmap({
               {label}
             </span>
           ))}
+          {colMeans === undefined ? null : (
+            <span className={`${styles.rowLabel} ${styles.meanLabel}`} data-part="mean-row-label">
+              {colMeans.label}
+            </span>
+          )}
         </div>
         <div
           className={styles.plot}
@@ -131,7 +196,7 @@ export function Heatmap({
           aria-describedby={fixedRowId}
           onKeyDown={onKeyDown}
         >
-          <svg className={styles.svg} role="img" height={HEADER_HEIGHT + rowCount * CELL_HEIGHT}>
+          <svg className={styles.svg} role="img" height={HEADER_HEIGHT + totalRows * CELL_HEIGHT}>
             <title>{title}</title>
             {colLabels.map((label, col) =>
               col % colLabelEvery === 0 ? (
@@ -146,6 +211,17 @@ export function Heatmap({
                   {label}
                 </text>
               ) : null,
+            )}
+            {rowMeans === undefined ? null : (
+              <text
+                className={`${styles.colLabel} ${styles.meanLabel}`}
+                data-part="mean-col-label"
+                x={percent(centerOf(colCount))}
+                y={HEADER_BASELINE}
+                textAnchor="middle"
+              >
+                {rowMeans.label}
+              </text>
             )}
             {rowLabels.map((rowLabel, row) =>
               colLabels.map((colLabel, col) => {
@@ -195,6 +271,12 @@ export function Heatmap({
                 );
               }),
             )}
+            {rowMeans === undefined
+              ? null
+              : rowLabels.map((_, row) => meanCell({ row, col: colCount }, `mean-row-${row}`))}
+            {colMeans === undefined
+              ? null
+              : colLabels.map((_, col) => meanCell({ row: rowCount, col }, `mean-col-${col}`))}
             <rect
               className={styles.selected}
               data-part="selected"

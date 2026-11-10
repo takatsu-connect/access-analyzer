@@ -6,7 +6,8 @@ import { Details } from '@/components/Details';
 import { Notice, StateMessage } from '@/components/Notice';
 import { ResponsiveDetails } from '@/components/ResponsiveDetails';
 import { DEVICE_BUCKETS, LOCAL_BUCKETS, NEW_RETURNING_BUCKETS } from '@/lib/config';
-import { fold6, HEATMAP_DAYS, HEATMAP_HOURS } from '@/lib/derive';
+import { HEATMAP_DAYS, HEATMAP_HOURS, heatmapView, orderDays } from '@/lib/derive';
+import type { HeatmapMargins, HeatmapView } from '@/lib/derive';
 import { formatNumber } from '@/lib/format';
 import type { DashboardData, Masked, Period, SitePeriodValue } from '@/lib/page-data';
 import type { QueryState } from '@/lib/query';
@@ -19,7 +20,7 @@ import styles from './s01.module.css';
 import { Segment } from './Segment';
 import { formatAverage } from './series';
 
-/** 曜日の名前のキー（添字 0 = 日曜。GA4 の dayOfWeek と同じ）。 */
+/** 曜日の名前のキー（添字 0 = 日曜。GA4 の dayOfWeek と同じ）。画面の並びは orderDays で月曜始まり。 */
 const WEEKDAY_KEYS = [
   'weekday.0',
   'weekday.1',
@@ -44,21 +45,29 @@ export type ReadersSectionProps = {
 
 type HeatmapBlockProps = Pick<ReadersSectionProps, 'period' | 'site' | 'heat' | 'onHeatChange'> & {
   cells: readonly Masked[] | undefined;
+  /** 曜日ごと・時間帯ごとの合計。なければ平均の列と行を出さない。 */
+  margins: HeatmapMargins | undefined;
 };
 
 /** いつ読まれているか（M-16。FR-12）。広い画面は 7 × 24、狭い画面は 7 × 6 に畳む。 */
-function HeatmapBlock({ cells, period, site, heat, onHeatChange }: HeatmapBlockProps) {
+function HeatmapBlock({ cells, margins, period, site, heat, onHeatChange }: HeatmapBlockProps) {
   if (cells === undefined || cells.length !== HEATMAP_DAYS * HEATMAP_HOURS) {
     return <StateMessage kind="empty" />;
   }
 
-  // 平均 = セル ÷ 期間の日数（曜日が期間に現れる回数の補正はしない）。
+  // 1 日あたりの平均 = マス ÷ 期間にその曜日があった日数。平均の列と行は、伏せる前の値から
+  // 作った合計を、並んだマスの数で割る（heatmapView）。
   const isAverage = heat === 'avg' && site.days > 0;
-  const scaled = isAverage ? cells.map((cell) => (cell === null ? null : cell / site.days)) : cells;
-  const hourly = WEEKDAY_KEYS.map((_, dow) =>
-    scaled.slice(dow * HEATMAP_HOURS, (dow + 1) * HEATMAP_HOURS),
-  );
-  const rowLabels = WEEKDAY_KEYS.map((key) => t('s01.heat.row', { day: t(key) }));
+  const view = heatmapView({
+    cells,
+    margins,
+    start: period.start,
+    end: period.end,
+    mode: isAverage ? 'avg' : 'sum',
+  });
+  // 行は月曜始まり（土日を隣り合わせで見る。HEATMAP_DAY_ORDER）。
+  const hourly = orderDays(view.hourly);
+  const rowLabels = orderDays(WEEKDAY_KEYS).map((key) => t('s01.heat.row', { day: t(key) }));
   const hourLabels = [...new Array<undefined>(HEATMAP_HOURS).keys()].map((hour) =>
     t('s01.heat.hour', { hour }),
   );
@@ -67,19 +76,32 @@ function HeatmapBlock({ cells, period, site, heat, onHeatChange }: HeatmapBlockP
     metric: metricLabel('M01'),
     mode: t(isAverage ? 'heat.avg' : 'heat.sum'),
   });
-  const cellText = (cell: HeatmapCell): string =>
-    cell.value === null
-      ? t('heatmap.fixedRow.masked', { row: cell.rowLabel, col: cell.colLabel, label })
-      : t('heatmap.fixedRow', {
-          row: cell.rowLabel,
-          col: cell.colLabel,
-          label,
-          value: formatValue(cell.value),
-        });
+  // 固定行の文。平均のマスは「月曜（1 時間あたりの平均）」「9 時（7 曜日の平均）」の形で読む。
+  // rowMeanName は右端の平均の単位（広い画面は 1 時間あたり、狭い画面は 4 時間あたり）。
+  const cellTextFor =
+    (rowMeanName: string) =>
+    (cell: HeatmapCell): string => {
+      if (cell.kind === 'cell') {
+        return cell.value === null
+          ? t('heatmap.fixedRow.masked', { row: cell.rowLabel, col: cell.colLabel, label })
+          : t('heatmap.fixedRow', {
+              row: cell.rowLabel,
+              col: cell.colLabel,
+              label,
+              value: formatValue(cell.value),
+            });
+      }
+      const name = cell.kind === 'rowMean' ? cell.rowLabel : cell.colLabel;
+      const mean = cell.kind === 'rowMean' ? rowMeanName : t('s01.heat.mean.col');
+      return cell.value === null
+        ? t('s01.heat.mean.fixedRow.masked', { name, mean, label })
+        : t('s01.heat.mean.fixedRow', { name, mean, label, value: formatAverage(cell.value) });
+    };
+  const hourlyMeanName = t('s01.heat.mean.row.hourly');
+  const slotMeanName = t('s01.heat.mean.row.slot');
   const shared = {
     title: metricLabel('M16'),
     rowLabels,
-    cellText,
     hint: t('heatmap.tap.hint'),
     legend: t('legend.heatmap'),
     formatValue,
@@ -87,8 +109,32 @@ function HeatmapBlock({ cells, period, site, heat, onHeatChange }: HeatmapBlockP
   // 期間が変わったら、選んでいるマスを既定に戻す（平均と合計の切り替えでは保つ）。
   const chartKey = period.id;
   const slotLabels = heatmapSlotLabels();
-  const folded = fold6(scaled);
+  const folded = orderDays(view.slots);
   const tableProps = { caption: metricLabel('M16'), valueHeader: label, rowLabels, formatValue };
+  const meanLabel = t('s01.heat.mean');
+  const colName = t('s01.heat.mean.col');
+  // 平均の列と行（曜日の並びは月曜始まりにそろえる）。合計がない期間は出さない。
+  const meansFor = (means: HeatmapView['hourlyMeans'], rowName: string) =>
+    means === undefined
+      ? { chart: {}, table: {} }
+      : {
+          chart: {
+            formatMean: formatAverage,
+            rowMeans: { label: meanLabel, values: orderDays(means.rows) },
+            colMeans: { label: meanLabel, values: means.cols },
+          },
+          table: {
+            means: {
+              rows: orderDays(means.rows),
+              cols: means.cols,
+              rowName,
+              colName,
+              format: formatAverage,
+            },
+          },
+        };
+  const hourlyMeans = meansFor(view.hourlyMeans, hourlyMeanName);
+  const foldedMeans = meansFor(view.slotMeans, slotMeanName);
 
   return (
     <>
@@ -111,15 +157,35 @@ function HeatmapBlock({ cells, period, site, heat, onHeatChange }: HeatmapBlockP
           colLabels={hourLabels}
           values={hourly}
           colLabelEvery={HOUR_LABEL_EVERY}
+          cellText={cellTextFor(hourlyMeanName)}
+          {...hourlyMeans.chart}
         />
-        <HeatmapTable {...tableProps} colLabels={hourLabels} values={hourly} />
+        <HeatmapTable
+          {...tableProps}
+          colLabels={hourLabels}
+          values={hourly}
+          {...hourlyMeans.table}
+        />
       </div>
       <div className={styles.narrowOnly} data-part="heatmap-narrow">
-        <Heatmap key={chartKey} {...shared} colLabels={slotLabels} values={folded} />
-        <HeatmapTable {...tableProps} colLabels={slotLabels} values={folded} />
+        <Heatmap
+          key={chartKey}
+          {...shared}
+          colLabels={slotLabels}
+          values={folded}
+          cellText={cellTextFor(slotMeanName)}
+          {...foldedMeans.chart}
+        />
+        <HeatmapTable
+          {...tableProps}
+          colLabels={slotLabels}
+          values={folded}
+          {...foldedMeans.table}
+        />
       </div>
       <Notice>{metricNote('M16')}</Notice>
-      {isAverage ? <Notice>{t('s01.heat.note.avg', { days: site.days })}</Notice> : null}
+      {view.hourlyMeans === undefined ? null : <Notice>{t('s01.heat.note.mean')}</Notice>}
+      {isAverage ? <Notice>{t('s01.heat.note.avg')}</Notice> : null}
     </>
   );
 }
@@ -140,6 +206,7 @@ export function ReadersSection({ data, period, site, heat, onHeatChange }: Reade
         <h3 className={styles.h3}>{metricLabel('M16')}</h3>
         <HeatmapBlock
           cells={data.heatmap[period.id]}
+          margins={data.heatmapMargins[period.id]}
           period={period}
           site={site}
           heat={heat}

@@ -103,6 +103,12 @@ export type DashboardData = PageCommon & {
   breakdown: ByPeriod<SiteBreakdown>;
   /** 168 要素。index = dow * 24 + hour（dow 0 = 日曜）。 */
   heatmap: ByPeriod<Masked[]>;
+  /**
+   * 曜日ごと（dow。7 要素、添字 0 = 日曜）と時間帯ごと（hour。24 要素）の読まれた回数の合計。
+   * 伏せる前の値からバッチが作り、それぞれ伏せたもの（ADR 0003 判断 8）。null は伏せ値。
+   * バッチがまだ作っていない期間はない（平均の列と行を出さない）。
+   */
+  heatmapMargins: ByPeriod<{ dow: Masked[]; hour: Masked[] }>;
   /** 公開記事の合算。sitePeriod.pageviews（記事以外のページを含む）とは一致しない。 */
   freshness: ByPeriod<Record<Freshness, { postCount: number; pageviews: number }>>;
   /** 確定月だけ。多い順。 */

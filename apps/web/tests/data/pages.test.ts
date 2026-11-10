@@ -862,6 +862,7 @@ const NULL_ALLOWED = [
   /^(breakdown|siteBreakdown)\.[^.]+\.(channel|sns|local|newReturning|device)\.[^.]+$/,
   /^breakdown\.[^.]+\.device\.[^.]+\.(pageviews|sessions)$/,
   /^heatmap\.[^.]+\.\d+$/,
+  /^heatmapMargins\.[^.]+\.(dow|hour)\.\d+$/,
   /^period\.[^.]+\.(landingSessions|scrollCount|engagementSeconds)$/,
   // 例外: 比較の相手がない
   /^periods\.\d+\.(prevId|yoyId)$/,

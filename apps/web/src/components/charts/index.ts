@@ -15,6 +15,7 @@ export type {
   HBarItem,
   HBarProps,
   HeatmapCell,
+  HeatmapMeans,
   HeatmapProps,
   LineChartPoint,
   LineChartProps,
