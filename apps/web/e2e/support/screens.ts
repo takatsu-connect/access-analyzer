@@ -47,7 +47,7 @@ function pageTitle(name?: string): string {
   return name === undefined ? t('site.title') : `${name} | ${t('site.title')}`;
 }
 
-/** 全画面（S-01〜S-08 と 404）。記事詳細は 3 種、著者とタグは HTML の形の名前を持つものも含む。 */
+/** 全画面（S-01〜S-08、S-10a〜S-10e と 404）。記事詳細は 3 種、著者とタグは HTML の形の名前を持つものも含む。 */
 export const SCREENS: readonly Screen[] = [
   screen('S-01', '/', t('s01.h1'), pageTitle()),
   screen('S-02e', '/articles', t('s02e.h1'), pageTitle(t('s02e.name'))),
@@ -55,6 +55,13 @@ export const SCREENS: readonly Screen[] = [
   screen('S-02b', '/articles/new', t('s02b.h1'), pageTitle(t('s02b.name'))),
   screen('S-02c', '/articles/long', t('s02c.h1'), pageTitle(t('s02c.name'))),
   screen('S-02d', '/articles/recent', t('s02d.h1'), pageTitle(t('s02d.name'))),
+  // イベント記事（S-02a〜S-02e のイベント記事版。2026-11-10）。詳細は /articles/[postId] を共有する。
+  screen('S-10e', '/events', t('s10e.h1'), pageTitle(t('s10e.name'))),
+  screen('S-10a', '/events/top', t('s10a.h1'), pageTitle(t('s10a.name'))),
+  screen('S-10b', '/events/new', t('s10b.h1'), pageTitle(t('s10b.name'))),
+  screen('S-10c', '/events/long', t('s10c.h1'), pageTitle(t('s10c.name'))),
+  screen('S-10d', '/events/recent', t('s10d.h1'), pageTitle(t('s10d.name'))),
+  screen('404（イベント記事の詳細はない）', '/events/111', t('notFound.h1'), pageTitle(), 404),
   // 記事詳細の title は記事の題名（画面の名前の代わり）。
   screen('S-03（通常）', '/articles/111', t('s03.h1'), pageTitle('架空の記事 111 地域の防災訓練')),
   screen(

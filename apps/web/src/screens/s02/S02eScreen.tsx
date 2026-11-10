@@ -17,6 +17,7 @@ import { t } from '@/lib/ui-text';
 
 import { PreMeasureNote } from './PreMeasureNote';
 import { publishedMonths, searchRows } from './rows';
+import { LIST_SCREEN_IDS } from './screen-ids';
 import styles from './s02.module.css';
 
 const COLUMNS: readonly ArticleColumnId[] = [
@@ -36,23 +37,30 @@ const SEARCH_MAX_LENGTH = 50;
 const SEARCH_WRITE_DELAY_MS = 300;
 
 /**
- * S-02e 記事を探す（05 §4.5、FR-24）。data は getArticleListData('search')。
+ * S-02e 記事を探す（05 §4.5、FR-24）と、そのイベント記事版の S-10e。
+ * data は getArticleListData('search', section)。
  *
  * - 絞り込みと検索語は URL のクエリで持つ。選択肢も URL の値も、埋め込んだ一覧にあるものだけ。
  * - 並べ替えの操作は、著者・子カテゴリ・公開年月のどれかで絞ったときだけ描く（多い順だけ。NFR-98）。
  *   それ以外は公開日の新しい順で固定する（URL の sort は parseQuery が落とす）。
  */
 export function S02eScreen({ data }: { data: ArticleListData }) {
+  const screenId = LIST_SCREEN_IDS[data.section].search;
+  // 絞り込みのカテゴリは、このタブの親とその子だけ（URL の cat の許可リストも同じ）。
+  const filterCategories = useMemo(() => {
+    const allowed = new Set(data.filterCategoryIds);
+    return data.categories.filter((category) => allowed.has(category.id));
+  }, [data.categories, data.filterCategoryIds]);
   const months = useMemo(() => publishedMonths(data.posts), [data.posts]);
   const allow = useMemo<QueryAllow>(
     () => ({
-      screen: 's02e',
+      screen: screenId,
       periodIds: data.periods.map((period) => period.id),
-      categories: data.categories,
+      categories: filterCategories,
       authorSlugs: data.authors.map((author) => author.slug),
       publishedMonths: months,
     }),
-    [data.periods, data.categories, data.authors, months],
+    [screenId, data.periods, filterCategories, data.authors, months],
   );
   const { state, update } = useQueryState(allow);
   const { q, cat, author, ym } = state;
@@ -100,7 +108,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
   if (periodId === null) {
     return (
       <>
-        <h1>{t('s02e.h1')}</h1>
+        <h1>{t(`${screenId}.h1`)}</h1>
         <StateMessage kind="empty" />
       </>
     );
@@ -117,8 +125,8 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
 
   return (
     <>
-      <h1>{t('s02e.h1')}</h1>
-      <p className={styles.lead}>{t('s02e.lead')}</p>
+      <h1>{t(`${screenId}.h1`)}</h1>
+      <p className={styles.lead}>{t(`${screenId}.lead`)}</p>
       <PeriodPicker periods={data.periods} value={periodId} onChange={(id) => update({ p: id })} />
       <div className={styles.filters} role="group" aria-label={t('s02e.filter.label')}>
         <label className={styles.field}>
@@ -147,7 +155,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
             }}
           >
             <option value="">{t('s02e.filter.all')}</option>
-            {data.categories.map((category) => (
+            {filterCategories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.path}
               </option>
@@ -215,7 +223,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
       </div>
       <PreMeasureNote rows={rows} columns={COLUMNS} measureStart={data.meta.measureStart} />
       <ArticleTable
-        caption={t('s02e.name')}
+        caption={t(`${screenId}.name`)}
         rows={rows}
         columns={COLUMNS}
         narrowColumns={NARROW_COLUMNS}
@@ -224,7 +232,7 @@ export function S02eScreen({ data }: { data: ArticleListData }) {
         sortable={isNarrowed}
         sort={state.sort}
         onSortChange={(sort) => update({ sort })}
-        emptyText={t('s02e.empty')}
+        emptyText={t(`${screenId}.empty`)}
       />
     </>
   );

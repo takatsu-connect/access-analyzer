@@ -59,7 +59,7 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     }
   });
 
-  test('E-05: ナビゲーションが 6 項目で、順位表・設定・ログイン・反応の項目がない', async ({
+  test('E-05: ナビゲーションが 7 項目で、順位表・設定・ログイン・反応の項目がない', async ({
     page,
   }) => {
     await page.goto('/');
@@ -68,6 +68,7 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     expect(labels).toEqual([
       t('nav.dashboard'),
       t('nav.articles'),
+      t('nav.events'),
       t('nav.authors'),
       t('nav.categories'),
       t('nav.tags'),
@@ -146,7 +147,10 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
       pageviews: t('notes.pageviews'),
       measureStart: dictionary['notes.measureStart'].split('{')[0] ?? '',
       masked: t('notes.masked'),
-      band: t('notes.band'),
+      // 帯の 3 つは本文の先頭が同じなので、「詳しく」の中の文で見分ける。
+      band: t('notes.band.detail'),
+      bandAll: t('notes.band.detail.all'),
+      bandAuthor: t('notes.band.detail.author'),
       ratio: t('notes.ratio'),
       source: t('notes.source'),
       posting: t('notes.posting'),

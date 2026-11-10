@@ -8,6 +8,7 @@
 import { cache } from 'react';
 import * as z from 'zod';
 
+import { BENCHMARK_SCOPES } from '@/lib/derive/sections';
 import type * as T from '@/lib/pub-types';
 import type { PubCache } from '@/lib/pub-types';
 
@@ -22,7 +23,7 @@ type PageResult = { data: unknown; error: unknown };
 
 /** 読み出しに使う問い合わせの最小の形。テストでは偽物に差し替える。 */
 export type ViewQuery = {
-  eq(column: string, value: string): ViewQuery;
+  in(column: string, values: readonly string[]): ViewQuery;
   order(column: string, options: { ascending: boolean }): ViewQuery;
   range(from: number, to: number): PromiseLike<PageResult>;
 };
@@ -36,7 +37,7 @@ export type ViewSpec<Row> = {
   columns: readonly string[];
   /** 主キーの列。この順に並べて読む。 */
   orderBy: readonly string[];
-  filter?: { column: string; value: string };
+  filter?: { column: string; values: readonly string[] };
   open: (client: PubClient) => ViewSource;
 };
 
@@ -62,7 +63,7 @@ function view<Row>(
   schema: z.ZodType<Row> & { shape: Record<string, unknown> },
   orderBy: readonly (keyof Row & string)[],
   open: (client: PubClient) => ViewSource,
-  filter?: { column: keyof Row & string; value: string },
+  filter?: { column: keyof Row & string; values: readonly string[] },
 ): ViewSpec<Row> {
   const spec: ViewSpec<Row> = {
     name,
@@ -219,13 +220,13 @@ export const VIEWS = {
   postingPeriod: view('pub_posting_period', schemas.pubPostingPeriodSchema, ['period_id'], (c) =>
     asSource(c.from('pub_posting_period')),
   ),
-  // 分布は scope = all の行だけを使う（04 §2）。
+  // 分布は scope が全体（all）と記事の種類（kind:article、kind:event）の行だけを使う（04 §2）。
   benchmarkCurve: view(
     'pub_benchmark_curve',
     schemas.pubBenchmarkCurveSchema,
     ['scope', 'n'],
     (c) => asSource(c.from('pub_benchmark_curve')),
-    { column: 'scope', value: 'all' },
+    { column: 'scope', values: BENCHMARK_SCOPES },
   ),
 } as const;
 
@@ -244,7 +245,7 @@ export async function readView<Row>(spec: ViewSpec<Row>, open: () => ViewSource)
     let result: PageResult;
     try {
       let query = open().select(spec.columns.join(','));
-      if (spec.filter !== undefined) query = query.eq(spec.filter.column, spec.filter.value);
+      if (spec.filter !== undefined) query = query.in(spec.filter.column, spec.filter.values);
       for (const column of spec.orderBy) query = query.order(column, { ascending: true });
       result = await query.range(offset, offset + PAGE_SIZE - 1);
     } catch {

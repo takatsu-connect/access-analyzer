@@ -1,7 +1,7 @@
 # トレーサビリティ（要件 ID → 設計要素）
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-07
+- 更新日: 2026-11-10
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
   - 2026-11-03: ADR 0004（Python バッチ）、ADR 0009（`batch_writer`）、ADR 0005（SQL エディタ）の改訂を反映（FR-36、NFR-40、NFR-43、NFR-44、NFR-45、D-10 の行）
@@ -9,6 +9,7 @@
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。FR-36、D-10 の行を「初回対象外」に。関連する行から除外の参照を外した
   - 2026-11-04: tech-writer の整合確認。FR-04 に S-16 を追加。FR-74 に Q-12 の確定、§7 の FR-61 に初回対象外を反映
   - 2026-11-07: 05 §2.9（見た目の共通の決まり）の新設と 07 E-13 の幅の追加に合わせて NFR-81 の行を更新
+  - 2026-11-10: FR-26（イベント記事の一覧）を追加し、FR-21・FR-23・FR-41 に記事の種類と親子の表示を足した
 
 ## 1. 読み方
 
@@ -77,6 +78,7 @@
 | FR-23 記事詳細 | pub_post、pub_article_daily、pub_article_cumulative、pub_benchmark_curve、pub_article_milestone、pub_author_summary、pub_article_period_breakdown、pub_article_referrer_30d、pub_article_period | G4、G10〜G15、G17 | ADR 0003、ADR 0006（404） | 04 §3.4 ArticleDetailData（約 11 KB）。05 S-03（(1)〜(8)）。07 E-03、E-20、A-03、A-04 |
 | FR-24 検索と絞り込み | pub_post、pub_post_category、pub_article_summary | ― | 06 §7 | 04 §3.3 S-02e、§8 `cat` / `author` / `ym` / `q` / `sort`。05 S-02e（並べ替えの許可）。07 U-18、E-07 |
 | FR-25 最近読まれている（全体） | pub_article_summary.is_recent_hot / is_revival、pub_post.is_ad | §6.2 | ― | 04 §3.3 S-02d（10 件）。05 S-02d。07 U-10、E-08 |
+| FR-26 イベント記事の一覧 | pub_category、pub_post_category（記事の種類）、pub_benchmark_curve（scope = kind:article / kind:event）、pub_article_summary.band_7d / band_30d（主な種類の曲線） | §6.2 | ― | 02 §4.1（0007）。04 §3.3（section、filterCategoryIds）、§8（s10a〜s10e）。05 §1、§4.6 画面 S-10a〜S-10e。`apps/web/src/lib/derive/sections.ts`。07 I-DB-05（test_benchmark_by_kind.py）、E2E events.spec.ts |
 | FR-30 著者の選択 | pub_author（数値なし） | ― | 06 §4 | 04 §3.5 AuthorIndexData。05 S-04（名前だけ、slug は href）。07 E-03、E-15 |
 | FR-31 著者サマリ | pub_author_period、pub_author_summary、pub_article_milestone、pub_benchmark_curve | §6.2 | ― | 04 §3.5 period、summary、milestones、benchmark（siteMedianPostCount は 2026-11-03 に削除）。05 S-05「この期間のまとめ」(a)〜(d)（(b) に旧 (e) を統合）。07 A-03、E-11、E-22 |
 | FR-32 著者の記事一覧 | pub_post、pub_article_period、pub_article_summary、pub_article_period_breakdown(channel の最多) | ― | ― | 04 §3.5 posts、pvByPeriod、topChannelByPeriod。05 S-05「記事の一覧」（スマホ 4 列）。07 E-07、E-13 |
@@ -84,7 +86,7 @@
 | FR-34 著者の最近読まれている | pub_article_summary | §6.2 | ― | 04 §3.5 posts.isRecentHot / isRevival。05 S-05（各 5 件）。07 U-10 |
 | FR-36 著者の非表示 | 初回対象外（2026-11-04、依頼者の決定）。除外の表とビューの条件を作らない | ― | ADR 0005（保留）、ADR 0003 判断 4（追加するときに適用）、06 §5 | 画面の処理と説明文なし。テストなし（07 I-DB-04、I-B-10 は欠番）。追加する場合は NFR-39 の手順 |
 | FR-40 カテゴリ別 | pub_category_period、wp_category.path | ― | ADR 0003 判断 4 | 04 §3.6 CategoryData。05 S-06（軸ごと、注記）。07 I-DB-05 |
-| FR-41 月別 × カテゴリ | pub_category_period（月） | ― | ― | 04 §3.6 SeasonalData、§8 `axis`。05 S-06b。07 E-20 |
+| FR-41 月別 × カテゴリ | pub_category_period（月） | ― | ― | 04 §3.6 SeasonalData、§8 `axis`。05 S-06b（子カテゴリは親ごとにまとめる。2026-11-10）。07 E-20、E2E events.spec.ts |
 | FR-42 タグ別 | pub_tag_period、pub_post_tag | ― | ADR 0003 判断 4 | 04 §3.6 TagIndexData / TagPageData。05 S-07、S-07b。07 I-DB-06、E-08 |
 | FR-50 月別公開本数 | pub_posting_monthly | §4 | ― | 04 §3.7 monthly。05 S-08。07 A-02 |
 | FR-51 著者別公開本数 | pub_posting_period.post_count（author_count は置かない。設計レビュー M-5）、pub_author_period.post_count | §4 | 06 §4 | 04 §3.7 posting（postCount のみ）、authorCounts。05 S-08（主表示は本数のみ。名前順、番号なし。Q-26）。07 E-08、I-DB-05 |

@@ -25,14 +25,19 @@ export type QueryScreen =
   | 's06b'
   | 's07'
   | 's07b'
-  | 's08';
+  | 's08'
+  | 's10a'
+  | 's10b'
+  | 's10c'
+  | 's10d'
+  | 's10e';
 
 /** 画面の種類と、埋め込んだデータから作る許可リスト。 */
 export type QueryAllow = {
   screen: QueryScreen;
   /** periods[].id（選べる期間だけ。prev* は含めない）。 */
   periodIds: readonly string[];
-  /** categories[]（S-02e）。parentId が null でないものが子カテゴリ。 */
+  /** 絞り込みに出すカテゴリ（S-02e / S-10e。そのタブの親とその子だけ）。parentId が null でないものが子カテゴリ。 */
   categories?: readonly { id: number; parentId: number | null }[];
   /** authors[].slug（S-02e）。 */
   authorSlugs?: readonly string[];
@@ -89,12 +94,12 @@ const PARAM_ORDER = [
 
 /** パラメータを使う画面（04 §8 の「使う画面」の列）。p は全画面。 */
 const PARAM_SCREENS: Readonly<Record<Exclude<ParamName, 'p'>, readonly QueryScreen[]>> = {
-  cat: ['s02e'],
-  author: ['s02e'],
-  ym: ['s02e'],
-  q: ['s02e'],
-  sort: ['s02e', 's05'],
-  n: ['s02a', 's02c'],
+  cat: ['s02e', 's10e'],
+  author: ['s02e', 's10e'],
+  ym: ['s02e', 's10e'],
+  q: ['s02e', 's10e'],
+  sort: ['s02e', 's10e', 's05'],
+  n: ['s02a', 's02c', 's10a', 's10c'],
   line: ['s01'],
   heat: ['s01'],
   axis: ['s06b'],

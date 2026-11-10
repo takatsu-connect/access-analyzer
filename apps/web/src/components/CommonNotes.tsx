@@ -42,6 +42,20 @@ function noteBody(id: NoteId, start: string): ReactNode {
           <Details summary={t('notes.more')}>{t('notes.band.detail')}</Details>
         </>
       );
+    case 'bandAll':
+      return (
+        <>
+          {t('notes.band')}
+          <Details summary={t('notes.more')}>{t('notes.band.detail.all')}</Details>
+        </>
+      );
+    case 'bandAuthor':
+      return (
+        <>
+          {t('notes.band')}
+          <Details summary={t('notes.more')}>{t('notes.band.detail.author')}</Details>
+        </>
+      );
     case 'ratio':
       return t('notes.ratio');
     case 'source':

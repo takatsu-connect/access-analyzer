@@ -27,8 +27,8 @@ function fakeTagSource(
     select(columns) {
       const call: Call = { columns, filters: [], order: [], range: [0, 0] };
       const query: ViewQuery = {
-        eq(column, value) {
-          call.filters.push(`${column}=${value}`);
+        in(column, values) {
+          call.filters.push(`${column}=${values.join('|')}`);
           return query;
         },
         order(column, options) {
@@ -97,11 +97,11 @@ describe('readView', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('分布は scope = all の行だけを読む', async () => {
+  it('分布は scope が全体と記事の種類（記事、イベント）の行だけを読む', async () => {
     const calls: Call[] = [];
     const source = fakeTagSource(0, calls);
     await readView(VIEWS.benchmarkCurve, source);
-    expect(calls[0]?.filters).toEqual(['scope=all']);
+    expect(calls[0]?.filters).toEqual(['scope=all|kind:article|kind:event']);
     expect(calls[0]?.order).toEqual(['scope:asc', 'n:asc']);
   });
 
@@ -131,7 +131,7 @@ describe('readView', () => {
     const open = (): ViewSource => ({
       select: () => {
         const query: ViewQuery = {
-          eq: () => query,
+          in: () => query,
           order: () => query,
           range: () =>
             Promise.resolve({ data: [{ tag_id: 'ひみつの値', name: 'さんぽ' }], error: null }),
@@ -159,7 +159,7 @@ describe('readAllViews', () => {
     const from = (name: string): ViewSource => ({
       select: () => {
         const query: ViewQuery = {
-          eq: () => query,
+          in: () => query,
           order: () => query,
           range: (offset) => {
             if (offset === 0) asked.push(name);

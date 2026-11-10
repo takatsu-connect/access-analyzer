@@ -71,4 +71,9 @@ export const S03_TEXT = {
   // --- どんな端末で読まれたか ---
   's03.device.h2': 'どんな端末で読まれたか',
   's03.device.column': '端末',
+
+  // --- 公開からの読まれ方: 何と比べているか（記事の主な種類。2026-11-10） ---
+  's03.curve.scope.article': '比べる相手は、記事どうし（広告を除く）です。',
+  's03.curve.scope.event': '比べる相手は、イベント記事どうし（広告を除く）です。',
+  's03.curve.scope.all': '比べる相手は、すべての記事（広告を除く）です。',
 } as const satisfies ScreenTexts<'s03'>;

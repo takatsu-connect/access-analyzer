@@ -21,8 +21,11 @@ const COLUMNS: readonly ArticleColumnId[] = ['title', 'author', 'publishedOn', '
 
 export type TopListScreenProps = {
   data: ArticleListData;
-  /** s02a = よく読まれた記事、s02c = 長く読まれている記事。構成は同じ（05 §4.3）。 */
-  screen: 's02a' | 's02c';
+  /**
+   * s02a = よく読まれた記事、s02c = 長く読まれている記事。構成は同じ（05 §4.3）。
+   * s10a / s10c は、そのイベント記事版（文言の接頭辞だけが違う）。
+   */
+  screen: 's02a' | 's02c' | 's10a' | 's10c';
 };
 
 /**

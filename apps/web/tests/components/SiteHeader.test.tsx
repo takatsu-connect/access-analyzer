@@ -23,11 +23,12 @@ const current = (root: HTMLElement): [string | null, string | null][] =>
     .map((link) => [link.textContent, link.getAttribute('aria-current')]);
 
 describe('SiteHeader', () => {
-  it('ナビは 全体 / 記事 / ライター / カテゴリ / シリーズ / 投稿活動（パスは 05 §1）', () => {
+  it('ナビは 全体 / 記事 / イベント記事 / ライター / カテゴリ / シリーズ / 投稿活動（パスは 05 §1）', () => {
     render(<SiteHeaderView pathname="/" />);
     expect(links(mainNav())).toEqual([
       ['全体', '/'],
       ['記事', '/articles/top'],
+      ['イベント記事', '/events/top'],
       ['ライター', '/authors'],
       ['カテゴリ', '/categories'],
       ['シリーズ', '/tags'],
@@ -35,17 +36,21 @@ describe('SiteHeader', () => {
     ]);
   });
 
-  it.each(['/', '/articles/top', '/articles/101', '/authors/writer-a', '/no-such-page'])(
-    '%s: 順位・設定・ログイン・反応の項目がない',
-    (pathname) => {
-      const { container } = render(<SiteHeaderView pathname={pathname} />);
-      const header = container.textContent ?? '';
-      for (const word of ['順位', 'ランキング', '設定', 'ログイン', '反応']) {
-        expect(header).not.toContain(word);
-      }
-      expect(container.querySelector('a[href^="/reactions"]')).toBeNull();
-    },
-  );
+  it.each([
+    '/',
+    '/articles/top',
+    '/events/top',
+    '/articles/101',
+    '/authors/writer-a',
+    '/no-such-page',
+  ])('%s: 順位・設定・ログイン・反応の項目がない', (pathname) => {
+    const { container } = render(<SiteHeaderView pathname={pathname} />);
+    const header = container.textContent ?? '';
+    for (const word of ['順位', 'ランキング', '設定', 'ログイン', '反応']) {
+      expect(header).not.toContain(word);
+    }
+    expect(container.querySelector('a[href^="/reactions"]')).toBeNull();
+  });
 
   it('現在のページの印は aria-current', () => {
     render(<SiteHeaderView pathname="/" />);
@@ -73,7 +78,52 @@ describe('SiteHeader', () => {
 
     render(<SiteHeaderView pathname="/authors/writer-a/" />);
     expect(screen.queryByRole('navigation', { name: '記事のページ' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'イベント記事のページ' })).toBeNull();
     expect(current(mainNav())).toEqual([['ライター', 'true']]);
+  });
+
+  it('「イベント記事」の中では、イベント記事のサブナビ（S-10a〜S-10e。タブの名前は短い形）を出す', () => {
+    render(<SiteHeaderView pathname="/events/long" />);
+    const subNav = screen.getByRole('navigation', { name: 'イベント記事のページ' });
+    expect(links(subNav)).toEqual([
+      ['よく読まれた', '/events/top'],
+      ['新着の立ち上がり', '/events/new'],
+      ['長く読まれている', '/events/long'],
+      ['最近よく読まれている', '/events/recent'],
+      ['探す', '/events'],
+    ]);
+    expect(current(subNav)).toEqual([['長く読まれている', 'page']]);
+    // 「イベント記事」は区分の印だけ（ページの印はサブナビが持つ）。
+    expect(current(mainNav())).toEqual([['イベント記事', 'true']]);
+    expect(screen.queryByRole('navigation', { name: '記事のページ' })).toBeNull();
+  });
+
+  it('主な種類がイベントの記事の詳細では、「イベント記事」に区分の印、サブナビはイベント記事（ページの印なし）', () => {
+    render(<SiteHeaderView pathname="/articles/112" eventArticleIds={[112, 205]} />);
+    expect(current(mainNav())).toEqual([['イベント記事', 'true']]);
+    const subNav = screen.getByRole('navigation', { name: 'イベント記事のページ' });
+    expect(current(subNav)).toEqual([]);
+    expect(screen.queryByRole('navigation', { name: '記事のページ' })).toBeNull();
+  });
+
+  it('一覧にない記事（両方に属する記事、記事だけの記事）と 404 は、いままでどおり', () => {
+    const both = render(<SiteHeaderView pathname="/articles/109" eventArticleIds={[112]} />);
+    expect(current(both.container)).toEqual([['記事', 'true']]);
+    both.unmount();
+    // 404 の静的な HTML のパス（useRenderedPathname）では、区分の印を付けない。
+    const notFound = render(<SiteHeaderView pathname="/_not-found" eventArticleIds={[112]} />);
+    expect(current(notFound.container)).toEqual([]);
+    notFound.unmount();
+    // 記事詳細の形でないパスは、ID の一覧を見ない。
+    render(<SiteHeaderView pathname="/articles/112/x" eventArticleIds={[112]} />);
+    expect(current(mainNav())).toEqual([['記事', 'true']]);
+  });
+
+  it('/events（探す）では「イベント記事」に区分の印、サブナビの「探す」にページの印', () => {
+    render(<SiteHeaderView pathname="/events/" />);
+    expect(current(mainNav())).toEqual([['イベント記事', 'true']]);
+    const subNav = screen.getByRole('navigation', { name: 'イベント記事のページ' });
+    expect(current(subNav)).toEqual([['探す', 'page']]);
   });
 
   it('横にはみ出したサブナビのタブの列は、選んでいるタブが真ん中に来るよう横に寄せる（レビュー C-1）', () => {
@@ -172,15 +222,21 @@ describe('SiteFooter と CommonNotes', () => {
 describe('画面ごとの CommonNotes の項目（src/lib/common-notes.ts。助言 A-2）', () => {
   const PV = ['pageviews', 'measureStart', 'masked', 'source'];
   it.each<[string, string, string[]]>([
-    ['S-01', '/', [...PV.slice(0, 3), 'band', 'ratio', 'source']],
+    ['S-01', '/', [...PV.slice(0, 3), 'bandAll', 'ratio', 'source']],
     ['S-02a', '/articles/top', PV],
     ['S-02b', '/articles/new', [...PV.slice(0, 3), 'band', 'source']],
     ['S-02c', '/articles/long', PV],
     ['S-02d', '/articles/recent', PV],
     ['S-02e', '/articles', PV],
+    ['S-10a', '/events/top', PV],
+    ['S-10b', '/events/new', [...PV.slice(0, 3), 'band', 'source']],
+    ['S-10c', '/events/long', PV],
+    ['S-10d', '/events/recent', PV],
+    ['S-10e', '/events', PV],
+    ['404（イベント記事の詳細はない）', '/events/101', []],
     ['S-03', '/articles/101', [...PV.slice(0, 3), 'band', 'ratio', 'source']],
     ['S-04', '/authors', []],
-    ['S-05', '/authors/author-a', [...PV.slice(0, 3), 'band', 'ratio', 'source']],
+    ['S-05', '/authors/author-a', [...PV.slice(0, 3), 'bandAuthor', 'ratio', 'source']],
     ['S-06', '/categories', [...PV.slice(0, 3), 'ratio', 'source']],
     ['S-06b', '/categories/seasonal', [...PV.slice(0, 3), 'ratio', 'source']],
     ['S-07', '/tags', [...PV.slice(0, 3), 'ratio', 'source']],

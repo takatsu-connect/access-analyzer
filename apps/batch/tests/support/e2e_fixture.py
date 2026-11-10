@@ -26,13 +26,13 @@
 | --- | --- | --- | --- | --- |
 | 101 | D − 1 | a | 11 | 公開から 2 日目（まだ比較できません） |
 | 102 | D − 6 | a | 11、12 | 公開から 7 日目。last28 の訪問回数と social が 4 |
-| 103 | D − 28 | a | 21 | 公開から 29 日目。D − 3 に累積が 500 回を超える |
+| 103 | D − 28 | a | 21、23 | 公開から 29 日目。D − 3 に累積が 500 回を超える |
 | 104 | D − 29 | d | 11 | 公開から 30 日目。D − 5 に累積が 1,000 回を超える |
-| 105 | D − 40 | d | 3 | 最近よく読まれている |
+| 105 | D − 40 | d | 3 | 最近よく読まれている（マップだけ。記事の一覧に出ない） |
 | 106 | D − 150 | c | 12 | 久しぶりに読まれた（最近よく読まれている、も付く） |
 | 107 | 計測開始日 − 60 | c | 1 | 計測開始より前に公開。1 年たっても読まれています |
-| 108 | D − 60 | d | 188 | 広告の記事 |
-| 109 | D − 100 | c | 11 | 直近 28 日の読まれた回数がちょうど 19 |
+| 108 | D − 60 | d | 10、188 | 広告の記事（本番と同じく記事の親にも属する） |
+| 109 | D − 100 | c | 11、21 | 直近 28 日の読まれた回数がちょうど 19 |
 | 110 | D − 120 | c | 12 | 直近 28 日の読まれた回数がちょうど 20 |
 | 111 | D − 200 | b | 21 | last28 の scroll が 3（伏さる）。リンク元が 2 つ |
 | 112 | D − 45 | b | 2 | 公開後 30 日時点のリンク元が 2 つ |
@@ -46,14 +46,19 @@
 ## 生成する記事（ID 201〜230）
 
 広告でなく、計測開始後に公開、公開から 31 日以上（ID 201 + i の公開日は D − (31 + 10 i)）。
-全記事の分布（`pub_benchmark_curve` の scope = all）の母集団を 30 本以上にするためにある。
+全記事と記事の分布（`pub_benchmark_curve` の scope = all、kind:article）の母集団を
+30 本以上にするためにある。
 公開から 91 日以上で i が奇数のものは author-c、ほかは author-b。
 期間別の値（訪問回数など）は持たない。i が 5 の倍数のものは、リンク元を 2 つ持つ。
 
 ## カテゴリとタグ
 
-- 親: 1 = 記事、2 = イベント、3 = マップ、188 = 広告。
-- 子: 11・12（親 1）、21（親 2）。22（親 2）は記事が 1 本もない。
+- 親: 10 = 記事、9 = イベント、3 = マップ、188 = 広告（10 と 9 は本番と同じ ID）。
+- 子: 11・12（親 10）、21（親 9）。22（親 9）は記事が 1 本もない。23（親 9）は 11 と同じ名前。
+- 109 は記事とイベントの両方に属する。105 はマップだけで、どちらの一覧にも出ない。
+- 生成した記事のうち 21 とマップに属するものは 11 にも属する。記事の分布（scope =
+  kind:article）の母集団を 30 本以上にするため。イベント記事は 30 本未満で、
+  イベントだけに属する記事の帯は「まだ比較できません」になる。
 - タグ: 51、52 は使われている。53 は記事が 1 本もない。
 
 ## 全体の伏せ値の場面
@@ -91,7 +96,13 @@ from typing import Final
 
 from support.fake_ga4 import FakeRow
 from support.fake_wp import FakeWp, wp_post, wp_user
-from takatsu_batch.config import AD_CATEGORY_ID, BACKFILL_START, WINDOW_DAYS
+from takatsu_batch.config import (
+    AD_CATEGORY_ID,
+    ARTICLE_CATEGORY_ID,
+    BACKFILL_START,
+    EVENT_CATEGORY_ID,
+    WINDOW_DAYS,
+)
 
 MEASUREMENT_START: Final = date.fromisoformat(BACKFILL_START)
 # 生成する記事の公開日（最大で D − 321）が計測開始後になり、107 が公開から 365 日以上になる下限
@@ -107,8 +118,11 @@ AUTHORS: Final[dict[int, tuple[str, str]]] = {
 }
 AUTHOR_A, AUTHOR_B, AUTHOR_C, AUTHOR_D = 7, 8, 9, 10
 
-CATEGORY_ARTICLE, CATEGORY_EVENT, CATEGORY_MAP = 1, 2, 3
+# 記事とイベントの親は本番と同じ ID（記事の種類の判定に使う。04 §4 の冒頭）
+CATEGORY_ARTICLE, CATEGORY_EVENT, CATEGORY_MAP = ARTICLE_CATEGORY_ID, EVENT_CATEGORY_ID, 3
 CHILD_TOPIC, CHILD_SHOP, CHILD_SEASON, CHILD_EMPTY = 11, 12, 21, 22
+# イベントの下の、記事の子（11）と同じ名前の子（S-06b で親ごとに区別できることを確かめる）
+CHILD_EVENT_TOPIC: Final = 23
 TAG_WALK, TAG_FAMILY, TAG_EMPTY = 51, 52, 53
 
 NAMED_POST_IDS: Final = tuple(range(101, 113))
@@ -167,13 +181,13 @@ def named_posts(base: date) -> list[PostSpec]:
     return [
         PostSpec(101, ago(1), AUTHOR_A, (CHILD_TOPIC,), (TAG_WALK,)),
         PostSpec(102, ago(6), AUTHOR_A, (CHILD_TOPIC, CHILD_SHOP), (TAG_WALK, TAG_FAMILY)),
-        PostSpec(103, ago(28), AUTHOR_A, (CHILD_SEASON,)),
+        PostSpec(103, ago(28), AUTHOR_A, (CHILD_SEASON, CHILD_EVENT_TOPIC)),
         PostSpec(104, ago(29), AUTHOR_D, (CHILD_TOPIC,), (TAG_FAMILY,)),
         PostSpec(105, ago(40), AUTHOR_D, (CATEGORY_MAP,)),
         PostSpec(106, ago(150), AUTHOR_C, (CHILD_SHOP,)),
         PostSpec(107, MEASUREMENT_START - timedelta(days=60), AUTHOR_C, (CATEGORY_ARTICLE,)),
-        PostSpec(108, ago(60), AUTHOR_D, (AD_CATEGORY_ID,)),
-        PostSpec(109, ago(100), AUTHOR_C, (CHILD_TOPIC,)),
+        PostSpec(108, ago(60), AUTHOR_D, (CATEGORY_ARTICLE, AD_CATEGORY_ID)),
+        PostSpec(109, ago(100), AUTHOR_C, (CHILD_TOPIC, CHILD_SEASON)),
         PostSpec(110, ago(120), AUTHOR_C, (CHILD_SHOP,), (TAG_WALK,)),
         PostSpec(111, ago(200), AUTHOR_B, (CHILD_SEASON,)),
         PostSpec(112, ago(45), AUTHOR_B, (CATEGORY_EVENT,), (TAG_WALK, TAG_FAMILY)),
@@ -182,7 +196,12 @@ def named_posts(base: date) -> list[PostSpec]:
 
 def generated_posts(base: date) -> list[PostSpec]:
     """生成する記事 30 本。公開日、著者、カテゴリ、タグは ID から決まる。"""
-    category_cycle = ((CHILD_TOPIC,), (CHILD_SHOP,), (CHILD_SEASON,), (CATEGORY_MAP,))
+    category_cycle = (
+        (CHILD_TOPIC,),
+        (CHILD_SHOP,),
+        (CHILD_SEASON, CHILD_TOPIC),
+        (CATEGORY_MAP, CHILD_TOPIC),
+    )
     tag_cycle: tuple[tuple[int, ...], ...] = ((TAG_WALK,), (TAG_FAMILY,), ())
     posts = []
     for index, post_id in enumerate(GENERATED_POST_IDS):
@@ -213,7 +232,7 @@ def _title(post_id: int) -> str:
 
 
 def build_wp(base: date) -> FakeWp:
-    """偽の WP（カテゴリ 8 つ、タグ 3 つ、著者 4 人、記事 42 本）。"""
+    """偽の WP（カテゴリ 9 つ、タグ 3 つ、著者 4 人、記事 42 本）。"""
     return FakeWp(
         categories=[
             {"id": CATEGORY_ARTICLE, "name": "記事", "parent": 0},
@@ -229,6 +248,7 @@ def build_wp(base: date) -> FakeWp:
             },
             {"id": CHILD_SEASON, "name": "季節の催し", "parent": CATEGORY_EVENT},
             {"id": CHILD_EMPTY, "name": "これからの催し", "parent": CATEGORY_EVENT},
+            {"id": CHILD_EVENT_TOPIC, "name": "まちの話題", "parent": CATEGORY_EVENT},
         ],
         tags=[
             {"id": TAG_WALK, "name": "散歩"},

@@ -12,6 +12,7 @@ import type { ArticleListData } from '@/lib/page-data';
 import { t } from '@/lib/ui-text';
 
 import { PreMeasureNote } from './PreMeasureNote';
+import { LIST_SCREEN_IDS } from './screen-ids';
 import { publishedWithin } from './rows';
 
 const COLUMNS: readonly ArticleColumnId[] = [
@@ -34,10 +35,12 @@ function renderBand(post: ArticleTablePost) {
 }
 
 /**
- * S-02b 新着記事の立ち上がり（05 §4.2、FR-21）。data は getArticleListData('new')。
+ * S-02b 新着記事の立ち上がり（05 §4.2、FR-21）と、そのイベント記事版の S-10b。
+ * data は getArticleListData('new', section)。
  * 選んだ期間に公開された記事を、公開日の新しい順に並べる。帯で並べ替える操作は置かない。
  */
 export function S02bScreen({ data }: { data: ArticleListData }) {
+  const screenId = LIST_SCREEN_IDS[data.section].new;
   const { period, setPeriod } = usePeriod(data.periods);
   const rows = useMemo(
     () => (period === null ? [] : publishedWithin(data.posts, period.start, period.end)),
@@ -47,7 +50,7 @@ export function S02bScreen({ data }: { data: ArticleListData }) {
   if (period === null) {
     return (
       <>
-        <h1>{t('s02b.h1')}</h1>
+        <h1>{t(`${screenId}.h1`)}</h1>
         <StateMessage kind="empty" />
       </>
     );
@@ -55,18 +58,18 @@ export function S02bScreen({ data }: { data: ArticleListData }) {
 
   return (
     <>
-      <h1>{t('s02b.h1')}</h1>
+      <h1>{t(`${screenId}.h1`)}</h1>
       <PeriodPicker periods={data.periods} value={period.id} onChange={setPeriod} />
-      <Notice>{t('s02b.note')}</Notice>
+      <Notice>{t(`${screenId}.note`)}</Notice>
       <Notice>{t('band.note')}</Notice>
       <PreMeasureNote rows={rows} columns={COLUMNS} measureStart={data.meta.measureStart} />
       <ArticleTable
-        caption={t('s02b.name')}
+        caption={t(`${screenId}.name`)}
         rows={rows}
         columns={COLUMNS}
         narrowColumns={NARROW_COLUMNS}
         renderBand={renderBand}
-        emptyText={t('s02b.empty')}
+        emptyText={t(`${screenId}.empty`)}
         primaryColumn="pv30"
       />
     </>

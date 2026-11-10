@@ -36,6 +36,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const jstTimestamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/);
 const text = z.string();
 const id = z.int().nonnegative();
+const articleSection = z.enum(['article', 'event']);
 const count = z.int().nonnegative();
 /** 伏せ値のあるセル。null は伏せ値。 */
 const masked = count.nullable();
@@ -165,10 +166,12 @@ export const dashboardDataSchema = z.strictObject({
 
 export const articleListDataSchema = z.strictObject({
   ...common,
+  section: articleSection,
   posts: z.array(postRowSchema),
   pvByPeriod: byPeriod(z.array(count)).optional(),
   topIndex: byPeriod(z.array(count)).optional(),
   categories: z.array(z.strictObject({ id, name: text, parentId: id.nullable(), path: text })),
+  filterCategoryIds: z.array(id),
   authors: z.array(z.strictObject({ slug: text, name: text })),
   benchmark: benchmarkPointSchema.nullable(),
 }) satisfies z.ZodType<ArticleListData>;
@@ -199,6 +202,7 @@ export const articleDetailDataSchema = z.strictObject({
       populationWindow: text,
     })
     .nullable(),
+  benchmarkSection: articleSection.nullable(),
   period: bySelectablePeriod(
     z.strictObject({
       pageviews: count,

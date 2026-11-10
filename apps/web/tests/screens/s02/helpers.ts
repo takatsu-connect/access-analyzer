@@ -4,7 +4,7 @@
 import { expect } from 'vitest';
 
 import { buildArticleList } from '@/data/pages';
-import type { ArticleListData, ArticleListKind } from '@/lib/page-data';
+import type { ArticleListData, ArticleListKind, ArticleSection } from '@/lib/page-data';
 
 import { PERIODS } from '../../components/fixtures';
 import { BUILT_AT, makeCache } from '../../data/fixture';
@@ -25,8 +25,11 @@ export const AVOIDED_WORDS = [
 ];
 
 /** 組み立て層のフィクスチャから作った、画面のデータ。 */
-export function listData(kind: ArticleListKind): ArticleListData {
-  return buildArticleList(makeCache(), kind, BUILT_AT);
+export function listData(
+  kind: ArticleListKind,
+  section: ArticleSection = 'article',
+): ArticleListData {
+  return buildArticleList(makeCache(), kind, BUILT_AT, undefined, section);
 }
 
 /** 手で作る画面のデータ。期間は tests/components/fixtures.ts の PERIODS（基準日 2026-11-02）。 */
@@ -41,11 +44,15 @@ export function makeListData(overrides: Partial<ArticleListData> = {}): ArticleL
       builtAt: '2026-11-03T05:00:00+09:00',
     },
     periods: PERIODS,
+    section: 'article',
     posts: [],
     categories: [],
     authors: [],
     benchmark: null,
     ...overrides,
+    // 絞り込みのカテゴリを指定しなければ、渡したカテゴリをすべて選択肢にする。
+    filterCategoryIds:
+      overrides.filterCategoryIds ?? (overrides.categories ?? []).map((category) => category.id),
   };
 }
 

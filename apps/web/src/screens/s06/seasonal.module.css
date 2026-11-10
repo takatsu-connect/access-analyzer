@@ -58,8 +58,12 @@
   overflow-x: auto;
 }
 
+/*
+ * 狭い画面で横に送る図の幅。マスは 12 か月ぶんで、1 マス --tap-min（44px）以上にする
+ * （名前の列の幅は --heatmap-label-width。子カテゴリの図では、ページで 1 つの値。レビュー H-1）。
+ */
 .scrollInner {
-  min-width: 36rem;
+  min-width: calc(var(--heatmap-label-width, 6.5rem) + var(--space-2) + 12 * var(--tap-min));
 }
 
 .scrollInner p,
@@ -68,4 +72,58 @@
   left: 0;
   justify-self: start;
   max-width: calc(100vw - var(--space-6));
+}
+
+/*
+ * 子カテゴリのとき、親カテゴリごとのまとまり（2026-11-10。依頼者「親子関係がわかる形にしてほしい」）。
+ * 同じ名前の子（お祭り、グルメなど）が別の親の下にあるので、親の名前の見出しで分ける。
+ * 見出しは横に送る枠の外に置く。
+ */
+.group + .group {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+/* 大きさは共通の h2（05 §2.9）。上書きしない（レビュー M-2）。 */
+.groupHeading {
+  margin: 0 0 var(--space-2);
+}
+
+/*
+ * 子カテゴリの図の行の名前の幅（SeasonalScreen の labelWidthOf）。ページで 1 つの値にし、
+ * 親ごとの図で月の列の位置をそろえる。超える名前は省略記号で切る（全文は title と同じ値の表）。
+ * 名前の文字は 12px なので、文字数 × 0.75rem を目安にする。
+ */
+.labelW4 {
+  --heatmap-label-width: 3.5rem;
+}
+
+.labelW6 {
+  --heatmap-label-width: 5rem;
+}
+
+.labelW8 {
+  --heatmap-label-width: 6.5rem;
+}
+
+.labelW12 {
+  --heatmap-label-width: 9.5rem;
+}
+
+/* 狭い画面の上限は w8 と同じ幅（マスを 44px 以上に保つ）。 */
+@media (max-width: 599.98px) {
+  .labelW12 {
+    --heatmap-label-width: 6.5rem;
+  }
+}
+
+/* 表の親の名前の行。親のまとまりの境目は、縦の線と見出しの行の 2 つで伝える（色に頼らない）。 */
+.groupHead {
+  text-align: center;
+  border-bottom: var(--border-width) solid var(--color-border-strong);
+}
+
+.groupCols {
+  border-left: var(--border-width) solid var(--color-border-strong);
 }

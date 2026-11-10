@@ -13,13 +13,15 @@ import { useRenderedPathname } from './useRenderedPathname';
 type NavItem = { label: UiTextKey; href: string };
 
 /**
- * ヘッダのナビゲーション（05 §1）。パスは 05 §1 の表のとおり。
+ * ヘッダのナビゲーション（05 §1）。パスは 05 §1 の表のとおり。「イベント記事」（S-10a〜S-10e）は
+ * 2026-11-10 の依頼者の決定で足した。
  * 「反応」は初回対象外で置かない。著者を数で並べる表、設定、ログインの項目も置かない
  * （NFR-20、NFR-22、NFR-36）。
  */
 const NAV_ITEMS = [
   { label: 'nav.dashboard', href: '/' },
   { label: 'nav.articles', href: '/articles/top' },
+  { label: 'nav.events', href: '/events/top' },
   { label: 'nav.authors', href: '/authors' },
   { label: 'nav.categories', href: '/categories' },
   { label: 'nav.tags', href: '/tags' },
@@ -35,6 +37,31 @@ const ARTICLE_NAV_ITEMS = [
   { label: 's02e.name', href: '/articles' },
 ] as const satisfies readonly NavItem[];
 
+/**
+ * 「イベント記事」のサブナビ（S-10a〜S-10e）。「記事」と同じ 5 つで、タブの名前は短い形。
+ * イベント記事の詳細ページは作らず、記事詳細（/articles/[postId]）を共有する。
+ */
+const EVENT_NAV_ITEMS = [
+  { label: 's10a.tab', href: '/events/top' },
+  { label: 's10b.tab', href: '/events/new' },
+  { label: 's10c.tab', href: '/events/long' },
+  { label: 's10d.tab', href: '/events/recent' },
+  { label: 's10e.tab', href: '/events' },
+] as const satisfies readonly NavItem[];
+
+/** サブナビを持つ区分（パスの先頭の区切り）→ サブナビの項目と aria-label。 */
+const SUB_NAVS = {
+  articles: { items: ARTICLE_NAV_ITEMS, aria: 'nav.articles.aria' },
+  events: { items: EVENT_NAV_ITEMS, aria: 'nav.events.aria' },
+} as const;
+
+function subNavOf(section: string): (typeof SUB_NAVS)[keyof typeof SUB_NAVS] | undefined {
+  return section === 'articles' || section === 'events' ? SUB_NAVS[section] : undefined;
+}
+
+/** 開いているページの印をサブナビが持つ、ヘッダの項目。 */
+const SUB_NAV_LABELS: readonly UiTextKey[] = ['nav.articles', 'nav.events'];
+
 /** 末尾の「/」を除く（ルートはそのまま）。 */
 function normalize(pathname: string): string {
   return pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -45,9 +72,23 @@ function sectionOf(pathname: string): string {
   return pathname.split('/')[1] ?? '';
 }
 
+const ARTICLE_DETAIL_PATTERN = /^\/articles\/([1-9][0-9]{0,9})$/;
+
+/**
+ * 現在地の区分。記事詳細（/articles/[postId]）は、主な種類がイベントの記事なら「イベント記事」
+ * （events）にする（レビュー 2026-11-10 H-2）。両方に属する記事は記事のまま。
+ */
+export function currentSectionOf(pathname: string, eventArticleIds: readonly number[]): string {
+  const match = ARTICLE_DETAIL_PATTERN.exec(pathname);
+  if (match !== null && eventArticleIds.includes(Number(match[1]))) return 'events';
+  return sectionOf(pathname);
+}
+
 export type SiteHeaderViewProps = {
   /** 現在のパス（'/articles/top' など）。 */
   pathname: string;
+  /** 主な種類がイベントの記事の ID（記事詳細の現在地を「イベント記事」にする）。 */
+  eventArticleIds?: readonly number[];
 };
 
 /**
@@ -69,10 +110,10 @@ export function centerCurrentTab(list: HTMLElement, tab: HTMLElement): void {
   list.scrollLeft = Math.max(0, left);
 }
 
-export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
+export function SiteHeaderView({ pathname, eventArticleIds = [] }: SiteHeaderViewProps) {
   const current = normalize(pathname);
-  const section = sectionOf(current);
-  const inArticles = section === 'articles';
+  const section = currentSectionOf(current, eventArticleIds);
+  const subNav = subNavOf(section);
   const subListRef = useRef<HTMLUListElement>(null);
   const currentSubRef = useRef<HTMLAnchorElement>(null);
 
@@ -96,8 +137,8 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
           <ul className={styles.list}>
             {NAV_ITEMS.map((item) => {
               const isSection = sectionOf(item.href) === section;
-              // 「記事」は、開いているページの印をサブナビが持つ。
-              const isPage = item.href === current && item.label !== 'nav.articles';
+              // 「記事」と「イベント記事」は、開いているページの印をサブナビが持つ。
+              const isPage = item.href === current && !SUB_NAV_LABELS.includes(item.label);
               return (
                 <li key={item.href}>
                   <Link
@@ -113,10 +154,10 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
             })}
           </ul>
         </nav>
-        {inArticles ? (
-          <nav aria-label={t('nav.articles.aria')}>
+        {subNav !== undefined ? (
+          <nav aria-label={t(subNav.aria)}>
             <ul className={styles.subList} ref={subListRef}>
-              {ARTICLE_NAV_ITEMS.map((item) => {
+              {subNav.items.map((item) => {
                 const isCurrent = item.href === current;
                 return (
                   <li key={item.href}>
@@ -140,9 +181,12 @@ export function SiteHeaderView({ pathname }: SiteHeaderViewProps) {
   );
 }
 
-/** 全ページ共通のヘッダ（layout.tsx に置く）。現在のパスは Next.js のルーターから取る。 */
-export function SiteHeader() {
+/**
+ * 全ページ共通のヘッダ（layout.tsx に置く）。現在のパスは Next.js のルーターから取る。
+ * eventArticleIds はレイアウトがビルド時のデータから渡す（静的な HTML とブラウザで同じ結果になる）。
+ */
+export function SiteHeader({ eventArticleIds }: { eventArticleIds: readonly number[] }) {
   // 一覧にない ID の 404 で、静的な HTML と食い違わないよう、HTML を作ったときのパスで選ぶ。
   const pathname = useRenderedPathname();
-  return <SiteHeaderView pathname={pathname} />;
+  return <SiteHeaderView pathname={pathname} eventArticleIds={eventArticleIds} />;
 }

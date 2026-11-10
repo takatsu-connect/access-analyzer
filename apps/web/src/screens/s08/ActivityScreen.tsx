@@ -86,13 +86,16 @@ export function ActivityScreen({ data }: { data: ActivityData }) {
     (author) => author.postCount >= 1,
   );
 
-  // --- カテゴリ。本数の多い順（カテゴリは人ではない） ---
+  // --- カテゴリ。本数の多い順（カテゴリは人ではない）。同じ本数はデータの順（親の固定の順） ---
   const mix = periodId === null ? undefined : data.categoryMix[periodId];
   const prevMix = prevId === null ? undefined : data.categoryMix[prevId];
-  const mixRows = [...(mix ?? [])].sort(
-    (left, right) =>
-      right.postCountPublished - left.postCountPublished || left.categoryId - right.categoryId,
-  );
+  const mixRows = (mix ?? [])
+    .map((row, index) => ({ row, index }))
+    .sort(
+      (left, right) =>
+        right.row.postCountPublished - left.row.postCountPublished || left.index - right.index,
+    )
+    .map(({ row }) => row);
   const shares = share(
     mixRows.map((row) => row.postCountPublished),
     posting?.postCount ?? null,

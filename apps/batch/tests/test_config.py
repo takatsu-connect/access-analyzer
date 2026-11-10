@@ -19,6 +19,8 @@ def test_values_match_design_table() -> None:
     assert config.REFETCH_DAYS == 7
     assert config.CONFIRM_DELAY_DAYS == 7
     assert config.AD_CATEGORY_ID == 188
+    assert config.ARTICLE_CATEGORY_ID == 10
+    assert config.EVENT_CATEGORY_ID == 9
     assert config.TOP_N_REFERRER_SITE == 10
     assert config.TOP_N_CITY == 10
     assert config.TOP_N_REFERRER_ARTICLE == 3

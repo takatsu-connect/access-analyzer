@@ -43,7 +43,12 @@ export function ArticleDetailScreen({ data }: ArticleDetailScreenProps) {
       <ArticleHeader post={post} measureStart={meta.measureStart} />
 
       {post.isPreMeasure ? null : (
-        <CurveSection post={post} cumulative={data.cumulative} benchmark={data.benchmark} />
+        <CurveSection
+          post={post}
+          cumulative={data.cumulative}
+          benchmark={data.benchmark}
+          benchmarkSection={data.benchmarkSection}
+        />
       )}
       <MilestoneSection
         milestones={data.milestones}

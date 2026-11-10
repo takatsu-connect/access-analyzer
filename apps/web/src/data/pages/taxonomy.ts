@@ -1,7 +1,6 @@
 /**
  * S-06 カテゴリ、S-06b 季節、S-07 タグ（docs/design/04_api.md §3.6）。
  */
-import { AD_CATEGORY_ID } from '@/lib/config';
 import type {
   CategoryAxis,
   CategoryData,
@@ -24,6 +23,7 @@ import {
   buildCommon,
   byPeriod,
   compareJa,
+  compareParentIds,
   comparableIds,
   isMonthId,
   pvByPeriodOf,
@@ -40,10 +40,10 @@ const SEASONAL_MONTHS = 24;
 // --- カテゴリ ---
 
 /**
- * カテゴリの軸（いちばん上の親と、その配下）。親は category_id の昇順で、広告の軸を最後に置く。
+ * カテゴリの軸（いちばん上の親と、その配下）。親は固定の順（記事、イベント、ほかの親を ID の順、広告）。
  *
  * 広告の軸は、category_id が設定値（AD_CATEGORY_ID）の親カテゴリ。記事の中身からは推定しない。
- * その親カテゴリがなければ、広告の軸はない（すべて category_id の昇順）。
+ * その親カテゴリがなければ、広告の軸はない。並びは shared.ts の compareParentIds だけで決める。
  */
 export function categoryAxes(cache: PubCache): CategoryAxis[] {
   const byId = new Map(cache.categories.map((category) => [category.category_id, category]));
@@ -59,12 +59,9 @@ export function categoryAxes(cache: PubCache): CategoryAxis[] {
     return current.category_id;
   };
 
+  // 並びは固定の順（記事、イベント、ほかの親を ID の順、広告。compareParentIds）。
   // rootIds に入るのは親カテゴリだけなので、AD_CATEGORY_ID が子カテゴリの ID なら、どの軸も広告の軸にならない。
-  const isAdAxis = (rootId: number): boolean => rootId === AD_CATEGORY_ID;
-
-  const rootIds = [...new Set(cache.categories.map(rootOf))].sort(
-    (a, b) => Number(isAdAxis(a)) - Number(isAdAxis(b)) || a - b,
-  );
+  const rootIds = [...new Set(cache.categories.map(rootOf))].sort(compareParentIds);
   return rootIds.flatMap((rootId) => {
     const parent = byId.get(rootId);
     if (parent === undefined) return [];

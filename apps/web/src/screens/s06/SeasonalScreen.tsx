@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import type { ReactNode } from 'react';
 
 import a11y from '@/components/a11y.module.css';
-import { Heatmap } from '@/components/charts';
+import { Heatmap, HeatmapNotes } from '@/components/charts';
 import type { HeatmapCell } from '@/components/charts';
 import { cx } from '@/components/class-names';
 import { Details } from '@/components/Details';
@@ -37,7 +38,48 @@ const LABEL_EVERY_WHEN_LONG = 3;
 
 const AXIS_KEYS = ['parent', 'child'] as const;
 
-type Category = { id: number; name: string };
+/** 行（または列）に出すカテゴリ。label は選んだマスの文に使う名前（子は「親 > 子」）。 */
+type Category = { id: number; name: string; label: string };
+
+/**
+ * 子カテゴリの図の行の名前の幅の段（seasonal.module.css の .labelW*）。いちばん長い名前の文字数で選ぶ。
+ * 上限（w12）を超える名前は省略記号で切る。狭い画面の上限は w8 と同じ幅（CSS で切り替える）。
+ */
+type LabelWidth = 'w4' | 'w6' | 'w8' | 'w12';
+const LABEL_WIDTH_CLASS: Readonly<Record<LabelWidth, string | undefined>> = {
+  w4: styles.labelW4,
+  w6: styles.labelW6,
+  w8: styles.labelW8,
+  w12: styles.labelW12,
+};
+
+function labelWidthOf(rows: readonly { name: string }[]): LabelWidth {
+  const longest = Math.max(0, ...rows.map((row) => [...row.name].length));
+  if (longest <= 4) return 'w4';
+  if (longest <= 6) return 'w6';
+  if (longest <= 8) return 'w8';
+  return 'w12';
+}
+
+/**
+ * 横に送る枠。最初は右端（最新の月）を見せる（レビュー 2026-11-10 H-1）。
+ * 静的な HTML は左端のまま描かれ、マウントのあとで寄せる。
+ */
+function ScrollFromEnd({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (element !== null) element.scrollLeft = element.scrollWidth;
+  }, []);
+  return (
+    <div ref={ref} className={styles.scroll} data-part="scroll-from-end">
+      {children}
+    </div>
+  );
+}
+
+/** 子カテゴリを親ごとにまとめたもの（子カテゴリのときの図と表の単位）。 */
+type CategoryGroup = { parent: { id: number; name: string }; children: Category[] };
 
 const MONTH_ID_PATTERN = /^m(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -92,13 +134,22 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   const { state, update } = useQueryState(allow);
   const axis = state.axis;
 
-  // 行に出すカテゴリ。親は 4 区分をそのまま、子は月ごとの数字が 1 つでもあるものだけ。
+  // 子カテゴリは親ごとにまとめる（同じ名前の子が別の親の下にあるので、どの親の子か分かるように）。
+  // 月ごとの数字が 1 つでもある子だけ。子が残らない親は出さない。
+  const groups: CategoryGroup[] = data.axes.flatMap((item) => {
+    const children = item.children
+      .filter((child) => data.pvByMonth[child.id] !== undefined)
+      .map((child) => ({
+        ...child,
+        label: t('s06b.child.label', { parent: item.parent.name, child: child.name }),
+      }));
+    return children.length === 0 ? [] : [{ parent: item.parent, children }];
+  });
+  // 行に出すカテゴリ。親は 4 区分をそのまま、子は親ごとのまとまりの順。
   const categories: Category[] =
     axis === 'parent'
-      ? data.axes.map((item) => item.parent)
-      : data.axes
-          .flatMap((item) => item.children)
-          .filter((child) => data.pvByMonth[child.id] !== undefined);
+      ? data.axes.map((item) => ({ ...item.parent, label: item.parent.name }))
+      : groups.flatMap((group) => group.children);
   const wideMonths = data.months.slice(-WIDE_MONTHS);
   const narrowMonths = data.months.slice(-NARROW_MONTHS);
 
@@ -135,7 +186,7 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
     const value = valueOf(category, month);
     const text = t('s06b.cell', {
       month: formatMonthWithProgress(label, progress),
-      category: category.name,
+      category: category.label,
       count: formatNumber(value),
     });
     // 途中までの月は、去年の 1 か月分と比べない（月が終わってから比べる）。
@@ -182,20 +233,31 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   const labelEvery = (months: readonly MonthId[]): number =>
     months.length > NARROW_MONTHS ? LABEL_EVERY_WHEN_LONG : 1;
 
-  /** 行 = カテゴリ、列 = 月の図。 */
-  const byCategory = (months: readonly MonthId[]) => (
+  /**
+   * 行 = カテゴリ、列 = 月の図。rows を省くと、いまの軸のカテゴリすべて。
+   * group を渡すと親ごとの図: 案内と凡例は図の上に 1 回だけ置くので描かず、最初の親の図だけが
+   * 最初から選んだマスの文を出す（レビュー 2026-11-10 M-1）。
+   */
+  const byCategory = (
+    months: readonly MonthId[],
+    rows: readonly Category[] = categories,
+    title: string = t('s06b.chart.title'),
+    group?: { isFirst: boolean },
+  ) => (
     <Heatmap
       key={axis}
-      title={t('s06b.chart.title')}
-      rowLabels={categories.map((category) => category.name)}
+      title={title}
+      rowLabels={rows.map((category) => category.name)}
       colLabels={months.map(shortLabel)}
-      values={categories.map((category) => months.map((month) => valueOf(category, month)))}
-      cellText={(cell: HeatmapCell) => describe(categories[cell.row], months[cell.col])}
+      values={rows.map((category) => months.map((month) => valueOf(category, month)))}
+      cellText={(cell: HeatmapCell) => describe(rows[cell.row], months[cell.col])}
       hint={t('s06b.tap.hint')}
       legend={t('s06b.legend')}
       defaultCell={{ row: 0, col: defaultMonthIndex(months) }}
       colLabelEvery={labelEvery(months)}
       scale="row"
+      showNotes={group === undefined}
+      showInitialSelection={group === undefined || group.isFirst}
     />
   );
 
@@ -216,6 +278,9 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
   );
 
   const hasData = categories.length > 0 && wideMonths.length > 0;
+  // 子カテゴリの図の行の名前の幅（ページで 1 つ。親をまたいで月の列をそろえる。レビュー H-1）。
+  const labelWidthClass = LABEL_WIDTH_CLASS[labelWidthOf(categories)];
+  const notes = <HeatmapNotes hint={t('s06b.tap.hint')} legend={t('s06b.legend')} />;
 
   return (
     <>
@@ -251,18 +316,65 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
         <StateMessage kind="empty" />
       ) : (
         <>
-          <div className={cx(styles.figure, parts.wideOnly)} data-view="wide">
-            {byCategory(wideMonths)}
+          <div
+            className={cx(styles.figure, parts.wideOnly, axis === 'child' && labelWidthClass)}
+            data-view="wide"
+          >
+            {axis === 'parent' ? byCategory(wideMonths) : notes}
+            {axis === 'parent'
+              ? null
+              : groups.map((group, index) => (
+                  <section
+                    key={group.parent.id}
+                    className={styles.group}
+                    aria-labelledby={`s06b-wide-${group.parent.id}`}
+                    data-group={group.parent.id}
+                  >
+                    <h2 id={`s06b-wide-${group.parent.id}`} className={styles.groupHeading}>
+                      {group.parent.name}
+                    </h2>
+                    {byCategory(
+                      wideMonths,
+                      group.children,
+                      t('s06b.chart.title.group', { parent: group.parent.name }),
+                      { isFirst: index === 0 },
+                    )}
+                  </section>
+                ))}
           </div>
-          <div className={cx(styles.figure, parts.narrowOnly)} data-view="narrow">
+          <div
+            className={cx(styles.figure, parts.narrowOnly, axis === 'child' && labelWidthClass)}
+            data-view="narrow"
+          >
             {axis === 'parent' ? (
               byMonth(narrowMonths)
             ) : (
               <>
                 <Notice>{t('s06b.scroll')}</Notice>
-                <div className={styles.scroll}>
-                  <div className={styles.scrollInner}>{byCategory(narrowMonths)}</div>
-                </div>
+                {notes}
+                {/* 親の見出しは横に送る枠の外に置く（送っても、どの親の子か見える）。 */}
+                {groups.map((group, index) => (
+                  <section
+                    key={group.parent.id}
+                    className={styles.group}
+                    aria-labelledby={`s06b-narrow-${group.parent.id}`}
+                    data-group={group.parent.id}
+                  >
+                    <h2 id={`s06b-narrow-${group.parent.id}`} className={styles.groupHeading}>
+                      {group.parent.name}
+                    </h2>
+                    <ScrollFromEnd>
+                      <div className={styles.scrollInner}>
+                        {byCategory(
+                          narrowMonths,
+                          group.children,
+                          t('s06b.chart.title.group', { parent: group.parent.name }),
+                          { isFirst: index === 0 },
+                        )}
+                      </div>
+                    </ScrollFromEnd>
+                  </section>
+                ))}
               </>
             )}
           </div>
@@ -280,7 +392,35 @@ export function SeasonalScreen({ data }: { data: SeasonalData }) {
             <div className={axis === 'child' ? parts.scroll : undefined}>
               <table className={parts.table}>
                 <caption className={a11y.srOnly}>{t('s06b.table.caption')}</caption>
+                {axis === 'child' ? (
+                  <>
+                    <colgroup />
+                    {groups.map((group) => (
+                      <colgroup
+                        key={group.parent.id}
+                        span={group.children.length}
+                        className={styles.groupCols}
+                      />
+                    ))}
+                  </>
+                ) : null}
                 <thead>
+                  {/* 子カテゴリのときは、親の名前の行を上に置き、その親の子の列をまとめる。 */}
+                  {axis === 'child' ? (
+                    <tr data-row="parents">
+                      <td className={parts.head} />
+                      {groups.map((group) => (
+                        <th
+                          key={group.parent.id}
+                          scope="colgroup"
+                          colSpan={group.children.length}
+                          className={cx(parts.head, styles.groupHead, parts.nowrap)}
+                        >
+                          {group.parent.name}
+                        </th>
+                      ))}
+                    </tr>
+                  ) : null}
                   <tr>
                     <th scope="col" className={parts.head}>
                       {t('column.month')}

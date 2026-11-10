@@ -12,7 +12,7 @@ import { Notice, StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { absentCompareText, usePeriod } from '@/components/usePeriod';
 import { AD_CATEGORY_ID } from '@/lib/config';
-import { monthProgress } from '@/lib/derive';
+import { monthProgress, SECTION_LIST_PATH, sectionOfCategory } from '@/lib/derive';
 import { formatNumber } from '@/lib/format';
 import type { CategoryAxis, CategoryData, CategoryPeriodValue, Period } from '@/lib/page-data';
 import { isValidId } from '@/lib/query';
@@ -23,12 +23,27 @@ import { PrevDelta, Totals } from './shared/parts';
 
 type PeriodValues = Readonly<Record<number, CategoryPeriodValue>>;
 
-/** 子カテゴリで絞った「記事を探す」（S-02e）へのリンク。クエリには ID の数だけを入れる。 */
-function CategoryLink({ id, children }: { id: number; children: ReactNode }) {
-  if (!isValidId(id)) return <>{children}</>;
+/**
+ * 子カテゴリで絞った「記事を探す」（S-02e）か「イベント記事を探す」（S-10e）へのリンク。
+ * 行き先は親カテゴリの種類で決める（記事の親なら /articles、イベントの親なら /events）。
+ * マップや広告など、どちらの種類でもない親の子はリンクにしない（どちらの「探す」の絞り込みにも
+ * そのカテゴリがなく、cat が許可リストで落ちて、絞り込まれていない一覧が開くため）。
+ * クエリには ID の数だけを入れる。
+ */
+function CategoryLink({
+  id,
+  parentId,
+  children,
+}: {
+  id: number;
+  parentId: number;
+  children: ReactNode;
+}) {
+  const section = sectionOfCategory(parentId, null);
+  if (section === null || !isValidId(id)) return <>{children}</>;
   return (
     <Link
-      href={{ pathname: '/articles', query: { cat: String(id) } }}
+      href={{ pathname: SECTION_LIST_PATH[section], query: { cat: String(id) } }}
       prefetch={false}
       className={styles.link}
     >
@@ -181,7 +196,9 @@ function AxisSection({
                 <Fragment key={child.id}>
                   <tr className={styles.hasMore}>
                     <th scope="row" className={cx(styles.cell, styles.rowHead)}>
-                      <CategoryLink id={child.id}>{child.name}</CategoryLink>
+                      <CategoryLink id={child.id} parentId={axis.parent.id}>
+                        {child.name}
+                      </CategoryLink>
                     </th>
                     <td className={cx(styles.cell, styles.numeric, styles.barCell)}>
                       {formatNumber(value.pageviews)}

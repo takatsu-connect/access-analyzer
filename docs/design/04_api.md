@@ -1,7 +1,7 @@
 # 04 データ契約（公開ビューと埋め込み JSON）
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-06
+- 更新日: 2026-11-10
 - 関係: ADR 0006（ビルド時生成）、02_data_model.md §4（公開ビュー）、05_screens.md、06_security.md §7、NFR-11、NFR-42、NFR-91、FR-01、FR-03、FR-06
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映（M-4 シェア数を初回対象外、M-5 author_count の削除、Q-36 channel / device を期間値に）
@@ -10,6 +10,7 @@
   - 2026-11-04: 著者の除外（FR-36）を初回対象外に（依頼者の決定、ADR 0005 保留）。契約のコメントから除外後と除外込みの区別を外した（型は変えない）
   - 2026-11-06: 構築 3 の実装に合わせた（§3.9 に `yoyPostCount`、`yoyMonths`、`categoryIds` / `categoryPaths`、`topChannelByPeriod` の `'none'`、月の状態 `monthProgress` を追加。§5 に参照元ドメインの絞り込みとページのデータの検査の例外。§6 の実測を更新。§8 の ID の形と検索語の切り詰め）
   - 2026-11-05: 構築 3 の実装を反映（§3.9 にまとめた）。型の正は `apps/web/src/lib/page-data.ts`。区分の名前を `contracts/constants.json` に合わせ、数え始める前に公開した記事の印（`isPreMeasure`、`measureStart`）、著者ページのない著者（`authorSlug` が null）、読み出しの方法（§5）、JSON の大きさの実測（§6）を追記
+  - 2026-11-10: 記事とイベント記事を分ける依頼者の決定（FR-26）を反映。§2 の分布の scope、§3.3（`section`、`filterCategoryIds`、`benchmark` は種類別、S-10a〜S-10e）、§3.4（`benchmarkSection`）、§5、§8（S-10 の画面と `cat` の許可リスト）
 
 ## 1. 方針（HTTP API はない）
 
@@ -39,7 +40,7 @@
 | S-01 | pub_site_month_city | period_id、rank、region、city、sessions | 全行 |
 | S-01 | pub_posting_period | period_id、post_count | 全行（author_count は置かない。設計レビュー M-5） |
 | S-01 | pub_post | published_on | 全行（M-26 の日別公開本数を BI が数える） |
-| S-01、S-02b、S-03、S-05 | pub_benchmark_curve | scope、n、p25、p50、p75、population_size、population_window | scope = all |
+| S-01、S-02b、S-03、S-05、S-10b | pub_benchmark_curve | scope、n、p25、p50、p75、population_size、population_window | scope in (all, kind:article, kind:event)（2026-11-10。記事の種類ごとの分布。02 §4.1） |
 | S-02a〜S-02e、S-05、S-07 | pub_post | post_id、title、post_url、author_slug、display_name、published_on、is_ad、age_days、freshness | 全行 |
 | S-02a〜S-02e、S-05、S-07 | pub_article_period | post_id、period_id、pageviews | 全行（4,500 行程度。`range()` で 1,000 行ずつ） |
 | S-02b、S-02d、S-02e、S-05 | pub_article_summary | post_id、age_days、freshness、pv_7d、pv_30d、band_7d、band_30d、is_recent_hot、is_revival | 全行 |
@@ -137,9 +138,9 @@ type DashboardData = PageCommon & {
 
 - 期間の切り替えに必要な行の集合: `sitePeriod` / `breakdown` / `heatmap` / `freshness` / `posting` は「選べる期間 + その prevId + yoyId」のすべて。`daily` は全日（前期間の線は `prevId` の start〜end を切り出す）。`monthReferrer` / `monthCity` は確定月すべて（移動窓を選んでいるときは「最新の確定月」と、その prev / yoy を表示する。FR-13、FR-15）。
 
-### 3.3 記事一覧（S-02a〜S-02e、`/articles/*`）
+### 3.3 記事一覧（S-02a〜S-02e、`/articles/*`。S-10a〜S-10e、`/events/*`）
 
-一覧 5 画面は同じ `ArticleListData` を使い、画面ごとに含める記事の集合を絞る。
+一覧 5 画面は同じ `ArticleListData` を使い、画面ごとに含める記事の集合を絞る。イベント記事のタブ（S-10a〜S-10e。2026-11-10、FR-26）も同じ型で、`section` が `'event'` になる。記事の種類（04_functional §4 の冒頭）の判定は `apps/web/src/lib/derive/sections.ts` の 1 か所で行い、`posts` はその種類に属する記事だけにする（両方に属する記事は両方のタブに入る）。
 
 ```ts
 type PostRow = {
@@ -155,12 +156,14 @@ type PostRow = {
   categoryIds: number[]; tagIds: number[];        // S-02e（検索）だけ。他は空配列
 };
 type ArticleListData = PageCommon & {
+  section: 'article' | 'event';                   // どちらのタブか（2026-11-10）
   posts: PostRow[];                               // この画面で表示しうる記事（is_ad は S-02e 以外では除く）
   pvByPeriod: Record<PeriodId, (number)[]>;       // posts と同じ順の列指向配列（pub_article_period.pageviews。伏せなし）
   topIndex?: Record<PeriodId, number[]>;          // S-02a / S-02c: 期間ごとの上位 50 の posts インデックス（降順）。他は省略
-  categories: { id: number; name: string; parentId: number | null; path: string }[];   // S-02e と絞り込みの許可リスト
+  categories: { id: number; name: string; parentId: number | null; path: string }[];   // 全カテゴリ（表のカテゴリ列の path を引く）
+  filterCategoryIds: number[];                    // 探す（S-02e / S-10e）の絞り込みの選択肢と `cat` の許可リスト。そのタブの親とその子だけ（2026-11-10）
   authors: { slug: string; name: string }[];      // 絞り込みの許可リスト（名前順）
-  benchmark: { p25: number; p50: number; p75: number } | null;                         // n = 30 の 1 行（文言「多くの記事は ◯〜◯回（真ん中は ◯回）」用）。母集団不足は null
+  benchmark: { p25: number; p50: number; p75: number } | null;                         // n = 30 の 1 行。そのタブの種類の曲線（kind:article / kind:event）。母集団不足は null
 };
 ```
 
@@ -173,6 +176,8 @@ type ArticleListData = PageCommon & {
 - S-02e（検索と絞り込み）: `posts` は全記事（広告を含む。広告は一覧の末尾ではなく公開日順のまま。FR-24 は広告を除くと書いていない。§9）。`pvByPeriod` は全期間。`categoryIds` / `tagIds` を持つ。
 
 ### 3.4 記事詳細（S-03、`/articles/[postId]`）
+
+- 2026-11-10: `benchmarkSection: 'article' | 'event' | null` を足した。記事の主な種類（記事に属すれば記事、そうでなくイベントなら イベント、どちらでもなければ null = 全記事）。`benchmark` はその種類の曲線（02 §4.1 の帯と同じ決まり）。ヘッダの現在地（記事 / イベント記事）も同じ決まり。
 
 ```ts
 type ArticleDetailData = PageCommon & {
@@ -317,7 +322,7 @@ type Band = 'upper' | 'middle' | 'lower';
 | `getAuthorPeriodAll()` / `getAuthorPeriodBreakdownAll()` / `getAuthorCategoryPeriodAll()` / `getAuthorSummaryAll()` | ― | 全行 | 対応するビュー |
 | `getCategoryPeriodAll()` / `getTagPeriodAll()` | ― | 全行 | pub_category_period / pub_tag_period |
 | `getPostingMonthly()` / `getPostingPeriod()` | ― | 全行 | pub_posting_monthly / pub_posting_period |
-| `getBenchmarkCurve()` | ― | scope = all の行（n = 1〜90。母集団 30 未満の n は行がない）。ビューが公開記事から計算した値（02 §4.1） | pub_benchmark_curve |
+| `getBenchmarkCurve()` | ― | scope = all、kind:article、kind:event の行（n = 1〜90。母集団 30 未満の n は行がない）。ビューが公開記事から計算した値（02 §4.1） | pub_benchmark_curve |
 
 読み出しの実装（構築 3 で確定）:
 
@@ -389,12 +394,12 @@ HTML の大きさの目安（2026-11-06 に見直し）: 初期表示の DOM は
 | パラメータ | 形式（正規表現） | 許可リスト | 既定 | 使う画面 |
 | --- | --- | --- | --- | --- |
 | `p`（期間） | `^(last7\|last28\|last90\|m\d{4}-(0[1-9]\|1[0-2]))$` | かつ `periods[].id` に存在する（prev* は不可） | `last28` | 全画面 |
-| `cat`（カテゴリ） | `^[1-9][0-9]{0,9}$`（`ID_PATTERN`） | かつ `categories[].id` に存在する | なし | S-02e |
-| `author`（著者） | `^[a-z0-9-]{1,64}$`（`SLUG_PATTERN`） | かつ `authors[].slug` に存在する | なし | S-02e |
-| `ym`（公開年月） | `^\d{4}-(0[1-9]\|1[0-2])$` | かつ `posts[].publishedOn` の年月のいずれか | なし | S-02e |
+| `cat`（カテゴリ） | `^[1-9][0-9]{0,9}$`（`ID_PATTERN`） | かつ `filterCategoryIds` に存在する（そのタブの親とその子だけ。2026-11-10） | なし | S-02e、S-10e |
+| `author`（著者） | `^[a-z0-9-]{1,64}$`（`SLUG_PATTERN`） | かつ `authors[].slug` に存在する | なし | S-02e、S-10e |
+| `ym`（公開年月） | `^\d{4}-(0[1-9]\|1[0-2])$` | かつ `posts[].publishedOn` の年月のいずれか | なし | S-02e、S-10e |
 | `q`（タイトル検索） | 長さ 1〜50（NFC 正規化、前後の空白を除く。50 文字を超える分は切る） | ―（埋め込んだタイトルに対する `includes` にだけ使う。描画は React のテキストノード） | なし | S-02e |
-| `sort` | `^(pv\|pv7\|pv30)$` | `author` / 子カテゴリの `cat` / `ym` のいずれかが有効なときだけ受け付ける。親カテゴリだけのとき、絞り込みなしのときは無視（FR-24、NFR-98） | 公開日順（降順） | S-02e、S-05（S-05 は常に受け付ける） |
-| `n`（件数） | `^(20\|50)$` | ― | `20` | S-02a、S-02c |
+| `sort` | `^(pv\|pv7\|pv30)$` | `author` / 子カテゴリの `cat` / `ym` のいずれかが有効なときだけ受け付ける。親カテゴリだけのとき、絞り込みなしのときは無視（FR-24、NFR-98） | 公開日順（降順） | S-02e、S-05（S-05 は常に受け付ける）、S-10e |
+| `n`（件数） | `^(20\|50)$` | ― | `20` | S-02a、S-02c、S-10a、S-10c |
 | `line` | `^(pv\|sessions)$` | ― | `pv` | S-01（FR-11） |
 | `heat` | `^(avg\|sum)$` | ― | `avg` | S-01（FR-12） |
 | `axis`（カテゴリ軸の展開） | `^(parent\|child)$` | ― | `parent` | S-06b（FR-41） |

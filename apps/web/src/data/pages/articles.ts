@@ -11,11 +11,13 @@ import {
   MEASURE_START,
   SNS_BUCKETS,
 } from '@/lib/config';
+import { benchmarkScopeOf, primarySection, sectionOfCategory } from '@/lib/derive/sections';
 import type {
   ArticleBreakdown,
   ArticleDetailData,
   ArticleListData,
   ArticleListKind,
+  ArticleSection,
   ByPeriod,
   PeriodId,
 } from '@/lib/page-data';
@@ -31,6 +33,7 @@ import {
   compareJa,
   dailySeries,
   pageAuthors,
+  postSections,
   pvByPeriodOf,
   rowsOf,
   selectableIds,
@@ -49,6 +52,17 @@ const CURVE_DAYS = 90;
 /** generateStaticParams 用。公開記事の post_id だけ。 */
 export function listArticleIds(cache: PubCache): number[] {
   return sortedPosts(cache).map((post) => post.post_id);
+}
+
+/**
+ * 主な種類がイベントの記事（イベントだけに属する記事）の post_id（昇順）。ヘッダが記事詳細の
+ * 現在地を「イベント記事」にするのに使う（レビュー 2026-11-10 H-2）。両方に属する記事は記事なので入れない。
+ */
+export function listEventArticleIds(cache: PubCache): number[] {
+  const sections = postSections(cache);
+  return sortedPosts(cache)
+    .filter((post) => primarySection(sections.get(post.post_id) ?? []) === 'event')
+    .map((post) => post.post_id);
 }
 
 /** 期間 → 記事 → 読まれた回数。 */
@@ -81,15 +95,24 @@ function rankByPeriod(
   return ranking;
 }
 
+/**
+ * 記事一覧（S-02a〜S-02e と S-10a〜S-10e）。section の種類の記事だけを対象にする
+ * （「記事」タブは article、「イベント記事」タブは event。両方に属する記事は両方に出る）。
+ * 一覧の種類、列、並び、件数、広告の扱いは、どちらの種類でも同じ。
+ */
 export function buildArticleList(
   cache: PubCache,
   kind: ArticleListKind,
   builtAt: Date,
   limits: ListLimits = DEFAULT_LIMITS,
+  section: ArticleSection = 'article',
 ): ArticleListData {
   const common = buildCommon(cache, builtAt);
   const selectable = selectableIds(common);
-  const all = sortedPosts(cache);
+  const sections = postSections(cache);
+  const all = sortedPosts(cache).filter((post) =>
+    (sections.get(post.post_id) ?? []).includes(section),
+  );
   // 広告は、記事を探す画面（search）以外では除く。
   const nonAd = all.filter((post) => !post.is_ad);
 
@@ -129,23 +152,30 @@ export function buildArticleList(
     posts = all;
   }
 
+  const categories = [...cache.categories].sort(
+    (a, b) => compareJa(a.path, b.path) || a.category_id - b.category_id,
+  );
   const data: ArticleListData = {
     ...common,
+    section,
     posts: posts.map((post) => toPostRow(cache, post, kind === 'search')),
     // 新着の立ち上がり（new）は期間の値を使わないので省く。
     ...(kind === 'new' ? {} : { pvByPeriod: pvByPeriodOf(cache, posts, selectable) }),
     ...(topIndex === undefined ? {} : { topIndex }),
-    categories: [...cache.categories]
-      .sort((a, b) => compareJa(a.path, b.path) || a.category_id - b.category_id)
-      .map((row) => ({
-        id: row.category_id,
-        name: row.name,
-        parentId: row.parent_id,
-        path: row.path,
-      })),
+    categories: categories.map((row) => ({
+      id: row.category_id,
+      name: row.name,
+      parentId: row.parent_id,
+      path: row.path,
+    })),
+    // 絞り込みのカテゴリは、このタブの親とその子だけ（path の順）。
+    filterCategoryIds: categories
+      .filter((row) => sectionOfCategory(row.category_id, row.parent_id) === section)
+      .map((row) => row.category_id),
     // 絞り込みの許可リスト。著者ページのある著者だけ（posts[].authorSlug に現れる値と同じ集合）。
     authors: pageAuthors(cache).map((row) => ({ slug: row.author_slug, name: row.display_name })),
-    benchmark: benchmark30(cache),
+    // 比べる相手は、このタブの種類の記事どうし。
+    benchmark: benchmark30(cache, section),
   };
   return checkPage(articleListDataSchema, data, 'articleListDataSchema');
 }
@@ -170,9 +200,16 @@ function articleBreakdownOf(
   };
 }
 
-/** 全体の分布の曲線（n = 1..90）。行のない n は null。1 行もなければ全体が null。 */
-function benchmarkCurveOf(cache: PubCache): ArticleDetailData['benchmark'] {
-  const rows = cache.benchmarkCurve.filter((row) => row.scope === 'all');
+/**
+ * 分布の曲線（n = 1..90）。section は比べる相手（null = 全体）。行のない n は null。
+ * 1 行もなければ全体が null（30 本未満で行がない種類は、比較できない扱い）。
+ */
+function benchmarkCurveOf(
+  cache: PubCache,
+  section: ArticleSection | null,
+): ArticleDetailData['benchmark'] {
+  const scope = benchmarkScopeOf(section);
+  const rows = cache.benchmarkCurve.filter((row) => row.scope === scope);
   if (rows.length === 0) return null;
 
   const p25 = new Array<number | null>(CURVE_DAYS).fill(null);
@@ -185,7 +222,7 @@ function benchmarkCurveOf(cache: PubCache): ArticleDetailData['benchmark'] {
   }
   // 母集団の大きさは n = 30 の行の値。なければ、行のあるいちばん大きい n の値。
   const population =
-    benchmarkRow(cache, 30) ?? rows.reduce((best, row) => (row.n > best.n ? row : best));
+    benchmarkRow(cache, 30, section) ?? rows.reduce((best, row) => (row.n > best.n ? row : best));
   return {
     p25,
     p50,
@@ -224,6 +261,8 @@ export function buildArticleDetail(
   const periodRows = rowsOf(cache.articlePeriod, 'post_id', postId);
   const breakdownRows = rowsOf(cache.articlePeriodBreakdown, 'post_id', postId);
   const ownMedian = rowsOf(cache.authorSummary, 'author_slug', post.author_slug)[0]?.own_median_30d;
+  // 比べる相手は、記事の主な種類の記事どうし（記事に属せば記事、そうでなくイベントならイベント）。
+  const benchmarkSection = primarySection(postSections(cache).get(postId) ?? []);
 
   const data: ArticleDetailData = {
     ...common,
@@ -259,7 +298,8 @@ export function buildArticleDetail(
     })(),
     // 数え始める前に公開した記事は、公開してすぐの数字がないので曲線を出さない。
     cumulative: row.isPreMeasure ? [] : cumulative,
-    benchmark: benchmarkCurveOf(cache),
+    benchmark: benchmarkCurveOf(cache, benchmarkSection),
+    benchmarkSection,
     period: byPeriod(selectable, (id) => {
       const value = periodRows.find((periodRow) => periodRow.period_id === id);
       return value === undefined

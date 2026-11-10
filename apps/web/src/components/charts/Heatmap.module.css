@@ -18,8 +18,13 @@
   column-gap: var(--space-2);
 }
 
+/*
+ * 行の名前の列の幅。既定は名前の長さ（auto）。呼び出し側が祖先に --heatmap-label-width を置くと
+ * その幅に固定し、超える名前は省略記号で切る（全文は title。S-06b で親をまたいで列をそろえる）。
+ */
 .rowLabels {
   display: grid;
+  width: var(--heatmap-label-width, auto);
   grid-auto-rows: var(--heatmap-cell);
   align-items: center;
   padding-top: var(--heatmap-header);
@@ -29,7 +34,9 @@
 }
 
 .rowLabel {
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .plot {
@@ -133,6 +140,12 @@
   stroke: var(--color-text);
   stroke-width: 2;
   pointer-events: none;
+}
+
+/* 図の上に 1 回だけ置く案内と凡例（HeatmapNotes）。 */
+.notes {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .hint {

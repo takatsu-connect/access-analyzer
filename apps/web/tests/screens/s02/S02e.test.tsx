@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { sortArticleRows } from '@/components/ArticleTable';
+import { ARTICLE_CATEGORY_ID } from '@/lib/config';
 import { t } from '@/lib/ui-text';
 import { S02eScreen } from '@/screens/s02/S02eScreen';
 
@@ -104,10 +105,8 @@ describe('S-02e 記事を探す', () => {
       [...screen.getByLabelText(label).querySelectorAll('option')].map(
         (option) => option.textContent ?? '',
       );
-    expect(options('カテゴリ')).toEqual([
-      'すべて',
-      ...listData('search').categories.map((category) => category.path),
-    ]);
+    // カテゴリは、このタブ（記事）の親とその子だけ。イベント、マップ、広告は選択肢にない。
+    expect(options('カテゴリ')).toEqual(['すべて', '記事', '記事 > グルメ']);
     expect(options('カテゴリ')).toContain('記事 > グルメ');
     // 著者ページのある著者だけ。名前の順。
     expect(options('ライター')).toEqual(['すべて', 'さとう はなこ', 'たなか たろう']);
@@ -132,12 +131,13 @@ describe('S-02e 記事を探す', () => {
     });
 
     it('親カテゴリだけのときも並びの UI がなく、sort=pv が効かない。子に属する記事も出す', () => {
-      setUrl('/articles?cat=1&sort=pv');
+      setUrl(`/articles?cat=${ARTICLE_CATEGORY_ID}&sort=pv`);
       const { container } = render(<S02eScreen data={listData('search')} />);
       expect(sortGroup()).toBeNull();
-      // 親「記事」の配下の「記事 > グルメ」に属する 3 本。読まれた回数の順なら 101 が先頭になる。
-      expect(rowTitles(container)).toEqual(['記事 104', '記事 102', '記事 101']);
-      expect(screen.getByRole('status').textContent).toBe('3 本');
+      // 親「記事」に直接付いた 103、105、106 と、配下の「記事 > グルメ」だけに属する 101、102、104。
+      // 公開日の新しい順のまま（読まれた回数の順なら 106 が先頭になる）。
+      expect(rowTitles(container)).toEqual(BY_PUBLISHED);
+      expect(screen.getByRole('status').textContent).toBe('6 本');
     });
 
     it('検索語だけのときも並びの UI がない', () => {
@@ -381,12 +381,6 @@ describe('S-02e 記事を探す', () => {
 
   it('カテゴリ、著者、公開した月を重ねて絞れる。親カテゴリは配下の子の記事を含む', () => {
     const { container } = render(<S02eScreen data={listData('search')} />);
-    const adParent = listData('search').categories.find((category) => category.path === '広告');
-    fireEvent.change(screen.getByLabelText('カテゴリ'), {
-      target: { value: String(adParent?.id) },
-    });
-    expect(rowTitles(container)).toEqual(['記事 105']);
-
     fireEvent.change(screen.getByLabelText('カテゴリ'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('ライター'), { target: { value: SATO } });
     expect(rowTitles(container)).toEqual(['記事 102', '記事 101']);
