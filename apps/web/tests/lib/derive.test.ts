@@ -14,6 +14,7 @@ import {
   monthProgress,
   monthStart,
   safeExternalUrl,
+  SMALLPIECE_URL,
   share,
   shareOf,
   splitYmd,
@@ -400,6 +401,22 @@ describe('isDelayed（U-25）', () => {
 });
 
 describe('safeExternalUrl（U-26）', () => {
+  it('制作者（Small Piece）へのリンクは、決まった 1 つの URL と完全に一致するときだけ通す（ADR 0012）', () => {
+    expect(SMALLPIECE_URL).toBe(
+      'https://smallpiece.jp/?utm_source=takatsu-connect-analyzer&utm_medium=referral&utm_content=footer',
+    );
+    expect(safeExternalUrl(SMALLPIECE_URL)).toBe(SMALLPIECE_URL);
+    for (const url of [
+      'https://smallpiece.jp/',
+      'https://smallpiece.jp/case-studies?utm_source=takatsu-connect-analyzer&utm_medium=referral',
+      'http://smallpiece.jp/?utm_source=takatsu-connect-analyzer&utm_medium=referral&utm_content=footer',
+      `${SMALLPIECE_URL}&x=1`,
+      'https://smallpiece.jp.example.com/?utm_source=takatsu-connect-analyzer&utm_medium=referral&utm_content=footer',
+    ]) {
+      expect(safeExternalUrl(url), url).toBeNull();
+    }
+  });
+
   it.each(['https://takatsu-connect.com/', 'https://takatsu-connect.com/2026/10/natsu-matsuri/'])(
     '配下の URL「%s」はそのまま返す',
     (url) => {

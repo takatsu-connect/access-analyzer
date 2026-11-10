@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { notesFor } from '../src/lib/common-notes';
 import type { NoteId } from '../src/lib/common-notes';
+import { SMALLPIECE_URL } from '../src/lib/derive';
 import { dictionary, t } from '../src/lib/ui-text';
 
 import { SCREENS, bodyText, mainText } from './support/screens';
@@ -216,7 +217,9 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
     expect([...seen.entries()], 'DataStatus の文の種類').toHaveLength(1);
   });
 
-  test('E-16: 全画面の外部リンクが https://takatsu-connect.com/ 配下だけ', async ({ page }) => {
+  test('E-16: 全画面の外部リンクが https://takatsu-connect.com/ 配下と、フッタの制作者のリンクだけ', async ({
+    page,
+  }) => {
     test.setTimeout(120_000);
     let externalCount = 0;
     for (const screen of SCREENS) {
@@ -229,6 +232,8 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
         const internal = /^\/(?!\/)/.test(href) || href.startsWith('#');
         if (internal) continue;
         externalCount += 1;
+        // 高津コネクトの外で許すのは、制作者（Small Piece）の決まった 1 つの URL だけ（ADR 0012）。
+        if (href === SMALLPIECE_URL) continue;
         expect
           .soft(
             href.startsWith('https://takatsu-connect.com/'),
@@ -236,6 +241,16 @@ test.describe('画面の存在、404、共通の説明文、外部リンク（E-
           )
           .toBe(true);
       }
+      // 制作者のリンクはフッタに 1 つだけ。
+      await expect
+        .soft(page.locator(`footer a[href="${SMALLPIECE_URL}"]`), `${screen.id} の制作者のリンク`)
+        .toHaveCount(1);
+      await expect
+        .soft(
+          page.locator(`a[href^="https://smallpiece.jp"]`),
+          `${screen.id} の smallpiece.jp へのリンク`,
+        )
+        .toHaveCount(1);
       // 新しいタブで開くリンクは、開いた先から元のページを触れない。
       const unsafeBlank = await page
         .locator('a[target="_blank"]')

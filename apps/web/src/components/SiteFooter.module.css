@@ -18,6 +18,20 @@
   font-weight: 700;
 }
 
+/* 制作者のリンク。目立たせない小さな字にする（ADR 0012）。 */
+.credit {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-note);
+}
+
+.creditLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  color: inherit;
+}
+
 .line {
   margin: 0 0 var(--space-1);
 }

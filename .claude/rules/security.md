@@ -44,7 +44,7 @@
 - 利用者が与えるパラメータ（期間、記事 ID、著者、カテゴリ）は、型と範囲を検証してから使う。問い合わせに文字列として埋め込まない。
 - 応答ヘッダを設定する: Content-Security-Policy、X-Content-Type-Options: nosniff、Referrer-Policy、frame-ancestors（または X-Frame-Options）。
 - エラー応答に、スタックトレース、内部の URL、SQL を出さない。
-- 外部へのリンク先は takatsu-connect.com に固定する。利用者の入力からリンク先を作らない。
+- 外部へのリンク先は takatsu-connect.com に固定する。利用者の入力からリンク先を作らない。例外はフッタの制作者（Small Piece）へのリンクで、コードに固定した 1 つの URL と完全に一致するときだけ許す（ADR 0012）。
 - データは日次でしか変わらないので、ページはキャッシュして配信し、リクエストごとに Supabase に問い合わせない。
 
 ## 依存

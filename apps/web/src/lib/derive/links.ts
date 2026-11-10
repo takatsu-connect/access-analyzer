@@ -6,10 +6,19 @@ import { SITE_ORIGIN } from '@/lib/config';
 const ALLOWED_PREFIX = `${SITE_ORIGIN}/`;
 
 /**
- * リンク先が https://takatsu-connect.com/ の配下ならそのまま返す。違えば null（リンクにしない）。
+ * フッタの制作者（Small Piece）へのリンク（ADR 0012）。高津コネクトの外で許すのは、
+ * この 1 つの URL と完全に一致するときだけ。UTM は .claude/rules/smallpiece-link.md の形。
+ */
+export const SMALLPIECE_URL =
+  'https://smallpiece.jp/?utm_source=takatsu-connect-analyzer&utm_medium=referral&utm_content=footer';
+
+/**
+ * リンク先が https://takatsu-connect.com/ の配下か、SMALLPIECE_URL と完全に一致すればそのまま返す。
+ * 違えば null（リンクにしない）。
  * 先頭の一致に加えて、URL として解釈したオリジンも確かめる。
  */
 export function safeExternalUrl(url: string | null | undefined): string | null {
+  if (url === SMALLPIECE_URL) return url;
   if (typeof url !== 'string' || !url.startsWith(ALLOWED_PREFIX)) return null;
   let parsed: URL;
   try {

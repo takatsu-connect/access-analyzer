@@ -25,7 +25,7 @@
 - 認証はない。すべてのページを誰でも読める。したがって公開ビュー（02 §4）に載るものがそのまま公開範囲になる（§4）。
 - noindex（NFR-21）を 3 重に付ける: (1) 全ページの `<meta name="robots" content="noindex, nofollow">`、(2) 応答ヘッダ `X-Robots-Tag: noindex, nofollow`（§6）、(3) `/robots.txt` に `User-agent: *` / `Disallow: /`。ライター別ビューと記事詳細も同じ（特別扱いせず全ページに付ける）。
 - Vercel の Deployment Protection は「Standard Protection」（本番ドメイン以外のすべてのデプロイ URL を Vercel Authentication で保護。Hobby で利用可）を有効にする（設計レビュー M-6）。本番ドメインはログインなし（決定どおり）。理由: 毎日のビルドは固有 URL を持つデプロイとして Vercel に残り、その URL が誰でも開けると、Supabase 側で持たない移動窓の全履歴（ADR 0003 判断 3、02 §2.2）が外部から読める。プレビューも同じ保護の中に入る。Hobby プランでこの設定が可能かの最終確認は依頼者（§13）。
-- サイトマップは作らない。外部へのリンクは takatsu-connect.com 配下だけ（FR-04、§7）。
+- サイトマップは作らない。外部へのリンクは takatsu-connect.com 配下だけ（FR-04、§7）。例外はフッタの制作者（Small Piece）への固定の 1 つの URL（ADR 0012）。
 
 ### 2.2 GA4 への認証（WIF）
 
@@ -129,7 +129,7 @@ Next.js の `headers()`（`next.config`）で全パスに付ける（NFR-91）�
 - クライアント側: URL のクエリ（期間、フィルタ、選択）は許可リストで検証する（期間は `last7` / `last28` / `last90` / `mYYYY-MM` の形、カテゴリ・タグは埋め込んだ一覧にある ID、著者は埋め込んだ一覧にある slug）。許可されない値は既定値（直近 28 日、フィルタなし）に戻し、エラーを出さない。
 - 文字列を問い合わせに埋め込む箇所はない（ビルド時の Supabase 読み出しは supabase-js のパラメータ化された API を使い、フィルタ値は上記の検証済みの値だけ）。
 - 記事の題名、著者名、カテゴリ名、タグ名、参照元ドメインと、URL のクエリ由来の値（S-02e の検索語 `q`）は、HTML ではない文字列として、テキストと属性値にだけ使う（ADR 0010 の 2）。参照元ドメインは、ドメインの形でない行を表から落とす（04 §5）。検索語は送られず、問い合わせにも正規表現にも入らない。
-- 外部リンクは `pub_post.post_url`、`pub_author.author_url` の値だけを使い、バッチが `https://takatsu-connect.com/` 配下であることを検証済み（03 §4）。BI 側でも描画前に同じ検証をし、違えばリンクにしない。
+- 外部リンクは `pub_post.post_url`、`pub_author.author_url` の値だけを使い、バッチが `https://takatsu-connect.com/` 配下であることを検証済み（03 §4）。BI 側でも描画前に同じ検証をし、違えばリンクにしない。例外として、フッタの制作者のリンクだけは、コードの定数 `SMALLPIECE_URL` と完全に一致するときに通す（ADR 0012。U-26、E-16）。
 - エラー画面（404、500）は固定文。スタックトレース、内部 URL、SQL を出さない（Next.js の production ビルドの既定）。
 
 ## 8. ログと通知の規律

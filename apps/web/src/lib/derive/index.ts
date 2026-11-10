@@ -24,7 +24,7 @@ export {
   weekdayCounts,
 } from './heatmap';
 export type { HeatmapMargins, HeatmapMeans, HeatmapView } from './heatmap';
-export { isDisplayableDomain, safeExternalUrl } from './links';
+export { isDisplayableDomain, safeExternalUrl, SMALLPIECE_URL } from './links';
 export { compare, share, shareOf, tenOf } from './numbers';
 export type { Comparison } from './numbers';
 export { monthProgress, partialMonthStartDay } from './periods';

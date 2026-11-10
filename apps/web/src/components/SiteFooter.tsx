@@ -1,12 +1,15 @@
+import { SMALLPIECE_URL } from '@/lib/derive';
 import { t } from '@/lib/ui-text';
 
 import { Details } from './Details';
+import { ExternalIcon } from './ExternalIcon';
+import { ExternalLink } from './ExternalLink';
 import styles from './SiteFooter.module.css';
 import { SiteIcon } from './SiteIcon';
 
 /**
  * 全ページ共通のフッタ（05 §2.7）。名称と、「読まれ方ノートについて」の折りたたみ
- * （データの出所、更新、問い合わせ先）。
+ * （データの出所、更新、問い合わせ先）と、小さな字の制作者のリンク（ADR 0012）。
  */
 export function SiteFooter() {
   return (
@@ -21,6 +24,17 @@ export function SiteFooter() {
           <p className={styles.line}>{t('footer.about.update')}</p>
           <p className={styles.line}>{t('footer.about.contact')}</p>
         </Details>
+        <p className={styles.credit}>
+          {t('footer.credit')}{' '}
+          <ExternalLink
+            href={SMALLPIECE_URL}
+            className={styles.creditLink}
+            ariaLabel={t('footer.credit.aria')}
+          >
+            {t('footer.credit.link')}
+            <ExternalIcon />
+          </ExternalLink>
+        </p>
       </div>
     </footer>
   );
