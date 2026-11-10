@@ -34,6 +34,10 @@ BACKFILL_START: Final = "2025-10-08"
 REFETCH_DAYS: Final = 7
 CONFIRM_DELAY_DAYS: Final = 7
 AD_CATEGORY_ID: Final = 188
+# 記事の種類を決める親カテゴリ（記事、イベント。2026-11-10 の依頼者の決定）。
+# 分布のビューの SQL にも現れる（07 I-DB-05 の要領で一致を確かめる）
+ARTICLE_CATEGORY_ID: Final = 10
+EVENT_CATEGORY_ID: Final = 9
 TOP_N_REFERRER_SITE: Final = 10
 TOP_N_CITY: Final = 10
 TOP_N_REFERRER_ARTICLE: Final = 3
