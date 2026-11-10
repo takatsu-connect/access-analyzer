@@ -1,7 +1,7 @@
 # 02 データモデル（Supabase）
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-05
+- 更新日: 2026-11-10
 - 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36（初回対象外）、FR-73、FR-76、ADR 0003、ADR 0005（保留）、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
@@ -12,6 +12,7 @@
   - 2026-11-05: 構築 1 の実機確認を反映（依頼者の決定）。§6: `pub_*` と public の既定権限から service_role を外した（自動更新可能なビューを通じて内部表へ書けたため）。末尾の検査の範囲を Supabase 管理スキーマを除く形に直した。§3.6: `failed_step` に `preflight` と `period` を足した。§4: ビューの解釈（`post_count` の定義、広告記事の扱い）を定義として書いた。§4、§9: 広告記事はカテゴリのビューでは広告の軸の行だけで数えることにした（FR-40）
   - 2026-11-05: 構築 1 のコードレビューと監査（audits/2026-11-05-build1-review.md）を反映（依頼者の決定）。§2.3、§3.3、§3.4: mask と値の整合、上位 N の下限を check 制約に（M-2）。§3.6: `failed_step` を check 制約に（M-3）。§3.1: `is_ad` は広告カテゴリと配下の子。§3.5: `age_days` を累積の n だけに使い、M-21〜M-23 は「基準日 − 公開日」で判定。`own_median_30d` を numeric に。§4.1: `BACKFILL_START` より前に公開した記事を分布から除き、7 日と 30 日の値と帯を null に。§6: 権限の検査を拡張（L-1）
   - 2026-11-05: 構築 2 を反映。§4、§4.1: `pub_article_cumulative` は `BACKFILL_START` より前に公開した記事の行を出さない（累積の曲線を出さない）。§3.5: `pv_total` は、それらの記事では計測開始以降の合計になる。`age_days` に check（1 以上）を足した。§4.1: 統計が 0 行のときの実行計画の固定を追加（`internal.article_cumulative` の `child_category_ids`）
+  - 2026-11-10: 記事とイベント記事を分ける依頼者の決定を反映（マイグレーション 0007）。§4.1: `benchmark_curve` に scope `kind:article` / `kind:event` を追加し、`pub_article_summary` の帯を記事の主な種類の曲線と比べるようにした。`article_cumulative` に `parent_category_ids` を追加。公開ビューの列と権限は変わらない
 
 ## 1. 方針
 
@@ -380,14 +381,14 @@
 
 全記事の分布（M-19、M-27）の母集団は公開記事（広告を除く）で、バッチではなく DB 側で計算する。著者の除外は初回対象外だが（2026-11-04、ADR 0005 保留）、計算の場所はビューのままにする。追加するときに母集団の条件を DB 側の 1 か所に足すだけで済み、バッチに除外リストを読ませずに済むため（経緯と代替案は ADR 0003 判断 4 追記）。定義は 03 §6.2 と同じ。公開ビューの列集合（§4 の表、I-DB-16 のスナップショット）は変わらない。
 
-- `internal.benchmark_curve`（`internal` スキーマのビュー。anon からは見えない）: 公開記事の n 日目累積（`pub_article_cumulative` と同じ窓関数の定義を共通の内部ビュー `internal.article_cumulative` に置き、両方から参照する）に対して、`scope` と `n` ごとに `percentile_cont(array[0.25, 0.5, 0.75]) within group (order by cumulative_pv)` を取る。母集団の条件: `wp_post.is_ad = false`、`article_summary.age_days ≥ n`、`published_on ≥ base_date − 365`（`population_window = '12m'`）。12 か月の母集団が 30 本未満の (scope, n) は全期間（`population_window = 'all'`）で計算し、それでも 30 本未満なら行を出さない。`scope = 'all'` と、`wp_post_category` × `wp_category`（`parent_id is not null`）から作る `scope = 'cat:' || category_id`（母集団 30 本以上の子カテゴリだけ）。`population_size` は母集団の件数（07 I-DB-05）。`base_date` は `article_summary.base_date`（`pub_meta` と同じ基準日）。
+- `internal.benchmark_curve`（`internal` スキーマのビュー。anon からは見えない）: 公開記事の n 日目累積（`pub_article_cumulative` と同じ窓関数の定義を共通の内部ビュー `internal.article_cumulative` に置き、両方から参照する）に対して、`scope` と `n` ごとに `percentile_cont(array[0.25, 0.5, 0.75]) within group (order by cumulative_pv)` を取る。母集団の条件: `wp_post.is_ad = false`、`article_summary.age_days ≥ n`、`published_on ≥ base_date − 365`（`population_window = '12m'`）。12 か月の母集団が 30 本未満の (scope, n) は全期間（`population_window = 'all'`）で計算し、それでも 30 本未満なら行を出さない。`scope = 'all'` と、`wp_post_category` × `wp_category`（`parent_id is not null`）から作る `scope = 'cat:' || category_id`（母集団 30 本以上の子カテゴリだけ）と、記事の種類（04 §4 の冒頭。2026-11-10、マイグレーション 0007）の `scope = 'kind:article'`（親カテゴリの配列に設定値 `ARTICLE_CATEGORY_ID` = 10 を含む）と `scope = 'kind:event'`（`EVENT_CATEGORY_ID` = 9 を含む）。親カテゴリの配列は所属カテゴリの `coalesce(parent_id, category_id)` で、親に直接付いた記事も入る。両方に属する記事は両方の母集団に入る。`population_size` は母集団の件数（07 I-DB-05）。`base_date` は `article_summary.base_date`（`pub_meta` と同じ基準日）。
 - `pub_benchmark_curve` = `select scope, n, p25, p50, p75, population_size, population_window from internal.benchmark_curve`。
-- `pub_article_summary` の `band_7d` / `band_30d`: `article_summary` に `internal.article_cumulative`（n = 7 と n = least(age_days, 30) の累積）と `internal.benchmark_curve`（scope = all、同じ n）を left join し、`case when 値 > p75 then 'upper' when 値 < p25 then 'lower' else 'middle' end`。`age_days < 3`、曲線の行がない、累積が null のときは null。`band_7d` は `age_days ≥ 7` のときだけ（pv_7d と曲線 (all, 7) の比較）。
+- `pub_article_summary` の `band_7d` / `band_30d`: `article_summary` に `internal.article_cumulative`（n = 7 と n = least(age_days, 30) の累積）と `internal.benchmark_curve`（記事の主な種類の scope、同じ n）を left join し、`case when 値 > p75 then 'upper' when 値 < p25 then 'lower' else 'middle' end`。`age_days < 3`、曲線の行がない、累積が null のときは null。`band_7d` は `age_days ≥ 7` のときだけ（pv_7d と曲線 (主な種類, 7) の比較）。主な種類: 記事に属すれば `kind:article`、そうでなくイベントに属すれば `kind:event`、どちらでもなければ `all`（2026-11-10、0007）。主な種類の曲線に行がない（30 本未満）ときは null で、`all` には戻さない。広告の記事も主な種類で比べる（母集団からは除いたまま）。
 - `pub_author_summary` の `band_30d`: `author_summary.own_median_30d` と `internal.benchmark_curve`（all, 30）の同じ `case`。own_median_30d が null、曲線の行がないときは null。
 - 計測開始より前に公開した記事（2026-11-05、コードレビュー）: `published_on` が設定値 `BACKFILL_START`（2025-10-08）より前の記事は、初日からの日別がそろわず累積が小さく出る。そこで、分布の母集団（`internal.benchmark_curve` の全 scope。12 か月と全期間の両方）から除き、`pub_article_summary` の `pv_7d`、`pv_30d`、`band_7d`、`band_30d` を null にし、`pub_category_period` の `median_30d_pv` と `published_post_count_30d` から除く。`BACKFILL_START` の当日に公開した記事は含める。バッチも `article_summary` の `pv_7d`、`pv_30d` を null で書くので、M-24 の `own_median_30d` からも外れる（構築 2）。SQL の日付と設定値の一致はテストで確かめる（07 I-DB-17）。`pub_article_cumulative` もこれらの記事の行を出さない（0 が続く曲線を「公開からの読まれ方」として見せないため。構築 2）。`pv_total` は変えない。これらの記事では計測開始以降の合計になるので、画面の文言で区別する（05 S-03。文言は構築 3 で決める）。
 - 関数は作らない（`case` 式をビュー内に書く。06 §2.3、L-4 の方針）。
 - 実行計画の固定（2026-11-05）: `internal.benchmark_curve` と `pub_article_summary` は、累積と曲線を `with ... as materialized` で 1 回だけ計算する。`internal.article_cumulative` は `age_days`、`base_date`、`published_on`、`is_ad` も出し（公開ビューには出さない）、窓関数の結果へ join し直さない。統計が古いと窓関数を行ごとに計算し直す実行計画になることがあり、1,000 本で 520 ms が 41 秒になった例をローカルで確認したため。
-- 実行計画の固定の追加（2026-11-05、構築 2）: 統計が「ページはあるが 0 行」のとき（ロールバックした書き込みのあとの analyze など）にも、1,000 本で 11 秒かかる実行計画になった。記事の数だけ `generate_series` を総当たりする計画と、累積の 1 行ごとにカテゴリの表を引く計画の 2 つが原因だった。そこで `internal.article_cumulative` は、記事と要約の結合と、その記事の子カテゴリの ID の配列（`child_category_ids`。公開ビューには出さない）を、`offset 0` を付けた記事の単位の副問い合わせで先に確定させる。`internal.benchmark_curve` の子カテゴリの母集団は、その配列を `unnest` で開くだけにし、累積の側では表を引かない。値の定義は変えていない（07 I-DB-17 が、統計が 0 行の状態でも 2 秒以内であることと、値が参照実装と一致することを確かめる）。
+- 実行計画の固定の追加（2026-11-05、構築 2）: 統計が「ページはあるが 0 行」のとき（ロールバックした書き込みのあとの analyze など）にも、1,000 本で 11 秒かかる実行計画になった。記事の数だけ `generate_series` を総当たりする計画と、累積の 1 行ごとにカテゴリの表を引く計画の 2 つが原因だった。そこで `internal.article_cumulative` は、記事と要約の結合と、その記事の子カテゴリの ID の配列（`child_category_ids`）と親カテゴリの ID の配列（`parent_category_ids`。0007 で追加。どちらも公開ビューには出さない）を、`offset 0` を付けた記事の単位の副問い合わせで先に確定させる。`internal.benchmark_curve` の子カテゴリの母集団は、その配列を `unnest` で開くだけにし、累積の側では表を引かない。値の定義は変えていない（07 I-DB-17 が、統計が 0 行の状態でも 2 秒以内であることと、値が参照実装と一致することを確かめる）。
 - 性能: 記事 225 本 × n 90 ≒ 2 万行の累積に対する分位計算 + 子カテゴリ分で、ビルド時に各ビューを 1 回読むだけ。実装時に `explain analyze` で確認する（07 I-DB-17。ローカルの 1,000 本のフィクスチャで 2 秒以内を目安）。重ければ ADR 0003 判断 4 追記の (c)（`internal` のマテリアライズドビューをバッチが refresh）に切り替えるが、母集団の定義は変えない。
 
 ## 5. 05 §4.1 の表との対応

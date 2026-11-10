@@ -355,6 +355,8 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | REFETCH_DAYS | 7 | FR-71 |
 | CONFIRM_DELAY_DAYS | 7 | 05 §4.1「確定した暦月」 |
 | AD_CATEGORY_ID | 188 | Q-08 |
+| ARTICLE_CATEGORY_ID | 10 | 04 §4 の冒頭（記事の種類「記事」。2026-11-10） |
+| EVENT_CATEGORY_ID | 9 | 04 §4 の冒頭（記事の種類「イベント記事」。2026-11-10） |
 | TOP_N_REFERRER_SITE / TOP_N_CITY / TOP_N_REFERRER_ARTICLE | 10 / 10 / 3 | M-12、M-14 |
 | SITE_ORIGIN | https://takatsu-connect.com | FR-04 |
 | WP_REQUEST_INTERVAL_MS | 1000 | NFR-72 |
