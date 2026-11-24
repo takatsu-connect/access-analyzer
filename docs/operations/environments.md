@@ -1,7 +1,7 @@
 # 環境と設定値の一覧
 
 - 状態: 草案
-- 更新日: 2026-11-07
+- 更新日: 2026-11-24
 
 この BI が動く環境と、各環境に置く設定値（Secrets、Variables、Environment、Vercel の環境変数）の一覧。値はこの文書に書かない（.claude/rules/security.md「秘密情報」、06 §3）。設定の手順は deploy.md、日々の運用は runbook.md、監視は monitoring.md。
 
@@ -80,7 +80,7 @@ GitHub Actions（daily.yml、main、Environment production）
 | `SUPABASE_URL` | Vercel の Environment Variables（`NEXT_PUBLIC_` を付けない） | Production と Preview に同じ値（06 §2.4） | 依頼者 |
 | `SUPABASE_ANON_KEY` | 同上 | 同上 | 依頼者 |
 | Root Directory | `apps/web` | プロジェクト | 依頼者 |
-| Build Command | `pnpm run build && pnpm run check:build`（ADR 0010 の 7。`check:build` が失敗したらビルドが失敗し、前のデプロイが残る） | プロジェクト | 依頼者 |
+| Build Command | `apps/web/vercel.json` の `buildCommand`（画面の設定より優先される）。値は `pnpm run build && pnpm run check:build`（ADR 0010 の 7。`check:build` が失敗したらビルドが失敗し、前のデプロイが残る） | プロジェクト | リポジトリで管理する |
 | Deploy Hook | Settings → Git → Deploy Hooks。ブランチ main。URL は GitHub の Environment の Secret にだけ置く | プロジェクト | 依頼者 |
 | Deployment Protection | Standard Protection（本番ドメイン以外のデプロイの URL を閉じる） | プロジェクト | 依頼者 |
 | Web Analytics、Speed Insights、Toolbar | 使わない（2026-11-07 の依頼者の決定。06 §6 の CSP とも合う） | プロジェクト | 依頼者 |

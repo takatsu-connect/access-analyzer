@@ -1,7 +1,7 @@
 # デプロイ手順（初回の本番化と通常の更新）
 
 - 状態: 草案
-- 更新日: 2026-11-09
+- 更新日: 2026-11-24
 
 ## 0. この文書の使い方
 
@@ -159,7 +159,7 @@ Environment のブランチ制限が organization のプランで使えないと
 2. 設定:
    - Root Directory: `apps/web`
    - Framework Preset: Next.js
-   - Build Command（上書きを有効にする）: `pnpm run build && pnpm run check:build`
+   - Build Command: `pnpm run build && pnpm run check:build`。2026-11-24 から `apps/web/vercel.json` の `buildCommand` に書いてあり、画面の設定より優先される（監査 2026-11-09-pre-launch の M-2。画面の設定が変わっても検査が外れない）。変えるときは `vercel.json` を変える。
      - `pnpm run build` は最初に `.next/cache/fetch-cache` を消す。Vercel は Build Cache を引き継ぐので（Vercel Docs「Deploy Hooks」の Build Cache、2026-11-07 確認）、古いデータのページが混ざるのをこれで防ぐ。
      - `check:build` が失敗すると Build Command が 0 以外で終わり、デプロイは失敗して前のデプロイが残る（ADR 0010 の 7）。
    - Install Command、Output Directory: 既定のまま。
