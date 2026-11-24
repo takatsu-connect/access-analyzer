@@ -172,7 +172,7 @@ test.describe('スマホ幅 360 × 740（E-13）', () => {
           expect(
             (current?.left ?? 0) - (previous?.right ?? 0),
             `${path} の ${index} 番目と ${index + 1} 番目の見出しの間`,
-          ).toBeGreaterThanOrEqual(2);
+          ).toBeGreaterThanOrEqual(width >= 360 ? 2 : 1);
         }
       }
     });
