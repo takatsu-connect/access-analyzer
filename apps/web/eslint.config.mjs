@@ -114,6 +114,12 @@ export default defineConfig([
           selector: "AssignmentExpression[left.property.name='href']",
           message: NAVIGATION_MESSAGE,
         },
+        // 監査 2026-11-09-pre-launch.md L-1: location そのものへの代入（location = x、window.location = x）。
+        {
+          selector:
+            "AssignmentExpression[left.type='Identifier'][left.name='location'], AssignmentExpression[left.property.name='location']",
+          message: NAVIGATION_MESSAGE,
+        },
       ],
       // 監査 M-2: DOM 要素へのスプレッドは、dangerouslySetInnerHTML や style の禁止を素通りする。
       // 自前の部品へのスプレッドは許す。
@@ -152,6 +158,12 @@ export default defineConfig([
           ],
         },
       ],
+      // 監査 2026-11-09-pre-launch.md L-1: 上の禁止を、変数のタグ名と next/link で素通りさせない。
+      'local/no-dynamic-tag': [
+        'error',
+        { forbid: ['script', 'iframe', 'object', 'embed', 'base', 'a'] },
+      ],
+      'local/internal-link-href': 'error',
       'no-restricted-imports': ['error', { paths: [NEXT_SCRIPT_IMPORT, REACT_ELEMENT_IMPORT] }],
       // ADR 0010 の 6: JSX の外の出口。
       'no-restricted-properties': [
@@ -197,8 +209,9 @@ export default defineConfig([
   {
     name: 'access-analyzer/tests',
     // テストは、止めたい文字列（javascript: の URL など）を入力のデータとして持つ。
+    // 画面の部品を引数で受けて描くテストもある（配信するコードではない）。
     files: ['tests/**', 'e2e/**'],
-    rules: { 'no-script-url': 'off' },
+    rules: { 'no-script-url': 'off', 'local/no-dynamic-tag': 'off' },
   },
   {
     name: 'access-analyzer/e2e-csp-probe',

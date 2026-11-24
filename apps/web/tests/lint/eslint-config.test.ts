@@ -259,6 +259,103 @@ describe('eslint.config.mjs（ADR 0010 の歯止め）', () => {
       'src/lib/probe.ts',
       'no-restricted-syntax',
     ],
+    // 監査 2026-11-09-pre-launch.md L-1 の抜け道。
+    [
+      'location への代入',
+      'export const go = (url: string) => {\n  location = url as unknown as Location;\n};\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      'window.location への代入',
+      'export const go = (url: string) => {\n  window.location = url as unknown as Location;\n};\n',
+      'src/lib/probe.ts',
+      'no-restricted-syntax',
+    ],
+    [
+      '変数のタグ名（a）',
+      "const Tag = 'a';\nexport const View = ({ url }: { url: string }) => <Tag href={url} />;\n",
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      '変数のタグ名（条件式の片方が script）',
+      "export const View = ({ on }: { on: boolean }) => {\n  const Tag = on ? 'script' : 'div';\n  return <Tag />;\n};\n",
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      '変数のタグ名（中身が読み取れないテンプレート）',
+      'export const View = ({ name }: { name: string }) => {\n  const Tag = `${name}` as "div";\n  return <Tag />;\n};\n',
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      '変数のタグ名（禁止の名前の書き出しと重なるテンプレート）',
+      'export const View = ({ rest }: { rest: string }) => {\n  const Tag = `i${rest}` as "div";\n  return <Tag />;\n};\n',
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      'props で受けたタグ名',
+      "export const View = ({ as: Tag }: { as: 'div' | 'a' }) => <Tag />;\n",
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      'let で持つタグ名',
+      "export const View = () => {\n  let Tag = 'div';\n  Tag = 'a';\n  return <Tag />;\n};\n",
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      'オブジェクトから引くタグ名',
+      "const tags = { Link: 'a' } as const;\nexport const View = () => <tags.Link />;\n",
+      component,
+      'local/no-dynamic-tag',
+    ],
+    [
+      'next/link の href にデータの値',
+      "import Link from 'next/link';\nexport const View = ({ url }: { url: string }) => <Link href={url} />;\n",
+      component,
+      'local/internal-link-href',
+    ],
+    [
+      'next/link の href に外部の URL',
+      'import Link from \'next/link\';\nexport const View = () => <Link href="https://example.com/" />;\n',
+      component,
+      'local/internal-link-href',
+    ],
+    [
+      'next/link の href に「//」で始まる文字列',
+      'import Link from \'next/link\';\nexport const View = () => <Link href="//example.com/" />;\n',
+      component,
+      'local/internal-link-href',
+    ],
+    [
+      'next/link の href に、値で始まるテンプレート',
+      "import Link from 'next/link';\nexport const View = ({ path }: { path: string }) => <Link href={`/${path}`} />;\n",
+      component,
+      'local/internal-link-href',
+    ],
+    [
+      'next/link の href の pathname にデータの値',
+      "import Link from 'next/link';\nexport const View = ({ path }: { path: string }) => <Link href={{ pathname: path }} />;\n",
+      component,
+      'local/internal-link-href',
+    ],
+    [
+      '別の名前で import した next/link',
+      "import NextLink from 'next/link';\nexport const View = ({ url }: { url: string }) => <NextLink href={url} />;\n",
+      component,
+      'local/internal-link-href',
+    ],
+    [
+      'next/link への props のスプレッド',
+      "import Link from 'next/link';\nexport const View = (props: { href: string }) => <Link {...props} />;\n",
+      component,
+      'local/internal-link-href',
+    ],
     [
       '画面の部品からの読み出しの層の import（監査 L-4）',
       "import { getDashboardData } from '@/data';\nexport const load = getDashboardData;\n",
@@ -291,6 +388,56 @@ describe('eslint.config.mjs（ADR 0010 の歯止め）', () => {
       const code =
         'const Box = (props: { a: number }) => <p>{props.a}</p>;\nexport const View = (p: { a: number }) => <Box {...p} />;\n';
       expect(await ruleIds(code, component)).not.toContain('react/jsx-props-no-spreading');
+    },
+    TIMEOUT_MS,
+  );
+
+  it.each([
+    [
+      '見出しの段のテンプレート',
+      'export const View = ({ level }: { level: 2 | 3 }) => {\n  const Heading = `h${level}` as const;\n  return <Heading />;\n};\n',
+    ],
+    [
+      '見出しの段の条件式',
+      "export const View = ({ level }: { level: 3 | 4 }) => {\n  const Heading = level === 4 ? 'h4' : 'h3';\n  return <Heading />;\n};\n",
+    ],
+    ['アロー関数の部品', 'const Box = () => <div />;\nexport const View = () => <Box />;\n'],
+    [
+      '関数宣言の部品',
+      'function Box() {\n  return <div />;\n}\nexport const View = () => <Box />;\n',
+    ],
+    ['import した部品', "import { Box } from './Box';\nexport const View = () => <Box />;\n"],
+    [
+      'memo で包んだ部品',
+      "import { memo } from 'react';\nconst Box = memo(() => <div />);\nexport const View = () => <Box />;\n",
+    ],
+  ])(
+    '変数の要素名のうち、%s は許す',
+    async (_name, code) => {
+      expect(await ruleIds(code, component)).not.toContain('local/no-dynamic-tag');
+    },
+    TIMEOUT_MS,
+  );
+
+  it.each([
+    ['「/」で始まる文字列', '<Link href="/articles" />'],
+    ['トップ', '<Link href="/" />'],
+    ['ページ内の位置', '<Link href={`#${id}`} />'],
+    ['固定の書き出しを持つテンプレート', '<Link href={`/articles/${id}`} />'],
+    ['internalPath を通した値', '<Link href={internalPath(id)} />'],
+    [
+      'pathname が文字列のオブジェクト',
+      "<Link href={{ pathname: '/articles', query: { cat: id } }} />",
+    ],
+    [
+      'pathname が internalPath のオブジェクト',
+      '<Link href={{ pathname: internalPath(id), query: { cat: id } }} />',
+    ],
+  ])(
+    'next/link の href のうち、%s は許す',
+    async (_name, jsx) => {
+      const code = `import Link from 'next/link';\nimport { internalPath } from '@/lib/derive';\nexport const View = ({ id }: { id: string }) => ${jsx};\n`;
+      expect(await ruleIds(code, component)).not.toContain('local/internal-link-href');
     },
     TIMEOUT_MS,
   );

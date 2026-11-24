@@ -12,7 +12,7 @@ import { Notice, StateMessage } from '@/components/Notice';
 import { PeriodPicker } from '@/components/PeriodPicker';
 import { absentCompareText, usePeriod } from '@/components/usePeriod';
 import { AD_CATEGORY_ID } from '@/lib/config';
-import { monthProgress, SECTION_LIST_PATH, sectionOfCategory } from '@/lib/derive';
+import { internalPath, monthProgress, SECTION_LIST_PATH, sectionOfCategory } from '@/lib/derive';
 import { formatNumber } from '@/lib/format';
 import type { CategoryAxis, CategoryData, CategoryPeriodValue, Period } from '@/lib/page-data';
 import { isValidId } from '@/lib/query';
@@ -43,7 +43,7 @@ function CategoryLink({
   if (section === null || !isValidId(id)) return <>{children}</>;
   return (
     <Link
-      href={{ pathname: SECTION_LIST_PATH[section], query: { cat: String(id) } }}
+      href={{ pathname: internalPath(SECTION_LIST_PATH[section]), query: { cat: String(id) } }}
       prefetch={false}
       className={styles.link}
     >

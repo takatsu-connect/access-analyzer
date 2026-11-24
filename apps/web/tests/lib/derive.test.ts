@@ -6,6 +6,7 @@ import {
   diffDays,
   fold6,
   heatmapView,
+  internalPath,
   isDelayed,
   orderDays,
   weekdayCounts,
@@ -445,6 +446,32 @@ describe('safeExternalUrl（U-26）', () => {
   it('文字列でなければ null', () => {
     expect(safeExternalUrl(null)).toBeNull();
     expect(safeExternalUrl(undefined)).toBeNull();
+  });
+});
+
+describe('internalPath（監査 2026-11-09 L-1）', () => {
+  it.each(['/', '/articles', '/articles/123', '/events?cat=5'])(
+    'サイト内のパス「%s」はそのまま返す',
+    (path) => {
+      expect(internalPath(path)).toBe(path);
+    },
+  );
+
+  it.each([
+    '//evil.example/',
+    '/\\evil.example/',
+    'https://evil.example/',
+    'javascript:alert(1)',
+    'articles',
+    ' /articles',
+    '#main',
+    '',
+  ])('サイト内のパスでない「%s」はトップにする', (path) => {
+    expect(internalPath(path)).toBe('/');
+  });
+
+  it('文字列でなければトップにする', () => {
+    expect(internalPath(null as unknown as string)).toBe('/');
   });
 });
 
