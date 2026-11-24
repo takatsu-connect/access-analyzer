@@ -27,6 +27,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+# バッチの依存は pip-compile のハッシュつき requirements*.txt で固定する。uv のロックは使わない
+apps/batch/uv.lock
 
 # Node / Next.js（apps/web）。pnpm-lock.yaml は追跡する
 node_modules/
