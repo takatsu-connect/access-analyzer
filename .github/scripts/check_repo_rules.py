@@ -136,6 +136,24 @@ def check_workflow(path: Path) -> None:
 
     if "pull_request_target" in code:
         fail(path, "pull_request_target を使っている")
+    # 監査 2026-11-07 L-1: 別のワークフローの完了で動く起点は、fork の PR の結果から権限つきで動きうる。
+    if "workflow_run" in code:
+        fail(path, "workflow_run を使っている")
+
+    # 監査 2026-11-07 L-1: checkout がトークンを .git/config に残さない。
+    # 例外は、GITHUB_TOKEN で main に push する heartbeat.yml だけ。
+    if name != "heartbeat.yml":
+        for i, line in enumerate(code_lines):
+            if not re.match(r"^\s*-\s+uses:\s+actions/checkout@", line):
+                continue
+            step_indent = len(line) - len(line.lstrip())
+            step: list[str] = []
+            for nxt in code_lines[i + 1 :]:
+                if nxt.strip() and len(nxt) - len(nxt.lstrip()) <= step_indent:
+                    break
+                step.append(nxt.strip())
+            if "persist-credentials: false" not in step:
+                fail(path, "actions/checkout に persist-credentials: false がない")
 
     for raw in lines:
         if USES.match(raw) and not SHA_USES.match(raw):
