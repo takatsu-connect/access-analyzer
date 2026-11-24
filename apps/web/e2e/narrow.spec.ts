@@ -148,6 +148,36 @@ test.describe('スマホ幅 360 × 740（E-13）', () => {
     expect(box?.width ?? 999).toBeLessThanOrEqual(360);
   });
 
+  for (const width of [360, 320]) {
+    test(`E-13: ヒートマップの列の見出しが、幅 ${width} で隣と重ならない`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 740 });
+      // 平均の列がある期間（7 列でいちばん狭い）と、既定の期間の両方で確かめる。
+      for (const path of ['/', '/?p=last28']) {
+        await openScreen(page, path);
+        await page.locator('summary', { hasText: t('s01.readers.h2') }).click();
+        const narrow = page.locator('[data-part="heatmap-narrow"]');
+        await expect(narrow).toBeVisible();
+        const boxes = await narrow
+          .locator('[data-part="col-label"], [data-part="mean-col-label"]')
+          .evaluateAll((labels) =>
+            labels
+              .map((label) => label.getBoundingClientRect())
+              .map((rect) => ({ left: rect.left, right: rect.right }))
+              .sort((a, b) => a.left - b.left),
+          );
+        expect(boxes.length).toBeGreaterThanOrEqual(6);
+        for (let index = 1; index < boxes.length; index += 1) {
+          const previous = boxes[index - 1];
+          const current = boxes[index];
+          expect(
+            (current?.left ?? 0) - (previous?.right ?? 0),
+            `${path} の ${index} 番目と ${index + 1} 番目の見出しの間`,
+          ).toBeGreaterThanOrEqual(2);
+        }
+      }
+    });
+  }
+
   test('E-13: S-06b は狭い画面用の格子（直近 12 か月）。横スクロールは子カテゴリのときだけ', async ({
     page,
   }) => {

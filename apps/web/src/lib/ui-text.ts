@@ -337,6 +337,9 @@ const baseDictionary = {
   'heatmap.fixedRow.masked': '{row} {col}: {label} —（伏せ値）',
   'heatmap.slots':
     '深夜 0〜3 時 / 早朝 4〜7 時 / 朝 8〜11 時 / 昼 12〜15 時 / 夕方 16〜19 時 / 夜 20〜23 時',
+  // 狭い画面の図の列見出し（2 行。上が言葉、下が時刻）。1 行では列の幅に収まらず重なるため。
+  // 「〜」と「時」を省いた短い形。全文（heatmap.slots）は固定行と表に出る。
+  'heatmap.slots.header': '深夜|0-3 / 早朝|4-7 / 朝|8-11 / 昼|12-15 / 夕方|16-19 / 夜|20-23',
   'heat.avg': '1 日あたりの平均',
   'heat.sum': '期間の合計',
   'weekday.0': '日',
@@ -665,4 +668,11 @@ export function metricNote(id: MetricId): string {
 /** スマホのヒートマップの 6 区分のラベル（深夜 0〜3 時 … 夜 20〜23 時）。 */
 export function heatmapSlotLabels(): string[] {
   return t('heatmap.slots').split(' / ');
+}
+
+/** スマホのヒートマップの 6 区分の、図の列見出し（[言葉, 時刻] の 2 行。深夜 / 0-3 …）。 */
+export function heatmapSlotHeaders(): string[][] {
+  return t('heatmap.slots.header')
+    .split(' / ')
+    .map((label) => label.split('|'));
 }

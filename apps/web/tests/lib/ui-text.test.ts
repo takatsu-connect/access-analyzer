@@ -13,6 +13,7 @@ import {
   DEFERRED_METRIC_IDS,
   dictionary,
   dictionaryParts,
+  heatmapSlotHeaders,
   heatmapSlotLabels,
   METRIC_IDS,
   metricLabel,
@@ -436,5 +437,21 @@ describe('補助', () => {
       '夕方 16〜19 時',
       '夜 20〜23 時',
     ]);
+  });
+
+  it('ヒートマップの 6 区分の図の列見出しは 2 行で、言葉と時刻が全文のラベルと合う', () => {
+    const headers = heatmapSlotHeaders();
+    expect(headers).toEqual([
+      ['深夜', '0-3'],
+      ['早朝', '4-7'],
+      ['朝', '8-11'],
+      ['昼', '12-15'],
+      ['夕方', '16-19'],
+      ['夜', '20-23'],
+    ]);
+    // 全文（深夜 0〜3 時）から「〜」と「時」を除いた形と一致する。
+    expect(headers.map(([word, time]) => `${word} ${(time ?? '').replace('-', '〜')} 時`)).toEqual(
+      heatmapSlotLabels(),
+    );
   });
 });
