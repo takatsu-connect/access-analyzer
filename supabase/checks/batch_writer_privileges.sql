@@ -1,6 +1,9 @@
 -- batch_writer の権限の検査（02 §6、W-8、07 I-DB-18、A-11）。違反を 1 行ずつ返す。0 行なら合格。
--- 同じ select を 0005_public_views.sql の末尾に写してある。本文の一致は I-DB-18 (10) で確かめる。
+-- 同じ select を 0008_privilege_checks.sql に写してある。本文の一致は I-DB-18 (10) で確かめる。
 -- ログインの可否は検査しない（手順の前後で変わるため）。
+-- information_schema の *_grants / *_privileges は、実行する役割に関係する行しか返さない。
+-- 読み取り専用の役割（Supabase CLI の db query --remote --read-only）で流しても同じ結果になるよう、
+-- pg_catalog の ACL（aclexplode）と has_*_privilege だけで判定する。
 with allowed_table (table_name) as (
   values
     ('period'), ('wp_author'), ('wp_post'), ('wp_category'), ('wp_tag'),
@@ -19,9 +22,12 @@ allowed_grant (table_name, privilege_type) as (
   where not (t.table_name = 'batch_run' and p.privilege_type = 'DELETE')
 ),
 actual_grant as (
-  select table_schema, table_name, privilege_type
-  from information_schema.role_table_grants
-  where grantee = 'batch_writer'
+  select n.nspname as table_schema, cl.relname as table_name, acl.privilege_type
+  from pg_class cl
+  join pg_namespace n on n.oid = cl.relnamespace
+  cross join lateral aclexplode(cl.relacl) as acl
+  where cl.relkind in ('r', 'v', 'm', 'f', 'p')
+    and acl.grantee = 'batch_writer'::regrole
 )
 select 'extra table grant: ' || g.table_schema || '.' || g.table_name || ' ' || g.privilege_type as violation
 from actual_grant g
@@ -83,14 +89,35 @@ where has_schema_privilege('batch_writer', n.oid, 'USAGE')
     )
   )
 union all
-select 'routine grant: ' || r.routine_schema || '.' || r.routine_name
-from information_schema.routine_privileges r
-where r.grantee = 'batch_writer'
-  and not (r.routine_schema = 'internal' and r.routine_name = 'counts_is_numeric')
+select 'routine grant: ' || n.nspname || '.' || p.proname
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+cross join lateral aclexplode(p.proacl) as acl
+where acl.grantee = 'batch_writer'::regrole
+  and not (n.nspname = 'internal' and p.proname = 'counts_is_numeric')
 union all
-select 'usage grant: ' || u.object_schema || '.' || u.object_name
-from information_schema.role_usage_grants u
-where u.grantee = 'batch_writer'
+select 'usage grant: ' || n.nspname || '.' || cl.relname
+from pg_class cl
+join pg_namespace n on n.oid = cl.relnamespace
+cross join lateral aclexplode(cl.relacl) as acl
+where cl.relkind = 'S'
+  and acl.grantee = 'batch_writer'::regrole
+union all
+select 'usage grant: ' || n.nspname || '.' || t.typname
+from pg_type t
+join pg_namespace n on n.oid = t.typnamespace
+cross join lateral aclexplode(t.typacl) as acl
+where acl.grantee = 'batch_writer'::regrole
+union all
+select 'usage grant: foreign data wrapper ' || w.fdwname
+from pg_foreign_data_wrapper w
+cross join lateral aclexplode(w.fdwacl) as acl
+where acl.grantee = 'batch_writer'::regrole
+union all
+select 'usage grant: foreign server ' || s.srvname
+from pg_foreign_server s
+cross join lateral aclexplode(s.srvacl) as acl
+where acl.grantee = 'batch_writer'::regrole
 union all
 select 'role membership: ' || m.roleid::regrole::text
 from pg_auth_members m
