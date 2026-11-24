@@ -73,7 +73,7 @@ Supabase CLI は、版と依存の依存を `tools/supabase-cli` の `package.js
 pnpm -C tools/supabase-cli install --frozen-lockfile
 ```
 
-以下のコマンドはリポジトリ直下で実行する。`--workdir ../..` は `tools/supabase-cli` から見たリポジトリ直下（`supabase/` のある場所）を指す。
+以下のコマンドはリポジトリ直下で実行する。`--workdir ../..` は `tools/supabase-cli` から見たリポジトリ直下（`supabase/` のある場所）を指す。pnpm を corepack 経由で使っている環境では、`-C` を付けた呼び方が「pnpm の版が違う」で止まる（corepack は実行した場所の `package.json` で版を選ぶ）。そのときは `tools/supabase-cli` に移動して、`-C tools/supabase-cli` を外した形で実行する。
 
 1. 本番プロジェクトにつなぐ。`<PROJECT-REF>` はダッシュボードの URL にある英数字。
 
