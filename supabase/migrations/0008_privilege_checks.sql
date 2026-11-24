@@ -62,6 +62,34 @@ where t.typtype = 'd'
   and (acl.grantee = 0 or acl.grantee in ('anon'::regrole, 'authenticated'::regrole))
   and n.nspname not in (select nspname from managed)
 union all
+select 'usage grant: ' || case when acl.grantee = 0 then 'PUBLIC' else acl.grantee::regrole::text end
+  || ' foreign data wrapper ' || w.fdwname
+from pg_foreign_data_wrapper w
+cross join lateral aclexplode(coalesce(w.fdwacl, acldefault('F', w.fdwowner))) as acl
+where acl.grantee = 0 or acl.grantee in ('anon'::regrole, 'authenticated'::regrole)
+union all
+select 'usage grant: ' || case when acl.grantee = 0 then 'PUBLIC' else acl.grantee::regrole::text end
+  || ' foreign server ' || s.srvname
+from pg_foreign_server s
+cross join lateral aclexplode(coalesce(s.srvacl, acldefault('S', s.srvowner))) as acl
+where acl.grantee = 0 or acl.grantee in ('anon'::regrole, 'authenticated'::regrole)
+union all
+select 'owner: ' || o.owner::regrole::text || ' ' || o.kind || ' ' || o.name
+from (
+  select cl.relowner as owner, 'relation' as kind, n.nspname || '.' || cl.relname as name
+  from pg_class cl join pg_namespace n on n.oid = cl.relnamespace
+  union all
+  select p.proowner, 'function', n.nspname || '.' || p.proname
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  union all
+  select t.typowner, 'type', n.nspname || '.' || t.typname
+  from pg_type t join pg_namespace n on n.oid = t.typnamespace
+  union all
+  select n.nspowner, 'schema', n.nspname
+  from pg_namespace n
+) as o
+where o.owner in ('anon'::regrole, 'authenticated'::regrole)
+union all
 select 'schema usage: ' || role_name || ' ' || n.nspname
 from (values ('anon'), ('authenticated')) as role (role_name)
 cross join pg_namespace n
@@ -82,7 +110,7 @@ from pg_namespace n
 cross join lateral aclexplode(n.nspacl) as acl
 where acl.grantee = 0 and acl.privilege_type = 'CREATE'
 union all
-select 'relation grant: ' || acl.grantee::regrole::text || ' ' || n.nspname || '.' || cl.relname || ' ' || acl.privilege_type
+select 'relation grant: ' || case when acl.grantee = 0 then 'PUBLIC' else acl.grantee::regrole::text end || ' ' || n.nspname || '.' || cl.relname || ' ' || acl.privilege_type
 from pg_class cl
 join pg_namespace n on n.oid = cl.relnamespace
 cross join lateral aclexplode(cl.relacl) as acl
@@ -90,7 +118,7 @@ where n.nspname = 'public'
   and acl.grantee <> cl.relowner
   and not (acl.grantee = 'anon'::regrole and acl.privilege_type = 'SELECT')
 union all
-select 'default privilege: ' || acl.grantee::regrole::text || ' ' || n.nspname || ' ' || d.defaclobjtype::text
+select 'default privilege: ' || case when acl.grantee = 0 then 'PUBLIC' else acl.grantee::regrole::text end || ' ' || n.nspname || ' ' || d.defaclobjtype::text
 from pg_default_acl d
 join pg_namespace n on n.oid = d.defaclnamespace
 cross join lateral aclexplode(d.defaclacl) as acl
@@ -122,7 +150,7 @@ where cl.relkind in ('r', 'v', 'm', 'f', 'p')
     and p.privilege_type = 'SELECT'
   )
 union all
-select 'column grant: ' || acl.grantee::regrole::text || ' ' || n.nspname || '.' || cl.relname || '.' || a.attname
+select 'column grant: ' || case when acl.grantee = 0 then 'PUBLIC' else acl.grantee::regrole::text end || ' ' || n.nspname || '.' || cl.relname || '.' || a.attname
 from pg_attribute a
 join pg_class cl on cl.oid = a.attrelid
 join pg_namespace n on n.oid = cl.relnamespace
@@ -286,6 +314,22 @@ select 'usage grant: foreign server ' || s.srvname
 from pg_foreign_server s
 cross join lateral aclexplode(s.srvacl) as acl
 where acl.grantee = 'batch_writer'::regrole
+union all
+select 'owner: ' || o.kind || ' ' || o.name
+from (
+  select cl.relowner as owner, 'relation' as kind, n.nspname || '.' || cl.relname as name
+  from pg_class cl join pg_namespace n on n.oid = cl.relnamespace
+  union all
+  select p.proowner, 'function', n.nspname || '.' || p.proname
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  union all
+  select t.typowner, 'type', n.nspname || '.' || t.typname
+  from pg_type t join pg_namespace n on n.oid = t.typnamespace
+  union all
+  select n.nspowner, 'schema', n.nspname
+  from pg_namespace n
+) as o
+where o.owner = 'batch_writer'::regrole
 union all
 select 'role membership: ' || m.roleid::regrole::text
 from pg_auth_members m

@@ -363,13 +363,18 @@ def test_i_db_15_counts_check_rejects_other_shapes(admin: Admin, counts: str) ->
         )
 
 
-# 検査を流す役割。None は管理接続のまま。"anon" は、権限のいちばん少ない役割に切り替えて流す
-# （本番では Supabase CLI の読み取り専用の役割で流す。A-11）。どちらでも同じ結果になること。
-CHECK_READERS = [None, "anon"]
+# 検査を流す役割。None は管理接続のまま。"anon" は検査の対象そのもの。NEW_READER は、テストの中で
+# 作る、何の権限も所属も持たない役割（本番では Supabase CLI の読み取り専用の役割で流す。A-11。
+# 監査 2026-11-24-privilege-checks-review.md M-2）。どれで流しても同じ結果になること。
+NEW_READER = "check_reader"
+CHECK_READERS = [None, "anon", NEW_READER]
 
 
 def _violations(admin: Admin, name: str, reader: str | None) -> list[str]:
     """検査のファイルを、指定した役割で流して違反の一覧を返す（役割はこの中で元に戻す）。"""
+    if reader == NEW_READER:
+        admin.execute(b"create role check_reader nologin noinherit")
+        admin.execute(b"grant check_reader to current_user")
     if reader is not None:
         admin.execute(sql.SQL("set local role {}").format(sql.Identifier(reader)))
     try:
@@ -423,6 +428,30 @@ def test_check_files_do_not_read_information_schema(name: str) -> None:
         (
             "grant update (title) on internal.wp_post to anon",
             "column grant: anon internal.wp_post.title",
+        ),
+        # 監査 2026-11-24-privilege-checks-review.md M-2: 書き換えた節（ACL と既定の ACL から読む）
+        ("grant select on internal.wp_post to public", "table grant: PUBLIC internal.wp_post"),
+        (
+            "grant select (title) on internal.wp_post to public",
+            "column grant: PUBLIC internal.wp_post.title",
+        ),
+        (
+            # 関数は、何もしなければ PUBLIC が実行できる（ACL は空で、既定を展開して見つける）
+            "create function internal.extra() returns integer language sql as 'select 1'",
+            "routine grant: PUBLIC internal.extra",
+        ),
+        (
+            "create sequence internal.extra_seq;grant usage on sequence internal.extra_seq to anon",
+            "usage grant: anon internal.extra_seq",
+        ),
+        (
+            # ドメインも、何もしなければ PUBLIC が使える
+            "create domain internal.extra_domain as integer",
+            "usage grant: PUBLIC internal.extra_domain",
+        ),
+        (
+            "create view public.pub_extra as select 1 as value_mask",
+            "mask column: pub_extra.value_mask",
         ),
     ],
 )

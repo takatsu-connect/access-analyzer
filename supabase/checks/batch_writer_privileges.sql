@@ -119,6 +119,22 @@ from pg_foreign_server s
 cross join lateral aclexplode(s.srvacl) as acl
 where acl.grantee = 'batch_writer'::regrole
 union all
+select 'owner: ' || o.kind || ' ' || o.name
+from (
+  select cl.relowner as owner, 'relation' as kind, n.nspname || '.' || cl.relname as name
+  from pg_class cl join pg_namespace n on n.oid = cl.relnamespace
+  union all
+  select p.proowner, 'function', n.nspname || '.' || p.proname
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  union all
+  select t.typowner, 'type', n.nspname || '.' || t.typname
+  from pg_type t join pg_namespace n on n.oid = t.typnamespace
+  union all
+  select n.nspowner, 'schema', n.nspname
+  from pg_namespace n
+) as o
+where o.owner = 'batch_writer'::regrole
+union all
 select 'role membership: ' || m.roleid::regrole::text
 from pg_auth_members m
 where m.member = 'batch_writer'::regrole
