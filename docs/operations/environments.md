@@ -9,7 +9,7 @@
 
 | 環境 | 何が動くか | データの接続先 | URL | 本番の秘密 |
 | --- | --- | --- | --- | --- |
-| ローカル | 開発者の PC。`apps/batch` の pytest、`apps/web` の dev / build / E2E | Supabase ローカル（Docker、`npx supabase start`。api 54421、db 54422） | `http://localhost:3000`（dev）、3100（E2E）、3101（check:headers） | 置かない（ローカルの `.env`、`apps/web/.env.local` はローカルの値だけ） |
+| ローカル | 開発者の PC。`apps/batch` の pytest、`apps/web` の dev / build / E2E | Supabase ローカル（Docker、`pnpm -C tools/supabase-cli exec supabase --workdir ../.. start`。api 54421、db 54422） | `http://localhost:3000`（dev）、3100（E2E）、3101（check:headers） | 置かない（ローカルの `.env`、`apps/web/.env.local` はローカルの値だけ） |
 | CI | GitHub Actions の `ci.yml`（PR と main への push） | ジョブの中で起動する Supabase ローカル。GA4 と WP は偽物（07 §5） | ― | 渡さない（Secrets と Environment を参照しない） |
 | 本番 | 日次バッチ（Actions の `daily.yml`）→ Supabase（本番プロジェクト）→ Vercel（BI） | 本番の Supabase、GA4 Data API、takatsu-connect.com の WP REST API | Vercel の既定のドメイン `<プロジェクト名>.vercel.app`（2026-11-07 の依頼者の決定）。プロジェクト名は未確定（§8） | §3〜§5 |
 
@@ -119,7 +119,7 @@ GitHub Actions（daily.yml、main、Environment production）
 ## 8. 確認が要ること
 
 1. Vercel のプロジェクト名（= `<プロジェクト名>.vercel.app` の URL）。
-2. Supabase CLI の版。CI は `npx supabase@3.0.0` に固定した。3.0.0 はローカルの `supabase/.temp/cli-latest` に残っていた値で、npm に同じ版があるか、公開日（2 週間たっているか）、`start -x` の除外名と `status -o env` の出力の名前（`ANON_KEY` か `SUPA_ANON_KEY` か、anon キーが JWT か新しい publishable キーか）は確かめていない。context7（supabase/cli、2026-11-07）では、`-x` の不正な名前は警告だけで続行し、名前は版によって `storage-api` / `storage`、`edge-runtime` / `edgeRuntime` などと違う。
+2. Supabase CLI の版。CI とローカルは `tools/supabase-cli` の `package.json`（`supabase` 3.0.0）と `pnpm-lock.yaml` で、依存の依存まで固定した（2026-11-24。それまでは `npx supabase@3.0.0`）。3.0.0 が npm にあること、後処理のスクリプトを持たないこと、OS ごとの実行ファイルが `optionalDependencies` で入ることは 2026-11-24 に `pnpm view` で確かめた。3.0.0 はローカルの `supabase/.temp/cli-latest` に残っていた値で、npm に同じ版があるか、公開日（2 週間たっているか）、`start -x` の除外名と `status -o env` の出力の名前（`ANON_KEY` か `SUPA_ANON_KEY` か、anon キーが JWT か新しい publishable キーか）は確かめていない。context7（supabase/cli、2026-11-07）では、`-x` の不正な名前は警告だけで続行し、名前は版によって `storage-api` / `storage`、`edge-runtime` / `edgeRuntime` などと違う。
 3. pnpm は Node に付いている corepack で入れる（`corepack enable`。版は apps/web/package.json の `packageManager`）。`pnpm/action-setup` はリポジトリの Action の許可リスト（GitHub 製、Marketplace の認証済み、`google-github-actions/*`）にないので使わない（2026-11-07、最初の CI で判明）。
 4. Vercel のビルドが `packageManager: pnpm@10.6.5` を使うか（corepack の扱い）。Node は `engines.node: 24.x` を読む見込み。
 5. Vercel の Git の設定で、fork からの PR のプレビューをビルドしない設定（06 §2.4）の名前と既定値。

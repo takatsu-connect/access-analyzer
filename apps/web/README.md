@@ -7,7 +7,7 @@ Next.js（App Router）で全ページを静的生成する。ビルド時に Su
 
 ## 動かし方
 
-前提: Node 24、pnpm。データはローカルの Supabase から読む（Docker を起動し、リポジトリ直下で `npx supabase start`）。フィクスチャは `apps/batch` で `PYTHONPATH="src;tests" .venv/Scripts/python.exe -m support.load_e2e_fixture` を実行して入れる。接続先は `apps/web/.env.local`（git に入れない）に `SUPABASE_URL` と `SUPABASE_ANON_KEY` を書く。`NEXT_PUBLIC_` で始まる変数は作らない。
+前提: Node 24、pnpm。データはローカルの Supabase から読む（Docker を起動し、リポジトリ直下で `pnpm -C tools/supabase-cli install --frozen-lockfile` のあと `pnpm -C tools/supabase-cli exec supabase --workdir ../.. start`。CLI の版はこのロックファイルで固定している）。フィクスチャは `apps/batch` で `PYTHONPATH="src;tests" .venv/Scripts/python.exe -m support.load_e2e_fixture` を実行して入れる。接続先は `apps/web/.env.local`（git に入れない）に `SUPABASE_URL` と `SUPABASE_ANON_KEY` を書く。`NEXT_PUBLIC_` で始まる変数は作らない。
 
 | コマンド                 | 内容                                                                                                                                                                              |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

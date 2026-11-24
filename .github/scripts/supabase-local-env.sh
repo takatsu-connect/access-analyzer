@@ -4,9 +4,10 @@
 # ポートは supabase/config.toml（api 54421、db 54422）に合わせる。
 set -euo pipefail
 
-: "${GITHUB_ENV:?}" "${SUPABASE_CLI_VERSION:?}"
+: "${GITHUB_ENV:?}"
 
-status_env="$(npx --yes "supabase@${SUPABASE_CLI_VERSION}" status -o env 2>/dev/null)"
+# CLI は tools/supabase-cli のロックファイルで固定したもの（先に pnpm install --frozen-lockfile が要る）
+status_env="$(pnpm --dir tools/supabase-cli exec supabase --workdir ../.. status -o env 2>/dev/null)"
 # 版によって ANON_KEY と SUPA_ANON_KEY の綴りがあるので、両方を受ける。値の引用符を外す
 anon_key="$(printf '%s\n' "${status_env}" | sed -n -E 's/^(SUPA_)?ANON_KEY="?([^"]*)"?$/\2/p' | head -n 1)"
 if [ -z "${anon_key}" ]; then
