@@ -4,6 +4,7 @@
  * - 列は列挙して読む（スキーマのキーから作る。`*` を使わない）。
  * - 既定の上限（1,000 行）を超えても欠けないように、どのビューも主キーの順に 1,000 行ずつ読む。
  * - 行は zod で検証する。失敗したときのエラーには、ビューの名前だけを入れる（接続先、キー、行の値を出さない）。
+ * - 読めなかったページは、間隔を空けて読み直す（RETRY_DELAYS_MS）。形の違いは読み直さない。
  */
 import { cache } from 'react';
 import * as z from 'zod';
@@ -18,6 +19,17 @@ import type { PubReadViewName, PubViewName } from './schemas';
 
 /** 1 回の問い合わせで読む行数（PostgREST の既定の上限）。 */
 export const PAGE_SIZE = 1000;
+
+/**
+ * 読めなかったページを読み直すまでの待ち時間（ミリ秒）。要素の数が再試行の回数。
+ * ビルドが同時に走ったときなどの一時的な失敗で、ビルドを落とさないため。
+ */
+export const RETRY_DELAYS_MS: readonly number[] = [1000, 2000, 4000];
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 type PageResult = { data: unknown; error: unknown };
 
@@ -236,27 +248,43 @@ export const VIEWS = {
  *
  * 終わりは「空のページが返ったとき」で判定し、次の位置は受け取った行数だけ進める。
  * サーバー側の上限が PAGE_SIZE より小さく設定されていても、途中で切れたまま気づかないことがない。
+ *
+ * wait は読み直す前の待ち方。テストでは、待たない偽物に差し替える。
  */
-export async function readView<Row>(spec: ViewSpec<Row>, open: () => ViewSource): Promise<Row[]> {
+export async function readView<Row>(
+  spec: ViewSpec<Row>,
+  open: () => ViewSource,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<Row[]> {
   const pageSchema = z.array(spec.schema);
   const rows: Row[] = [];
 
-  for (let offset = 0; ;) {
-    let result: PageResult;
+  /** 1 ページを 1 回だけ読む。読めなければ null（元のエラーは接続先を含みうるので、引き継がない）。 */
+  const readPage = async (offset: number): Promise<unknown[] | null> => {
     try {
       let query = open().select(spec.columns.join(','));
       if (spec.filter !== undefined) query = query.in(spec.filter.column, spec.filter.values);
       for (const column of spec.orderBy) query = query.order(column, { ascending: true });
-      result = await query.range(offset, offset + PAGE_SIZE - 1);
+      const result: PageResult = await query.range(offset, offset + PAGE_SIZE - 1);
+      if ((result.error ?? null) !== null || !Array.isArray(result.data)) return null;
+      return result.data;
     } catch {
-      // 元のエラーは接続先を含みうるので、引き継がない。
-      throw new PubReadError(spec.name, 'read');
+      return null;
     }
-    if ((result.error ?? null) !== null || !Array.isArray(result.data)) {
-      throw new PubReadError(spec.name, 'read');
-    }
+  };
 
-    const parsed = pageSchema.safeParse(result.data);
+  for (let offset = 0; ;) {
+    // 読めなかったページだけを、間隔を空けて読み直す。読めている間は待たない。
+    let data = await readPage(offset);
+    for (const delay of RETRY_DELAYS_MS) {
+      if (data !== null) break;
+      await wait(delay);
+      data = await readPage(offset);
+    }
+    if (data === null) throw new PubReadError(spec.name, 'read');
+
+    // 形の違いは読み直しても変わらないので、再試行しない。
+    const parsed = pageSchema.safeParse(data);
     if (!parsed.success) throw new PubReadError(spec.name, 'shape');
     if (parsed.data.length === 0) return rows;
     for (const row of parsed.data) rows.push(row);

@@ -9,6 +9,7 @@ import {
   PubReadError,
   readAllViews,
   readView,
+  RETRY_DELAYS_MS,
   VIEWS,
   type ViewQuery,
   type ViewSource,
@@ -16,11 +17,26 @@ import {
 
 type Call = { columns: string; filters: string[]; order: string[]; range: [number, number] };
 
-/** total 行のタグを返す偽の問い合わせ。呼ばれ方を calls に残す。cap はサーバー側の行数の上限。 */
+/** 読み直す前の待ちを、待たずに記録する偽物。 */
+function fakeWait(): { waits: number[]; wait: (ms: number) => Promise<void> } {
+  const waits: number[] = [];
+  return {
+    waits,
+    wait: (ms) => {
+      waits.push(ms);
+      return Promise.resolve();
+    },
+  };
+}
+
+/**
+ * total 行のタグを返す偽の問い合わせ。呼ばれ方を calls に残す。cap はサーバー側の行数の上限。
+ * fails は、何回目の問い合わせ（0 始まり）を失敗させるか。
+ */
 function fakeTagSource(
   total: number,
   calls: Call[],
-  failAt = -1,
+  fails: (index: number) => boolean = () => false,
   cap = PAGE_SIZE,
 ): () => ViewSource {
   return () => ({
@@ -38,7 +54,7 @@ function fakeTagSource(
         range(from, to) {
           call.range = [from, to];
           calls.push(call);
-          if (calls.length - 1 === failAt) {
+          if (fails(calls.length - 1)) {
             return Promise.resolve({
               data: null,
               error: { message: 'http://db.internal.example/rest/v1 secret-key' },
@@ -86,7 +102,10 @@ describe('readView', () => {
 
   it('サーバー側の上限が 1,000 行より小さくても、欠けずに最後まで読む', async () => {
     const calls: Call[] = [];
-    const rows = await readView(VIEWS.tags, fakeTagSource(1000, calls, -1, 400));
+    const rows = await readView(
+      VIEWS.tags,
+      fakeTagSource(1000, calls, () => false, 400),
+    );
     expect(rows.map((row) => row.tag_id)).toEqual([...Array(1000).keys()]);
     expect(calls.map((call) => call.range[0])).toEqual([0, 400, 800, 1000]);
   });
@@ -105,44 +124,101 @@ describe('readView', () => {
     expect(calls[0]?.order).toEqual(['scope:asc', 'n:asc']);
   });
 
-  it('読み出しの失敗は、ビューの名前だけを含むエラーにする', async () => {
-    const error = await readView(VIEWS.tags, fakeTagSource(2500, [], 1)).catch(
-      (caught: unknown) => caught,
+  it('読めている間は、待たない', async () => {
+    const { waits, wait } = fakeWait();
+    await readView(VIEWS.tags, fakeTagSource(2500, []), wait);
+    expect(waits).toEqual([]);
+  });
+
+  it('読めなかったページだけを、間隔を空けて読み直す', async () => {
+    const calls: Call[] = [];
+    const { waits, wait } = fakeWait();
+    // 2 ページ目の 1 回目と 2 回目（1、2 回目の問い合わせ）だけが失敗する。
+    const source = fakeTagSource(2500, calls, (index) => index === 1 || index === 2);
+    const rows = await readView(VIEWS.tags, source, wait);
+
+    expect(rows.map((row) => row.tag_id)).toEqual([...Array(2500).keys()]);
+    expect(calls.map((call) => call.range[0])).toEqual([0, 1000, 1000, 1000, 2000, 2500]);
+    expect(waits).toEqual(RETRY_DELAYS_MS.slice(0, 2));
+  });
+
+  it('読み直しの回数は、ページごとに数え直す', async () => {
+    const calls: Call[] = [];
+    const { waits, wait } = fakeWait();
+    // 1 ページ目で 3 回、2 ページ目でも 3 回失敗する。どちらも最後の読み直しで読める。
+    const failing = new Set([0, 1, 2, 4, 5, 6]);
+    const rows = await readView(
+      VIEWS.tags,
+      fakeTagSource(1500, calls, (index) => failing.has(index)),
+      wait,
     );
+    expect(rows).toHaveLength(1500);
+    expect(waits).toEqual([...RETRY_DELAYS_MS, ...RETRY_DELAYS_MS]);
+  });
+
+  it('読み直しても読めなければ、ビューの名前だけを含むエラーにする', async () => {
+    const calls: Call[] = [];
+    const { waits, wait } = fakeWait();
+    const error = await readView(
+      VIEWS.tags,
+      fakeTagSource(2500, calls, (index) => index >= 1),
+      wait,
+    ).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(PubReadError);
     const { message, cause } = error as PubReadError;
     expect(message).toBe('公開ビュー pub_tag を読めませんでした');
     expect(message).not.toContain('http');
     expect(message).not.toContain('secret-key');
     expect(cause).toBeUndefined();
+    // 最初の 1 回と、読み直しの回数だけ問い合わせて、あきらめる。
+    expect(calls.map((call) => call.range[0])).toEqual([
+      0,
+      ...RETRY_DELAYS_MS.map(() => 1000),
+      1000,
+    ]);
+    expect(waits).toEqual(RETRY_DELAYS_MS);
   });
 
-  it('問い合わせが例外を投げても、元のエラーを引き継がない', async () => {
+  it('問い合わせが例外を投げても読み直し、元のエラーを引き継がない', async () => {
+    let opened = 0;
+    const { waits, wait } = fakeWait();
     const open = (): ViewSource => {
+      opened += 1;
       throw new Error('connect ECONNREFUSED http://db.internal.example secret-key');
     };
-    const error = await readView(VIEWS.tags, open).catch((caught: unknown) => caught);
+    const error = await readView(VIEWS.tags, open, wait).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(PubReadError);
     expect((error as PubReadError).message).toBe('公開ビュー pub_tag を読めませんでした');
     expect((error as PubReadError).cause).toBeUndefined();
+    expect(opened).toBe(1 + RETRY_DELAYS_MS.length);
+    expect(waits).toEqual(RETRY_DELAYS_MS);
   });
 
-  it('想定した形と違う行は、値を含まないエラーにする', async () => {
+  it('想定した形と違う行は、読み直さずに、値を含まないエラーにする', async () => {
+    let asked = 0;
+    const { waits, wait } = fakeWait();
     const open = (): ViewSource => ({
       select: () => {
         const query: ViewQuery = {
           in: () => query,
           order: () => query,
-          range: () =>
-            Promise.resolve({ data: [{ tag_id: 'ひみつの値', name: 'さんぽ' }], error: null }),
+          range: () => {
+            asked += 1;
+            return Promise.resolve({
+              data: [{ tag_id: 'ひみつの値', name: 'さんぽ' }],
+              error: null,
+            });
+          },
         };
         return query;
       },
     });
-    const error = await readView(VIEWS.tags, open).catch((caught: unknown) => caught);
+    const error = await readView(VIEWS.tags, open, wait).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(PubReadError);
     expect((error as PubReadError).kind).toBe('shape');
     expect((error as PubReadError).message).toBe('公開ビュー pub_tag の行が、想定した形と違います');
+    expect(asked).toBe(1);
+    expect(waits).toEqual([]);
   });
 });
 
