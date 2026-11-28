@@ -241,6 +241,39 @@ describe('Heatmap（U-24）', () => {
     expect(parts(container, 'cell-value').map((node) => node.textContent)).toContain('40.0');
   });
 
+  it('列の見出しを 2 行で書ける。見出しの高さが 1 行ぶん増え、セルと平均の見出しが下がる', () => {
+    const plain = render(<Heatmap {...props()} />);
+    const plainCellY = Number(cell(plain.container, 0, 0).getAttribute('y'));
+    const plainHeight = Number(
+      plain.container.querySelector('svg[role="img"]')?.getAttribute('height'),
+    );
+    plain.unmount();
+
+    const colHeaderLines: [string, string][] = [
+      ['朝', '8-11'],
+      ['昼', '12-15'],
+      ['夜', '20-23'],
+    ];
+    const rowMeans = { label: '平均', values: [5, 30] };
+    const { container } = render(<Heatmap {...props({ colHeaderLines, rowMeans })} />);
+    const labels = parts(container, 'col-label');
+    expect(labels).toHaveLength(3);
+    // 1 つの見出しの中に、上の行（言葉）と下の行（時刻）がある。
+    const lines = [...(labels[0]?.querySelectorAll('tspan') ?? [])];
+    expect(lines.map((line) => line.textContent)).toEqual(['朝', '8-11']);
+    const [upper, lower] = lines.map((line) => Number(line.getAttribute('y')));
+    expect((lower ?? 0) - (upper ?? 0)).toBe(14);
+    // セルと図の高さは 1 行ぶん（14px）下がり、平均の列の見出しは下の行にそろう。
+    expect(Number(cell(container, 0, 0).getAttribute('y'))).toBe(plainCellY + 14);
+    expect(Number(container.querySelector('svg[role="img"]')?.getAttribute('height'))).toBe(
+      plainHeight + 14,
+    );
+    expect(Number(parts(container, 'mean-col-label')[0]?.getAttribute('y'))).toBe(lower);
+    // 固定行の文は、colLabels（全文）のまま。
+    fireEvent.click(cell(container, 0, 1));
+    expect(fixedRow(container)).toBe('日曜 昼: 5');
+  });
+
   it('style 属性がなく、role="img" と <title> がある', () => {
     expectChartBasics(<Heatmap {...props()} />, TITLE);
   });

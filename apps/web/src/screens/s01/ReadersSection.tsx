@@ -11,7 +11,7 @@ import type { HeatmapMargins, HeatmapView } from '@/lib/derive';
 import { formatNumber } from '@/lib/format';
 import type { DashboardData, Masked, Period, SitePeriodValue } from '@/lib/page-data';
 import type { QueryState } from '@/lib/query';
-import { heatmapSlotLabels, metricLabel, metricNote, t } from '@/lib/ui-text';
+import { heatmapSlotHeaders, heatmapSlotLabels, metricLabel, metricNote, t } from '@/lib/ui-text';
 
 import { Breakdown } from './Breakdown';
 import { HeatmapTable } from './HeatmapTable';
@@ -109,6 +109,11 @@ function HeatmapBlock({ cells, margins, period, site, heat, onHeatChange }: Heat
   // 期間が変わったら、選んでいるマスを既定に戻す（平均と合計の切り替えでは保つ）。
   const chartKey = period.id;
   const slotLabels = heatmapSlotLabels();
+  // 狭い画面の図の列見出しは 2 行（言葉 / 時刻）。1 行では列の幅に収まらず重なる。
+  const slotHeaders = heatmapSlotHeaders().map((lines): [string, string] => [
+    lines[0] ?? '',
+    lines[1] ?? '',
+  ]);
   const folded = orderDays(view.slots);
   const tableProps = { caption: metricLabel('M16'), valueHeader: label, rowLabels, formatValue };
   const meanLabel = t('s01.heat.mean');
@@ -172,6 +177,7 @@ function HeatmapBlock({ cells, margins, period, site, heat, onHeatChange }: Heat
           key={chartKey}
           {...shared}
           colLabels={slotLabels}
+          colHeaderLines={slotHeaders}
           values={folded}
           cellText={cellTextFor(slotMeanName)}
           {...foldedMeans.chart}

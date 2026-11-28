@@ -12,6 +12,11 @@
   gap: var(--space-2);
 }
 
+/* 列見出しが 2 行のとき（Heatmap.tsx の HEADER_HEIGHT + HEADER_LINE_HEIGHT と同じ値にする）。 */
+.twoLineHeader {
+  --heatmap-header: 32px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -54,6 +59,17 @@
   fill: var(--color-text-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 2 行の列見出しの下の行（時刻）。要件の幅（360px）より狭い画面では、隣とくっついて
+ * 「12-1516-19」のように読めるので、この行だけ 10px にして間をあける
+ * （11px では、数字の幅が広いフォントの環境で隣に触れた）。
+ */
+@media (max-width: 339px) {
+  .colLabelSub {
+    font-size: 10px;
+  }
 }
 
 /* セルの間は、面の色の線で 2px あける。 */

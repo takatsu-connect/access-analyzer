@@ -16,6 +16,8 @@ import type { HeatmapCell, HeatmapProps } from './types';
 const HEADER_HEIGHT = 18;
 const CELL_HEIGHT = 28;
 const HEADER_BASELINE = 12;
+// 列見出しが 2 行のとき（colHeaderLines）に足す高さ（px）。Heatmap.module.css の .twoLineHeader と同じ値にする。
+const HEADER_LINE_HEIGHT = 14;
 // 平均の行の前の隙間（px）。Heatmap.module.css の --heatmap-mean-gap と同じ値にする。
 const MEAN_GAP = 8;
 // 平均の列の前の隙間（列の幅に対する割合）。列の幅は画面の幅で変わるので割合で持つ。
@@ -69,6 +71,7 @@ export function Heatmap({
   defaultCell,
   formatValue = formatNumber,
   colLabelEvery = 1,
+  colHeaderLines,
   scale = 'all',
   rowMeans,
   colMeans,
@@ -133,10 +136,15 @@ export function Heatmap({
   const colStart = (col: number): number => (col >= colCount ? col + colGap : col);
   const leftOf = (col: number): number => round2(colStart(col) * cellWidth);
   const centerOf = (col: number): number => round2((colStart(col) + 0.5) * cellWidth);
+  // 列見出しが 2 行なら、見出しの高さを 1 行ぶん足す。1 行の見出し（平均の列）は下の行にそろえる。
+  const twoLineHeader = colHeaderLines !== undefined;
+  const headerExtra = twoLineHeader ? HEADER_LINE_HEIGHT : 0;
+  const headerHeight = HEADER_HEIGHT + headerExtra;
+  const lastBaseline = HEADER_BASELINE + headerExtra;
   const topOf = (row: number): number =>
-    HEADER_HEIGHT + row * CELL_HEIGHT + (row >= rowCount ? MEAN_GAP : 0);
+    headerHeight + row * CELL_HEIGHT + (row >= rowCount ? MEAN_GAP : 0);
   const plotHeight =
-    HEADER_HEIGHT + totalRows * CELL_HEIGHT + (colMeans === undefined ? 0 : MEAN_GAP);
+    headerHeight + totalRows * CELL_HEIGHT + (colMeans === undefined ? 0 : MEAN_GAP);
 
   const currentKind = kindOf(current);
   const currentCell: HeatmapCell = {
@@ -204,7 +212,7 @@ export function Heatmap({
   };
 
   return (
-    <div className={styles.chart}>
+    <div className={twoLineHeader ? `${styles.chart} ${styles.twoLineHeader}` : styles.chart}>
       <div className={styles.grid}>
         <div className={styles.rowLabels} aria-hidden="true">
           {rowLabels.map((label, row) => (
@@ -232,26 +240,45 @@ export function Heatmap({
         >
           <svg className={styles.svg} role="img" height={plotHeight}>
             <title>{title}</title>
-            {colLabels.map((label, col) =>
-              col % colLabelEvery === 0 ? (
+            {colLabels.map((label, col) => {
+              if (col % colLabelEvery !== 0) return null;
+              const lines = colHeaderLines?.[col];
+              if (lines === undefined) {
+                return (
+                  <text
+                    key={`${col}-${label}`}
+                    className={styles.colLabel}
+                    data-part="col-label"
+                    x={percent(centerOf(col))}
+                    y={lastBaseline}
+                    textAnchor="middle"
+                  >
+                    {label}
+                  </text>
+                );
+              }
+              return (
                 <text
                   key={`${col}-${label}`}
                   className={styles.colLabel}
                   data-part="col-label"
-                  x={percent(centerOf(col))}
-                  y={HEADER_BASELINE}
                   textAnchor="middle"
                 >
-                  {label}
+                  <tspan x={percent(centerOf(col))} y={HEADER_BASELINE}>
+                    {lines[0]}
+                  </tspan>
+                  <tspan className={styles.colLabelSub} x={percent(centerOf(col))} y={lastBaseline}>
+                    {lines[1]}
+                  </tspan>
                 </text>
-              ) : null,
-            )}
+              );
+            })}
             {rowMeans === undefined ? null : (
               <text
                 className={`${styles.colLabel} ${styles.meanLabel}`}
                 data-part="mean-col-label"
                 x={percent(centerOf(colCount))}
-                y={HEADER_BASELINE}
+                y={lastBaseline}
                 textAnchor="middle"
               >
                 {rowMeans.label}
