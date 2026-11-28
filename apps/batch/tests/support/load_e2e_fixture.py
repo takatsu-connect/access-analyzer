@@ -66,6 +66,9 @@ def run_backfill(writer_url: str, now: datetime) -> int:
         db=DbTarget(url=SecretStr(writer_url), is_local=True),
         ga4_property_id=SecretStr(PROPERTY_ID),
         deploy_hook_url=SecretStr(HOOK_URL),
+        # 偽のデータを作った基準日をそのまま渡す。バッチの既定（データが揃っている、
+        # いちばん新しい日）は JST 15:30 より前だと前々日になり、フィクスチャの日付とずれるため
+        base_date=base,
     )
     clock = _InstantClock()
     wp = e2e_fixture.build_wp(base)

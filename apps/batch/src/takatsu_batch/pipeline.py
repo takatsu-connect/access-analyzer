@@ -102,9 +102,13 @@ class _Tracker:
 
 
 def resolve_base_date(request: RunRequest, env: BatchEnv, now: datetime) -> date:
-    """基準日（03 §3）。backfill の to、BASE_DATE、JST の前日の順に使う。未来は認めない。"""
+    """基準日（03 §3）。backfill の to、BASE_DATE、データが揃っているいちばん新しい日の順に使う。
+
+    指定できる上限は JST の前日（未来は認めない）。既定は、定期実行が遅れて日付をまたいでも
+    定刻と同じ日になるよう、GA4 の日次データが揃う時刻（JST 15:30）で決める。
+    """
     latest = tz.yesterday_jst(now)
-    base = request.backfill_to or env.base_date or latest
+    base = request.backfill_to or env.base_date or tz.latest_ready_date(now)
     start = request.backfill_from or date.fromisoformat(BACKFILL_START)
     if base > latest or base < start or start < date.fromisoformat(BACKFILL_START):
         raise BatchValidationError

@@ -24,7 +24,8 @@ from takatsu_batch.errors import BatchValidationError
 from takatsu_batch.pipeline import Deps, RunRequest, resolve_base_date, run_batch
 
 # JST では 2026-11-05 03:00。前日は 2026-11-04
-NOW = datetime(2026, 11, 4, 18, 0, tzinfo=UTC)
+# 定期実行の定刻（JST 11/5 17:00）。基準日の既定は前日の 11/4
+NOW = datetime(2026, 11, 5, 8, 0, tzinfo=UTC)
 LATEST = date(2026, 11, 4)
 MEASUREMENT_START = date(2025, 10, 8)
 RUN_ID = 42
@@ -50,19 +51,22 @@ def _env(base_date: date | None = None) -> BatchEnv:
     ("now", "expected"),
     [
         (NOW, date(2026, 11, 4)),
-        # JST の日付が変わった瞬間（UTC 15:00）
-        (datetime(2026, 11, 4, 15, 0, tzinfo=UTC), date(2026, 11, 4)),
-        # その 1 秒前は、UTC では同じ日でも JST ではまだ前の日
-        (datetime(2026, 11, 4, 14, 59, 59, tzinfo=UTC), date(2026, 11, 3)),
+        # データが揃う JST 15:30（UTC 06:30）ちょうどから前日。その 1 秒前は前々日
+        (datetime(2026, 11, 5, 6, 30, tzinfo=UTC), date(2026, 11, 4)),
+        (datetime(2026, 11, 5, 6, 29, 59, tzinfo=UTC), date(2026, 11, 3)),
+        # 定期実行が遅れて JST の日付をまたいでも（UTC 15:00 以降）、定刻と同じ基準日
+        (datetime(2026, 11, 5, 14, 59, 59, tzinfo=UTC), date(2026, 11, 4)),
+        (datetime(2026, 11, 5, 15, 0, tzinfo=UTC), date(2026, 11, 4)),
+        (datetime(2026, 11, 5, 17, 41, tzinfo=UTC), date(2026, 11, 4)),
         # 年末と月末
-        (datetime(2025, 12, 31, 15, 0, tzinfo=UTC), date(2025, 12, 31)),
-        (datetime(2025, 12, 31, 14, 59, 59, tzinfo=UTC), date(2025, 12, 30)),
-        (datetime(2026, 2, 28, 15, 0, tzinfo=UTC), date(2026, 2, 28)),
+        (datetime(2025, 12, 31, 8, 0, tzinfo=UTC), date(2025, 12, 30)),
+        (datetime(2026, 1, 1, 8, 0, tzinfo=UTC), date(2025, 12, 31)),
+        (datetime(2026, 3, 1, 8, 0, tzinfo=UTC), date(2026, 2, 28)),
         # 同じ時刻を JST で渡しても同じ
-        (datetime(2026, 11, 5, 3, 0, tzinfo=timezone(timedelta(hours=9))), date(2026, 11, 4)),
+        (datetime(2026, 11, 5, 17, 0, tzinfo=timezone(timedelta(hours=9))), date(2026, 11, 4)),
     ],
 )
-def test_base_date_defaults_to_yesterday_in_jst(now: datetime, expected: date) -> None:
+def test_base_date_defaults_to_latest_ready_date(now: datetime, expected: date) -> None:
     assert resolve_base_date(RunRequest(mode="daily"), _env(), now) == expected
 
 
