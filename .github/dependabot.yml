@@ -45,6 +45,16 @@ updates:
       default-days: 7
     open-pull-requests-limit: 5
 
+  # Supabase CLI のロック（監査 2026-11-09 M-3）。CI のローカル環境と、本番へのマイグレーションの適用で使う
+  - package-ecosystem: npm
+    directory: /tools/supabase-cli
+    schedule:
+      interval: monthly
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 2
+
   # WP の中継（ADR 0011 の L-5）。開発時の依存だけ
   - package-ecosystem: npm
     directory: /apps/wp-relay

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 
+import { internalPath } from '@/lib/derive';
 import { t } from '@/lib/ui-text';
 import type { UiTextKey } from '@/lib/ui-text';
 
@@ -142,7 +143,7 @@ export function SiteHeaderView({ pathname, eventArticleIds = [] }: SiteHeaderVie
               return (
                 <li key={item.href}>
                   <Link
-                    href={item.href}
+                    href={internalPath(item.href)}
                     prefetch={false}
                     className={styles.link}
                     aria-current={isPage ? 'page' : isSection ? 'true' : undefined}
@@ -162,7 +163,7 @@ export function SiteHeaderView({ pathname, eventArticleIds = [] }: SiteHeaderVie
                 return (
                   <li key={item.href}>
                     <Link
-                      href={item.href}
+                      href={internalPath(item.href)}
                       prefetch={false}
                       className={styles.subLink}
                       aria-current={isCurrent ? 'page' : undefined}

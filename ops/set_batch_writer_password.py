@@ -8,8 +8,9 @@
   監査 2026-11-07-workflows-review.md の低）。
 - 接続文字列は GitHub の Environment `production` の Secret `SUPABASE_BATCH_DB_URL` に、標準入力で渡す。
 
-前提: リポジトリ直下で `npx supabase@3.0.0 link` 済み（supabase/.temp/pooler-url がある）、
-`npx supabase@3.0.0 login` 済み、`gh` が takatsu-connect/access-analyzer に書き込める。
+前提: Supabase CLI を `pnpm -C tools/supabase-cli install --frozen-lockfile` で入れてあり、
+`link` 済み（supabase/.temp/pooler-url がある）、`login` 済み（CLI の呼び方は deploy.md 手順 3）、
+`gh` が takatsu-connect/access-analyzer に書き込める。
 
     python ops/set_batch_writer_password.py            # 本番に設定して Secret に登録する
     python ops/set_batch_writer_password.py --self-test  # 検証子の作り方だけを確かめる（何も変えない）
@@ -30,8 +31,9 @@ import sys
 REPO = "takatsu-connect/access-analyzer"
 ENVIRONMENT = "production"
 SECRET_NAME = "SUPABASE_BATCH_DB_URL"
-SUPABASE_CLI = ["npx", "--yes", "supabase@3.0.0"]
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# 版と依存の依存を tools/supabase-cli のロックファイルで固定した CLI（監査 2026-11-09-pre-launch.md M-3）。
+SUPABASE_CLI = ["pnpm", "--dir", str(ROOT / "tools" / "supabase-cli"), "exec", "supabase"]
 POOLER_URL_FILE = ROOT / "supabase" / ".temp" / "pooler-url"
 PROJECT_REF_FILE = ROOT / "supabase" / ".temp" / "project-ref"
 ITERATIONS = 4096

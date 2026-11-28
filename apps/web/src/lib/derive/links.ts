@@ -33,6 +33,18 @@ export function safeExternalUrl(url: string | null | undefined): string | null {
 }
 
 /**
+ * サイト内のパス（「/」1 つで始まる）ならそのまま返し、違えばトップ（'/'）を返す。
+ * next/link の href に、リテラルでない値（定数の表から引いたパスなど）を渡すときに通す
+ * （監査 2026-11-09-pre-launch.md L-1。lint の local/internal-link-href が、通していない値を止める）。
+ * 「//host」と「/\host」は、ブラウザが別のサイトとして解釈するので通さない。
+ */
+const INTERNAL_PATH_PATTERN = /^\/(?![/\\])/;
+
+export function internalPath(path: string): string {
+  return typeof path === 'string' && INTERNAL_PATH_PATTERN.test(path) ? path : '/';
+}
+
+/**
  * 参照元ドメインとして画面に出してよい形か（監査 2026-11-05-build3-review.md L-3）。
  * 参照元は、第三者が偽の参照元でアクセスを重ねれば入れられる値なので、ドメインの形
  * （英数字、ハイフン、点。ラベルは 63 文字まで、全体は 253 文字まで）でないものは表から落とす。

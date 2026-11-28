@@ -21,8 +21,7 @@ env:
   ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
-  # Supabase CLI（npm の supabase パッケージ）。版は docs/operations/environments.md §8 で要確認
-  SUPABASE_CLI_VERSION: "3.0.0"
+  # Supabase CLI の版は tools/supabase-cli の package.json と pnpm-lock.yaml で固定する（依存の依存も含む）。
 
 jobs:
   # ---- バッチ: lint、型検査、単体テスト（U）。DATABASE_URL がないので結合テストは skip される ----
@@ -135,9 +134,14 @@ jobs:
       - name: BI の依存を入れる
         working-directory: apps/web
         run: pnpm install --frozen-lockfile
+      - name: Supabase CLI を入れる（ロックファイルで固定。監査 2026-11-09 M-3）
+        working-directory: tools/supabase-cli
+        run: pnpm install --frozen-lockfile
       - name: Supabase ローカルを起動する（マイグレーションと supabase/seed/test を適用）
         # 使わないコンテナは起動しない。名前が版で違うものは両方の綴りを書く（不正な名前は警告だけで続行する）
-        run: npx --yes "supabase@${SUPABASE_CLI_VERSION}" start -x studio,imgproxy,mailpit,logflare,vector,realtime,storage-api,storage,edge-runtime,edgeRuntime,postgres-meta,pgMeta,supavisor
+        # corepack は実行した場所の package.json で pnpm の版を選ぶので、tools/supabase-cli の中で呼ぶ。
+        working-directory: tools/supabase-cli
+        run: pnpm exec supabase --workdir ../.. start -x studio,imgproxy,mailpit,logflare,vector,realtime,storage-api,storage,edge-runtime,edgeRuntime,postgres-meta,pgMeta,supavisor
       - name: ローカルの接続情報を環境に入れる（値はローカル専用。batch_writer のパスワードはこのジョブで使い捨て）
         run: bash .github/scripts/supabase-local-env.sh
       - name: pytest（結合 DB と結合バッチ）
@@ -173,7 +177,8 @@ jobs:
           if-no-files-found: ignore
       - name: Supabase ローカルを止める
         if: always()
-        run: npx --yes "supabase@${SUPABASE_CLI_VERSION}" stop --no-backup
+        working-directory: tools/supabase-cli
+        run: pnpm exec supabase --workdir ../.. stop --no-backup
 
   # ---- 静的検査: actionlint（S-10）、gitleaks（S-09）、ワークフローの規律（S-10）、.env.example（S-15）、S-01 ----
   static:

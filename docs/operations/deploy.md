@@ -1,7 +1,7 @@
 # デプロイ手順（初回の本番化と通常の更新）
 
 - 状態: 草案
-- 更新日: 2026-11-09
+- 更新日: 2026-11-24
 
 ## 0. この文書の使い方
 
@@ -67,22 +67,30 @@ gh workflow run wif-check.yml --repo takatsu-connect/access-analyzer --ref main
 
 事前に ADR 0009 の確認項目 2（SSL の強制を有効にする）と確認項目 3（SQL エディタの履歴、AI 機能の扱い）を Supabase のダッシュボードで確かめる。結果は値を含めずに Issue か ADR に残す。
 
-1. リポジトリ直下で、本番プロジェクトにつなぐ。`<PROJECT-REF>` はダッシュボードの URL にある英数字。
+Supabase CLI は、版と依存の依存を `tools/supabase-cli` の `package.json` と `pnpm-lock.yaml` で固定したものを使う（監査 2026-11-07 の M-2、2026-11-09 の M-3）。`npx supabase@<版>` はロックなしで取り込むので使わない。最初に 1 回、リポジトリ直下で入れる。
 
 ```
-npx --yes supabase@3.0.0 link --project-ref <PROJECT-REF>
+pnpm -C tools/supabase-cli install --frozen-lockfile
+```
+
+以下のコマンドはリポジトリ直下で実行する。`--workdir ../..` は `tools/supabase-cli` から見たリポジトリ直下（`supabase/` のある場所）を指す。pnpm を corepack 経由で使っている環境では、`-C` を付けた呼び方が「pnpm の版が違う」で止まる（corepack は実行した場所の `package.json` で版を選ぶ）。そのときは `tools/supabase-cli` に移動して、`-C tools/supabase-cli` を外した形で実行する。
+
+1. 本番プロジェクトにつなぐ。`<PROJECT-REF>` はダッシュボードの URL にある英数字。
+
+```
+pnpm -C tools/supabase-cli exec supabase --workdir ../.. link --project-ref <PROJECT-REF>
 ```
 
 2. 適用する前に、適用されるマイグレーションの一覧を見る。
 
 ```
-npx --yes supabase@3.0.0 migration list
+pnpm -C tools/supabase-cli exec supabase --workdir ../.. migration list
 ```
 
 3. 適用する。`postgres` のパスワードを求められたら、パスワード管理ツールから貼り付ける。
 
 ```
-npx --yes supabase@3.0.0 db push
+pnpm -C tools/supabase-cli exec supabase --workdir ../.. db push
 ```
 
 - **`--include-seed` を付けない。** `supabase/config.toml` の seed は E2E 用の架空のデータ（`supabase/seed/test/`）で、本番に入れてはいけない。
@@ -90,7 +98,7 @@ npx --yes supabase@3.0.0 db push
 
 確かめ方:
 
-1. `npx --yes supabase@3.0.0 migration list` で 0001〜0005 が Local と Remote の両方に並ぶ。
+1. 上の `migration list` で 0001〜0005 が Local と Remote の両方に並ぶ。
 2. SQL エディタで `supabase/checks/anon_privileges.sql` と `supabase/checks/batch_writer_privileges.sql` の中身を貼って実行し、どちらも 0 行（I-DB-01、I-DB-18 (10) を本番で確かめる。A-11）。保存済みのスニペットにしない。
 3. `select rolcanlogin from pg_roles where rolname = 'batch_writer';` が `false`（パスワードの設定前は login できない。I-DB-18 (3)）。
 
@@ -98,7 +106,7 @@ npx --yes supabase@3.0.0 db push
 
 ### 手順 4: batch_writer のパスワードを設定する（依頼者の確認が要る）
 
-スクリプトを使うのが簡単である。`python ops/set_batch_writer_password.py` は、パスワードを作り、SCRAM-SHA-256 の検証子にして本番に設定し、手順 5 の Secret `SUPABASE_BATCH_DB_URL` まで登録する（平文は画面にも SQL にも出ない）。前提は、`npx supabase@3.0.0 link` 済みで、Supabase CLI が対象のプロジェクトの見えるアカウントでログインしていること、`gh` がこのリポジトリに書き込めること、手順 5 の Environment `production` があること。`login` は対話できる端末で実行する（Claude Code の `!` では動かない）。
+スクリプトを使うのが簡単である。`python ops/set_batch_writer_password.py` は、パスワードを作り、SCRAM-SHA-256 の検証子にして本番に設定し、手順 5 の Secret `SUPABASE_BATCH_DB_URL` まで登録する（平文は画面にも SQL にも出ない）。前提は、手順 3 の `install` と `link` が済んでいて、Supabase CLI が対象のプロジェクトの見えるアカウントでログインしていること、`gh` がこのリポジトリに書き込めること、手順 5 の Environment `production` があること。`login` は対話できる端末で実行する（Claude Code の `!` では動かない）。
 
 スクリプトを使わないときは、次の手作業で行う。
 
@@ -159,7 +167,7 @@ Environment のブランチ制限が organization のプランで使えないと
 2. 設定:
    - Root Directory: `apps/web`
    - Framework Preset: Next.js
-   - Build Command（上書きを有効にする）: `pnpm run build && pnpm run check:build`
+   - Build Command: `pnpm run build && pnpm run check:build`。2026-11-24 から `apps/web/vercel.json` の `buildCommand` に書いてあり、画面の設定より優先される（監査 2026-11-09-pre-launch の M-2。画面の設定が変わっても検査が外れない）。変えるときは `vercel.json` を変える。
      - `pnpm run build` は最初に `.next/cache/fetch-cache` を消す。Vercel は Build Cache を引き継ぐので（Vercel Docs「Deploy Hooks」の Build Cache、2026-11-07 確認）、古いデータのページが混ざるのをこれで防ぐ。
      - `check:build` が失敗すると Build Command が 0 以外で終わり、デプロイは失敗して前のデプロイが残る（ADR 0010 の 7）。
    - Install Command、Output Directory: 既定のまま。
