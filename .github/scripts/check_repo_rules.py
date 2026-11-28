@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -224,6 +225,10 @@ def check_workflow(path: Path) -> None:
         if "secrets." in code or "id-token" in code:
             fail(path, "heartbeat.yml が Secrets か id-token を参照している")
 
+    # 監査 2026-11-07 L-1: PR でも動く CI は Secrets、id-token、Environment を参照しない（06 §9）
+    if name == "ci.yml" and ("secrets." in code or "id-token" in code or "environment:" in code):
+        fail(path, "ci.yml が Secrets、id-token、Environment を参照している")
+
     if name == "audit.yml":
         if not has_schedule:
             fail(path, "audit.yml に schedule がない")
@@ -263,17 +268,19 @@ def check_public_env_names() -> None:
     needle = "NEXT_PUBLIC_" + "SUPABASE"
     skip_dirs = {".git", "node_modules", ".next", "docs", ".beads", ".claude", ".venv", ".mypy_cache"}
     skip_files = {ROOT / "apps" / "web" / "scripts" / "check-public-env-names.mjs"}
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or path in skip_files:
-            continue
-        if any(part in skip_dirs for part in path.relative_to(ROOT).parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
-        if needle in text:
-            fail(str(path.relative_to(ROOT)), "S-01 の禁止された名前がある")
+    # 除外するディレクトリには入らない（node_modules を数えるだけで、ローカルでは数分かかる）
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [name for name in dirnames if name not in skip_dirs]
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            if path in skip_files:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if needle in text:
+                fail(str(path.relative_to(ROOT)), "S-01 の禁止された名前がある")
 
 
 def main() -> int:
