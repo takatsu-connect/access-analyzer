@@ -65,6 +65,32 @@ def test_yesterday_jst(moment: datetime, expected: date) -> None:
     assert yesterday_jst(moment) == expected
 
 
+@pytest.mark.parametrize(
+    ("moment", "expected"),
+    [
+        # 定刻（JST 17:00）と保険（JST 18:00）は前日
+        (datetime(2026, 11, 27, 17, 0, tzinfo=JST), date(2026, 11, 26)),
+        (datetime(2026, 11, 27, 18, 0, tzinfo=JST), date(2026, 11, 26)),
+        # データが揃う 15:30 ちょうどから前日。その直前は前々日
+        (datetime(2026, 11, 27, 15, 30, tzinfo=JST), date(2026, 11, 26)),
+        (datetime(2026, 11, 27, 15, 29, 59, tzinfo=JST), date(2026, 11, 25)),
+        # 11/27 17:00 の定期実行が遅れて日付をまたいでも、定刻と同じ 11/26
+        (datetime(2026, 11, 27, 23, 59, 59, tzinfo=JST), date(2026, 11, 26)),
+        (datetime(2026, 11, 28, 2, 41, tzinfo=JST), date(2026, 11, 26)),
+        (datetime(2026, 11, 27, 17, 41, 13, tzinfo=UTC), date(2026, 11, 26)),
+        (datetime(2026, 11, 28, 15, 29, 59, tzinfo=JST), date(2026, 11, 26)),
+        (datetime(2026, 11, 28, 15, 30, tzinfo=JST), date(2026, 11, 27)),
+        # 月と年の境
+        (datetime(2027, 1, 1, 3, 0, tzinfo=JST), date(2026, 12, 30)),
+        (datetime(2027, 1, 1, 17, 0, tzinfo=JST), date(2026, 12, 31)),
+    ],
+)
+def test_latest_ready_date(moment: datetime, expected: date) -> None:
+    from takatsu_batch.tz import latest_ready_date
+
+    assert latest_ready_date(moment) == expected
+
+
 def test_now_utc_is_aware_utc() -> None:
     assert now_utc().utcoffset() == timedelta(0)
 

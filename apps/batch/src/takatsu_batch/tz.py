@@ -32,6 +32,16 @@ def ga4_ready_at(base_date: date) -> datetime:
     return datetime.combine(base_date + timedelta(days=1), time(hour, minute), tzinfo=JST)
 
 
+def latest_ready_date(moment: datetime) -> date:
+    """基準日の既定値: 実行時刻に GA4 の日次データが揃っている、いちばん新しい日（03 §3）。
+
+    JST 15:30 以降なら前日、それより前なら前々日。定期実行（JST 17:00）が定刻に動けば前日で、
+    GitHub の遅れで日付をまたいでも、定刻に動いたときと同じ基準日になる。
+    """
+    latest = yesterday_jst(moment)
+    return latest if moment >= ga4_ready_at(latest) else latest - timedelta(days=1)
+
+
 def parse_wp_gmt(value: str) -> datetime:
     """WP REST API の date_gmt / modified_gmt（タイムゾーンなしの UTC）を aware にする。"""
     return datetime.fromisoformat(value).replace(tzinfo=UTC)
