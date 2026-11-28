@@ -99,7 +99,12 @@ pnpm -C tools/supabase-cli exec supabase --workdir ../.. db push
 確かめ方:
 
 1. 上の `migration list` で 0001〜0005 が Local と Remote の両方に並ぶ。
-2. SQL エディタで `supabase/checks/anon_privileges.sql` と `supabase/checks/batch_writer_privileges.sql` の中身を貼って実行し、どちらも 0 行（I-DB-01、I-DB-18 (10) を本番で確かめる。A-11）。保存済みのスニペットにしない。
+2. `supabase/checks/anon_privileges.sql` と `supabase/checks/batch_writer_privileges.sql` を本番で実行し、どちらも 0 行（I-DB-01、I-DB-18 (10) を本番で確かめる。A-11）。2026-11-24 から、この 2 つは実行する役割に左右されない（`information_schema` を読まない）ので、Supabase CLI の読み取り専用の問い合わせで流せる。SQL エディタに貼って実行してもよい（保存済みのスニペットにしない）。CLI が 403 を返すときは、対象のプロジェクトの見えるアカウントで `login` し直す。
+
+```
+pnpm -C tools/supabase-cli exec supabase --workdir ../.. db query --remote --read-only -f supabase/checks/anon_privileges.sql
+pnpm -C tools/supabase-cli exec supabase --workdir ../.. db query --remote --read-only -f supabase/checks/batch_writer_privileges.sql
+```
 3. `select rolcanlogin from pg_roles where rolname = 'batch_writer';` が `false`（パスワードの設定前は login できない。I-DB-18 (3)）。
 
 戻し方: スキーマを戻すときは、戻すためのマイグレーションを書いて PR で入れる（手で戻さない）。適用の途中で失敗した場合は、`migration list` でどこまで入ったかを確かめ、原因を直したマイグレーションで続きを入れる。初回でデータがまだないなら、Supabase のプロジェクトを作り直す方法もある（そのときは URL と anon キーが変わる）。各マイグレーションが 1 トランザクションで適用されるかは確かめていない（§4）。
