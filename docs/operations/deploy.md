@@ -430,8 +430,8 @@ gh workflow run daily.yml --repo takatsu-connect/access-analyzer --ref main -f m
 
 main 以外のブランチからの確認:
 
-1. 一時ブランチ `a11-env-check` を作り、`.github/workflows/a11-env-check.yml` を置いて push する。中身は `workflow_dispatch` だけ、`permissions: contents: read`、`environment: production` のジョブ 1 つで、ステップは `env: { X: ${{ secrets.SUPABASE_BATCH_DB_URL }} }` と `run: test -n "$X"` だけ（値を出力しない）。
-2. `gh workflow run a11-env-check.yml --repo takatsu-connect/access-analyzer --ref a11-env-check` で実行する。
+1. 一時ブランチ `a11-env-check` を作り、`.github/workflows/a11-env-check.yml` を置いて push する。中身は、起点が `push`（`branches: [a11-env-check]`）だけ、`permissions: contents: read`、`environment: production` のジョブ 1 つで、ステップは `env: { X: ${{ secrets.SUPABASE_BATCH_DB_URL }} }` と `run: test -n "$X"` だけ（値を出力しない）。起点を `workflow_dispatch` にしない。既定のブランチにないワークフローは手動で起動できないことがあり、Environment の制限とは別の理由で失敗して、確認にならない（監査 2026-11-07 の L-3）。
+2. push で実行が始まる。`gh run list --repo takatsu-connect/access-analyzer --branch a11-env-check` で実行を見つける。
 3. ジョブが始まる前に、ブランチが Environment の保護の規則で許可されていない旨で失敗することを確かめる。ステップまで進んで成功したら、ブランチ制限が効いていない。すぐに `SUPABASE_BATCH_DB_URL` を runbook.md §9 の順で無効化し、手順 5 をやり直す。
 4. ブランチを消す（`git push origin --delete a11-env-check`）。このブランチでは ci.yml の static ジョブが S-10 の違反で失敗するが、一時的なので構わない。
 

@@ -1,7 +1,7 @@
 # 運用手順
 
 - 状態: 草案
-- 更新日: 2026-11-09
+- 更新日: 2026-11-28
 
 日々の運用と、失敗・漏えい・期限のときの手順。気づき方は monitoring.md、設定値の置き場所は environments.md、初回の構築は deploy.md。
 
@@ -107,10 +107,8 @@ gh workflow run daily.yml --repo takatsu-connect/access-analyzer --ref main -f m
 ### 8.1 batch_writer のパスワード（年 1 回）
 
 1. JST 17:00〜18:30 の実行と重ならない時間に行う。
-2. deploy.md 手順 4 の 1 で新しい値を作る。
-3. SQL エディタで `alter role batch_writer with password '<新しい値>';`（保存済みのスニペットにしない）。
-4. Environment `production` の `SUPABASE_BATCH_DB_URL` を、新しい値の接続文字列で上書きする。
-5. `mode=daily` を手動で実行し、成功を確かめる（同じ基準日の成功があれば何もせず success になり、接続の確認にならない。その場合は翌日の schedule の成功で確かめる）。
+2. `python ops/set_batch_writer_password.py` を実行する（前提は deploy.md 手順 4）。新しい値を作り、検証子にして本番に設定し、Environment `production` の `SUPABASE_BATCH_DB_URL` まで上書きする。値は画面にも SQL にも出ない（監査 2026-11-07 の L-2）。手作業で行うときは deploy.md 手順 4 の「スクリプトを使わないとき」に従う。
+3. `mode=daily` を手動で実行し、成功を確かめる（同じ基準日の成功があれば何もせず success になり、接続の確認にならない。その場合は翌日の schedule の成功で確かめる）。
 
 ### 8.2 Deploy Hook の URL（漏えいの疑いがあるとき。定期は任意）
 
@@ -150,13 +148,16 @@ gh workflow run daily.yml --repo takatsu-connect/access-analyzer --ref main -f m
 ### 9.1 SUPABASE_BATCH_DB_URL（06 §3 の W-2。順序を守る）
 
 1. `DAILY_ENABLED` を `false` にする（作り直しの途中で daily が動かないように）。
-2. SQL エディタで `alter role batch_writer with password '<新しい値>';`。
+2. `python ops/set_batch_writer_password.py` で、パスワードの変更と Environment の `SUPABASE_BATCH_DB_URL` の更新を続けて行う（値は画面にも SQL にも出ない。前提は deploy.md 手順 4）。スクリプトが使えないときは、SQL エディタで `alter role batch_writer with password '<新しい値>';` を実行し、Environment の Secret を手で更新する。
 3. 既存のセッションを切る: `select pg_terminate_backend(pid) from pg_stat_activity where usename = 'batch_writer';`（パスワードの変更では切れない前提。ADR 0009 V-4）。
-4. Environment の `SUPABASE_BATCH_DB_URL` を更新する。
-5. 容量を埋められていたら、不要な行を消し、Free の容量を確かめる（06 §3、経路監査 L-3）。消し方は未確定（03 §17。`batch_writer` には truncate がない。管理者の SQL で行う場合も、ダッシュボードの手変更の禁止はスキーマに対するもので、データの削除は記録を残して行う）。
-6. `DAILY_ENABLED` を `true` に戻し、§4 の backfill を期間を絞らずに流す。直近 7 日より古い改ざんは daily では直らないので、省略しない。
-7. Vercel で再ビルドされたことを確かめ、改ざんされた値を含みうる旧デプロイを消す（Deployments の各行のメニューから削除。06 §2.4）。
-8. security-auditor に報告し、経緯を Issue に残す（値は書かない）。
+4. 影響範囲を確かめる（監査 2026-11-07 の L-5。値は記録しない）。
+   - いつから: 漏れた経路を特定する（Actions のログ、端末の履歴、画面の共有など）。Actions のログなら、その実行のログを消す。
+   - 何に使われたか: Supabase の Logs（Postgres）で、`batch_writer` の接続の時刻と接続元を見る。日次バッチの時間帯（JST 17:00〜18:30 と手動の実行）以外の接続がないか。
+   - 何を変えられたか: `internal.batch_run` に、Actions の実行と対応しない行がないか（`run_id` と実行の一覧を突き合わせる）。公開ビューの値が、前日の BI や GA4 の画面と大きく食い違わないか。
+6. 容量を埋められていたら、不要な行を消し、Free の容量を確かめる（06 §3、経路監査 L-3）。消し方は未確定（03 §17。`batch_writer` には truncate がない。管理者の SQL で行う場合も、ダッシュボードの手変更の禁止はスキーマに対するもので、データの削除は記録を残して行う）。
+7. `DAILY_ENABLED` を `true` に戻し、§4 の backfill を期間を絞らずに流す。直近 7 日より古い改ざんは daily では直らないので、省略しない。
+8. Vercel で再ビルドされたことを確かめ、改ざんされた値を含みうる旧デプロイを消す（Deployments の各行のメニューから削除。06 §2.4）。
+9. security-auditor に報告し、経緯を Issue に残す（値は書かない）。
 
 ### 9.2 VERCEL_DEPLOY_HOOK_URL
 
@@ -176,6 +177,24 @@ gh workflow run daily.yml --repo takatsu-connect/access-analyzer --ref main -f m
 2. §8.6 の 4 で過去のデプロイをすべて削除する。
 3. §8.6 の 5 と 6 でバッチを戻す。
 4. security-auditor に報告し、経緯を Issue に残す（値は書かない）。
+
+### 9.5 依存、Action、GitHub アカウントの侵害が疑われるとき
+
+監査 2026-11-07 の M-4。`daily` と `backfill` のジョブは `id-token: write` を持つので、そのジョブで動く依存（wheel）や Action が侵害されると、WIF を経て GA4 を読め、接続文字列と中継のトークンも使える。GA4 の生のデータには、BI が公開しない次元（サイト内検索語、市区より細かい地域、完全な参照 URL）がある。GitHub の書き込み権限を持つアカウントが侵害された場合も、main に入れたコードが同じ権限で動く。
+
+止めることを優先し、次の順で行う。すべて依頼者の確認が要る。
+
+1. `DAILY_ENABLED` を `false` にする（定期実行と手動の実行を止める）。
+2. GitHub アカウントの侵害なら、組織の Owner がそのアカウントの権限を外し、PAT と SSH 鍵を失効させ、セッションを切る。
+3. WIF のプロバイダを無効にする（GA4 の読み出しを止める）。GCP のコンソールの IAM → Workload Identity 連携 → プール → プロバイダで「無効」にする。CLI なら `gcloud iam workload-identity-pools providers update-oidc <プロバイダ> --location=global --workload-identity-pool=<プール> --disabled`（コマンドの形は未確認。§13）。プロバイダを触れないときは、SA の `roles/iam.workloadIdentityUser` の付与を外す。
+4. §9.1 の 2 と 3（`batch_writer` のパスワードとセッション）、§8.2（Deploy Hook）、§9.4（中継のトークン）を行う。
+5. 影響範囲を確かめる（値は記録しない）。
+   - Actions の実行の一覧で、どの実行がどのコミットと依存で動いたか。覚えのない実行、ワークフローの変更、新しいブランチがないか。
+   - GCP の監査ログ（Cloud Audit Logs）で、SA のトークンの発行の記録。日次バッチの時間帯以外の発行がないか。
+   - §9.1 の 4（Supabase の接続と `batch_run`）と、§14.3（中継の使用量）。
+6. 原因のコミット、依存、Action を取り除く（revert する、版を戻す、SHA を付け替える）。CI の成功を確かめる。
+7. WIF のプロバイダを有効に戻し、`wif-check` の成功を確かめてから、`DAILY_ENABLED` を `true` に戻して §4 の backfill を期間を絞らずに流す。
+8. Vercel の再ビルドを確かめ、侵害の間に作られたデプロイを消す。security-auditor に報告し、経緯を Issue に残す（値は書かない）。
 
 ## 10. GitHub の 60 日無活動と Supabase の一時停止
 
@@ -209,6 +228,8 @@ openssl s_client -starttls postgres -connect <POOLER-HOST>:5432 -showcerts -CAfi
 2. Vercel の旧デプロイの削除の画面操作と、Hobby での保持の設定（中継は Pro のプロジェクトで、同じく削除の画面操作が未確認）。
 3. 漏えい時に攻撃者が足した行の消し方（03 §17）。
 4. `posts_late_seen` を `batch_run.counts` にも残すか（いまはログだけ）。
+5. WIF のプロバイダを無効にする `gcloud` のコマンドの形と、無効にしたあと発行済みのトークンがいつまで使えるか（§9.5 の 3）。
+6. Supabase の Logs で、`batch_writer` の接続元と時刻がどこまで残るか（保持の日数。§9.1 の 4）。
 
 ## 14. WordPress 取得の中継（ADR 0011）
 
