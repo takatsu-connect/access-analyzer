@@ -240,6 +240,12 @@ security-auditor のレビューを受け（docs/security/audits/2026-11-09-wp-r
 
 この ADR では編集しない。確定のときに次を直す。
 
+反映の記録（この ADR の状態は「レビュー中」のまま）:
+
+- 2026-11-09: 06_security.md §11、07_test_plan.md、docs/operations/ の deploy.md 手順 8.5 と runbook.md §8.6、§9.4、§14、.github/dependabot.yml、audit.yml、ci.yml。
+- 2026-11-28: 00_architecture.md（§1〜§6）、03_data_pipeline.md（§1、§4、§14〜§17）、docs/operations/ の environments.md と monitoring.md。Vercel のプロジェクトは BI も中継も Pro のチームにあるので、下表の「BI は Hobby の記述のまま」は採らず、00 の記述を実態に合わせた（要件 Q-06 の想定とは違う）。
+- 未反映: 01_tech_stack.md、06_security.md の §2、§3、§7、§8、§9、§12、§13（§11 にまとめて書いてある）、traceability.md。
+
 | 文書 | 節 | 直す内容 |
 | --- | --- | --- |
 | 00_architecture.md | §2 全体構成図 | 中継を追加。WP → Actions の矢印を中継経由に。Environment の Secrets に `WP_RELAY_URL`、`WP_RELAY_TOKEN`。Vercel のプロジェクトが 2 つになること（BI は Hobby の記述のまま、中継は Pro） |

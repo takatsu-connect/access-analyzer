@@ -14,6 +14,7 @@
   - 2026-11-05: 構築 1 のコードレビューを反映（依頼者の決定）。§5.1: クエリ除去の後で空白を除く、先頭ゼロと 11 桁以上は記事以外。§6.2、§16: `age_days` は累積の n にだけ使い、M-21〜M-23 は「基準日 − 公開日」で判定。`BACKFILL_START` より前に公開した記事の扱いを追加
   - 2026-11-05: 構築 2 の実装を反映。§1: preflight で、残った `running` の行を失敗に直す。§2: コマンドの形。§4: 公開中なのに前回の状態にも差分にもない記事を ID を指定して取る（4b）、日時の検証、名前の HTML エンティティ。§5: 5xx の再試行、数字でない曜日・時間帯。§10: `from` の既定、`--phase` は作らない。§14: スレッドの未処理例外では `batch_run` が `running` のまま残る。§16: 実装で足した設定値、`BASE_DATE` の形
   - 2026-11-05: 構築 2 のコードレビューと監査（audits/2026-11-05-build2-review.md）を反映。§3: 二重実行の防止は、データが揃ってから始まった成功だけを数える。取り直す月は未確定の月すべて。計測開始より前に公開した記事は公開後 30 日の参照元を問い合わせない。§4: 不完全な一覧で履歴ごと消さない歯止め、基準日より後に公開された記事はまだ取り込まない。§6.2: 集計の対象は基準日までに公開された記事。§9: 公開から 8 日以上たって初めて取り込んだ記事の扱い。§14: 失敗した実行にも件数を残す。§15: ログに出す件数。§16: 環境変数の検査
+  - 2026-11-28: WP REST API の中継（`apps/wp-relay`。ADR 0011、レビュー中）を反映。§1: wp_fetch の入力と図。§4: 接続先、許可リストとの連動、`orderby` の代替が中継を通らないこと。§14: 中継由来の失敗の扱いと切り分け。§15: 中継のログ。§16: `WP_RELAY_URL`、`WP_RELAY_TOKEN`、中継の定数。§17: 中継の未確認の事項
 
 ## 1. 全体の流れ
 
@@ -22,7 +23,7 @@
 | # | 工程 | 入力 | 出力 | 失敗時 |
 | --- | --- | --- | --- | --- |
 | 0 | preflight | 環境変数、設定値 | `batch_run` に `running` の行。同じ基準日の `success` が既にあれば何もせず終了（二重実行の防止） | validation |
-| 1 | wp_fetch | WP REST API（wp/v2） | `wp_author`、`wp_post`、`wp_category`、`wp_tag`、`wp_post_category`、`wp_post_tag` の upsert と削除 | network / validation |
+| 1 | wp_fetch | WP REST API（wp/v2）。中継（`apps/wp-relay`）経由で読む（§4、ADR 0011） | `wp_author`、`wp_post`、`wp_category`、`wp_tag`、`wp_post_category`、`wp_post_tag` の upsert と削除 | network / validation |
 | 2 | period | 基準日 | `period` の移動窓 6 行の日付更新、月行の追加、`is_confirmed` の更新。今回取り直す期間の集合（§3） | ― |
 | 3 | ga4_daily | GA4 Data API | `site_daily`、`site_daily_channel`、`site_daily_device`、`article_daily`（直近 7 日ぶん、またはバックフィル範囲） | quota / auth / network |
 | 4 | ga4_period | GA4 Data API | 取り直す期間の `site_period`、`site_period_breakdown`、`site_period_heatmap`、`article_period`（landing_sessions、scroll_count、engagement_seconds）、`article_period_breakdown`。確定した月の `site_month_referrer`、`site_month_city`。30 日が経過した記事の `article_referrer_30d` | 同上 |
@@ -36,7 +37,8 @@
 
 ```mermaid
 flowchart LR
-  WP[WP REST API<br/>wp/v2] -->|差分取得| B
+  WP[WP REST API<br/>wp/v2] -->|日本の IP から GET| R[中継 apps/wp-relay<br/>Vercel の関数 hnd1]
+  R -->|差分取得<br/>トークンと許可リストで検証| B
   GA[GA4 Data API<br/>runReport] -->|日別 + 期間別| B
   subgraph B[GitHub Actions 日次バッチ]
     direction TB
@@ -46,6 +48,8 @@ flowchart LR
   P7 -->|Deploy Hook| V[Vercel ビルド]
   SB -->|anon: pub_* のみ| V
 ```
+
+図の矢印はデータの向き。要求はバッチ（工程 1）から中継へ、中継から WP へ出る。中継は自分からは問い合わせない（§4）。
 
 ## 2. 実行時刻とトリガー
 
@@ -68,6 +72,15 @@ flowchart LR
 ## 4. WP REST API からの取得（差分取得、D-03）
 
 事実（親が確認）: `modified` / `modified_gmt` がある、`per_page` 上限 100、`X-WP-Total` / `X-WP-TotalPages` で総数とページ数、`_fields` でネストしたフィールドを指定できる。WP 5.7 以降の `modified_after` パラメータが使えるかは最初の実装で 1 回確認し、使えなければ `orderby=modified&order=desc` で `modified_gmt` が前回実行時刻より新しいものを読み切る。
+
+接続先（ADR 0011。2026-11-09 から本番で使用）: 対象サイトのホスティング（XServer）は国外からの API アクセスを禁止しているので、Actions のバッチは WP REST API を直接読まず、Vercel の東京リージョン（hnd1）の中継 `apps/wp-relay` を経由する。国外制限は緩めない。
+
+- 送り方: `WP_RELAY_URL` と `WP_RELAY_TOKEN`（§16）があるとき、バッチは下表の各リクエストを `GET {WP_RELAY_URL}/api/relay` に置き換えて送る。WP のパス（`/posts`、`/categories`、`/tags`、`/users/<id>`）はヘッダ `X-WP-Path`、トークンは `Authorization: Bearer`、WP に渡すパラメータはクエリに置く。`User-Agent`、タイムアウト、リダイレクトを追わないことは直接のときと同じ。変わるのは送信の 1 か所だけで、ページング、間隔、再試行、検証、歯止めは下の記述のまま。
+- 中継が返すのは、WP の状態コード、本文、`X-WP-Total`、`X-WP-TotalPages` だけ。
+- 許可リストとの連動: 中継は、メソッド（GET）、パス、クエリのキーと値を完全一致で検証する（ADR 0011 §2）。下表の `_fields` の値、`per_page`（1〜100）、`page`（1〜50）、`status=publish`、`modified_after` の形、`include`（100 個まで）は、中継の許可リストと同じでなければ 400 で失敗する。**下表のリクエストや `_fields` を変えるときは、`contracts/constants.json`、バッチ、中継の 3 つを同時に直し、中継もデプロイする**（07 S-16 の突き合わせ。デプロイは deploy.md 手順 8.5）。
+- 冒頭の代替（`orderby=modified&order=desc`）は実装していない。`orderby` と `order` は中継の許可リストにないので、代替に切り替えるときは ADR 0011 §2 の表を先に改める。
+- 中継は再試行、cron、キャッシュを持たない。バッチの 1 リクエストが WP への最大 1 リクエストになるので、下表の回数と NFR-72 の間隔はそのまま成り立つ。
+- 両方の変数が未設定なら直接接続になる（ローカルと CI の偽の WP 向け）。本番の Actions からの直接接続は国外制限で失敗する。片方だけの設定は起動時の検証で失敗にする（§16）。失敗したときに直接接続へ切り替えることはしない。
 
 | 順 | リクエスト | 目的 | 回数 / 日 |
 | --- | --- | --- | --- |
@@ -322,6 +335,13 @@ Supabase Free は 1 週間アクセスがないと一時停止するが、日次
 - 通知（FR-74）: 通知先は GitHub の失敗通知メール（Q-12 確定。リポジトリの管理者に届く）。あとから Slack や LINE に変えるときは、GitHub Actions の `if: failure()` ステップで、通知先に「ワークフロー名、基準日、失敗した工程、種別、Actions の run URL」だけを送る。
 - BI は前回の成功時のデータで表示を続ける（NFR-90）。失敗した日は Deploy Hook を呼ばないので画面は変わらず、FR-02 の表示が「更新が遅れています」になる（§12 のクライアント側の判定）。
 - 失敗が続く間は、WordPress で取り下げた記事の反映も止まる（監査 L-2）。書き込みは工程 6 でまとめて行うので、GA4 の工程で失敗すると WP 側の削除も書かれない。書き込みのあとで Deploy Hook だけが失敗した日（`failed_step = publish`）は、データは新しいが画面が古いので、`publish_only` を実行する。どちらも、対処と期限を docs/operations/ の手順書に書く（デプロイ工程）。
+- 中継（§4、ADR 0011）に由来する失敗は、新しい工程や種別を足さず、既存の `wp_fetch` の失敗として扱う。
+  - 再試行するもの: 429、500、502、503、504（上流の値がそのまま返る場合と、中継が上流に接続できない 502、上流の応答待ちが 20 秒を超えた 504）。回数と間隔は §4 のとおりで、中継の中では再試行しない。
+  - 再試行しないもの: 3xx と、429 以外の 4xx。中継の認証の失敗（401。トークンの不一致、中継の側の未設定）、許可リストの不一致（400）、上流の拒否（出口 IP が国外に振られた場合を含む）が当たる。`wp_fetch` / `network` で終わる。直接接続や別の経路には切り替えない。
+  - 拒否が 200 の別の本文で返った場合は、§4 の検証と歯止め（`X-WP-TotalPages` の欠落、件数の不一致、一度に消える記事の上限）で validation として止まる。拒否の返り方は未確認。
+  - `WP_RELAY_URL` と `WP_RELAY_TOKEN` の片方だけの設定、URL の形の誤りは、中継を呼ぶ前に `startup` / `validation` で止まる（§16）。
+  - 切り分け: バッチのログは `{"step":"wp_fetch","kind":"network"}` までで、状態コードを出さない（公開リポジトリのログに詳細を増やさない）。原因は中継の側のログの `outcome` と `status` で見る（§15）。中継の 401 と上流の 401 は状態コードでは区別できないので `outcome` に頼る。手順は runbook.md §14.2。
+  - 検知は上の失敗メールで足りるとし、中継のための監視や死活確認は足さない（NFR-72。1 日の失敗は翌日の実行で回復する）。
 
 ## 15. ログの規律
 
@@ -334,6 +354,7 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 - ロガーは `apps/batch/src/takatsu_batch/log.py` に 1 つだけ置き、引数を件数・固定の種別・所要時間に限った関数（`log_count(step: Step, name: CountName, n: int)` など。`Step` と `CountName` は `Literal`）だけを公開する。任意のオブジェクトを出す関数を作らない。出力は `sys.stdout.write`。`print` は ruff の T201 で禁止する。
 - pydantic のモデルは `model_config = ConfigDict(hide_input_in_errors=True)` を付けた共通の基底クラスから作る（検証エラーが入力値を含まないようにする。S-18 で検査）。環境変数の検証エラーでは `e.errors(include_input=False)` の `loc` だけを見て、変数名を種別と一緒に出してよい。値は出さない。
 - pytest は CI で `--tb=short` を使い、`--showlocals` を使わない。結合テストの接続先はローカルだけなので本番の秘密は出ないが、習慣として揃える。
+- 中継（`apps/wp-relay`）のログは Actions ではなく Vercel の中継のプロジェクトに出る（公開されない）。規律は同じで、1 リクエスト 1 行、`outcome`（`ok`、`upstream_status`、`unauthorized`、`invalid`、`too_large`、`upstream_unreachable`、`upstream_timeout`、`misconfigured`）、`status`、`duration_ms` だけを出す。トークン、クエリの値、著者の ID、応答の本文、例外のメッセージを出さない（ADR 0011、06 §11）。バッチの側は中継の URL と状態コードを出さず、WP のリクエスト数（`wp_requests`）は中継経由でも同じ数え方をする。Vercel の基盤のログの項目（外向きの fetch の URL を含むか）と保持期間は未確認（§17）。
 
 ## 16. 設定値と環境変数
 
@@ -390,11 +411,25 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 | SUPABASE_BATCH_DB_URL | GitHub Environment（`production`、main のみ）の Secret のみ。`daily` と `backfill` の取得・書き込みのステップだけに渡す | `batch_writer` の接続文字列（shared pooler の session mode。形式は `postgresql://batch_writer.[PROJECT-REF]:[PASSWORD]@[POOLER-HOST]:5432/postgres`。TLS の設定はコードで固定するので含めない。ADR 0009）。読み書きの対象は内部表だけ |
 | SUPABASE_ANON_KEY | Vercel 環境変数のみ（`NEXT_PUBLIC_` を付けない） | ビルド時に `pub_*` を読む |
 | VERCEL_DEPLOY_HOOK_URL | GitHub Environment（`production`、main のみ）の Secret | 再ビルドの起動 |
+| WP_RELAY_URL | GitHub Environment（`production`、main のみ）の Secret のみ。`daily` と `backfill` のステップだけに渡す（`publish_only` には渡さない） | 中継のオリジン（§4、ADR 0011）。秘密の強さではないが、公開の YAML に書かない |
+| WP_RELAY_TOKEN | GitHub Environment（`production`、main のみ）の Secret と、Vercel の中継のプロジェクトの環境変数（Production だけ、Sensitive）。BI のプロジェクトには置かない | 中継の共有トークン（32 バイト以上の暗号学的乱数。64 文字以上）。バッチは `SecretStr` で持つ。ローテーションは runbook.md §8.6、漏えい時は §9.4 |
 | LOCAL_BATCH_WRITER_PASSWORD | ローカルの `.env` だけ（CI は実行時に生成する。本番では使わない） | ローカルの `batch_writer` のパスワード（02 §8） |
 | （失敗通知の Secret） | 置かない | 失敗通知は GitHub のメール（Q-12 確定）。Slack や LINE に変えるときに名前を決める |
 | BASE_DATE | （任意、workflow_dispatch の入力） | 試験・再実行。`YYYY-MM-DD` の形だけを受ける |
 
 `env.py` は mode ごとに必須の変数だけを検証する。`publish_only` が必要とするのは `VERCEL_DEPLOY_HOOK_URL` だけで、ワークフローも他の秘密を渡さない。値の検査: `GA4_PROPERTY_ID` と `GITHUB_RUN_ID` は数字だけ、`VERCEL_DEPLOY_HOOK_URL` は `https://api.vercel.com/v1/integrations/deploy/` で始まるものだけ（POST の宛先を Vercel の Deploy Hook に限る）、`SUPABASE_BATCH_DB_URL` は ADR 0009「TLS」の検査。HTTP のクライアントは、プロキシや証明書の場所を環境変数から読まない（`trust_env=False`）。Environment が使えない場合の代替は ADR 0009「接続文字列のブランチへの束縛」。
+
+中継の変数の検査（`env.py`。ADR 0011）: `WP_RELAY_URL` と `WP_RELAY_TOKEN` は両方あるか両方ないかだけを受け、片方だけなら `startup` / `validation` で失敗にする（空文字は未設定として扱う）。`WP_RELAY_URL` は `https` のオリジンだけ（ユーザー情報、パス、クエリ、フラグメントを持たない）。ホストが `localhost` か `127.0.0.1` に完全一致するときだけ `http` を受ける（結合テスト用）。
+
+中継の側の定数（`apps/wp-relay`。環境変数にしない。バッチの値と `contracts/constants.json` で突き合わせるものを含む）:
+
+| 項目 | 値 | 根拠 |
+| --- | --- | --- |
+| 転送先 | `https://takatsu-connect.com/wp-json/wp/v2`（`SITE_ORIGIN` と同じホスト） | ADR 0011 §2（入力や環境変数から作らない） |
+| 許可する `_fields`、`per_page` と `page` の上限 | §4 の表と同じ（100、50） | ADR 0011 §2 |
+| `User-Agent` | `WP_USER_AGENT` と同じ値 | NFR-72 |
+| regions / `maxDuration` | `hnd1` / 25 秒（`vercel.json`） | ADR 0011 §1 |
+| 上流の応答待ち | 20 秒（バッチの側のタイムアウトは 30 秒） | ADR 0011 |
 
 ## 17. 未確定
 
@@ -403,6 +438,7 @@ Actions のログは誰でも読める（public リポジトリ）。出すの�
 - W-7 の対策が頼るライブラリの挙動（`GRPC_VERBOSITY` の値、fd 2 の塞ぎ方で足りるか）は監査の時点で未確認。07 I-B-11 で確かめる。
 - D-05 の残り: `/<ID>/<何か>/` の pagePath が実測で現れるか（親が GA4 で確認）。
 - D-03 の残り: `modified_after` が対象サイトの WordPress で使えるか（実装時に 1 回確認。使えなければ §4 の代替）。
+- 中継（ADR 0011「未確認の事項」）: hnd1 の出口 IP が日本であり続けるか（外れた日は `wp_fetch` が失敗する）、Vercel Firewall のレート制限、費用の上限と通知、基盤のログの項目と保持期間、環境変数の変更と過去のデプロイの関係、国外からの拒否の返り方、`per_page=100` の応答の実サイズ。
 - 全体 × 日 × 流入チャネルの「二次伏せ」で、日によっては 5 区分のうち 2〜3 区分が伏さる見込み（other、referral が小さい）。日別推移には内訳を描かず、期間の構成（FR-13、FR-14）は Q-36 で確定した期間値（G19、G20）で出すことで表示上の問題を避ける（05_screens.md §3）。
 - D-15 の検証（§5.1）を運用担当が GA4 の UI で行う手順は docs/operations/（デプロイ工程）に書く。
 

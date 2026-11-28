@@ -1,18 +1,21 @@
 # 環境と設定値の一覧
 
 - 状態: 草案
-- 更新日: 2026-11-24
+- 更新日: 2026-11-28
 
 この BI が動く環境と、各環境に置く設定値（Secrets、Variables、Environment、Vercel の環境変数）の一覧。値はこの文書に書かない（.claude/rules/security.md「秘密情報」、06 §3）。設定の手順は deploy.md、日々の運用は runbook.md、監視は monitoring.md。
+
+2026-11-28: WP REST API の中継（`apps/wp-relay`。ADR 0011、レビュー中。2026-11-09 から本番で動いている）を §1〜§4、§7、§8 に足した。Vercel の「Hobby」の記述を、BI と中継が Pro のチームにある実態に合わせた。
 
 ## 1. 環境の一覧
 
 | 環境 | 何が動くか | データの接続先 | URL | 本番の秘密 |
 | --- | --- | --- | --- | --- |
-| ローカル | 開発者の PC。`apps/batch` の pytest、`apps/web` の dev / build / E2E | Supabase ローカル（Docker、`pnpm -C tools/supabase-cli exec supabase --workdir ../.. start`。api 54421、db 54422） | `http://localhost:3000`（dev）、3100（E2E）、3101（check:headers） | 置かない（ローカルの `.env`、`apps/web/.env.local` はローカルの値だけ） |
+| ローカル | 開発者の PC。`apps/batch` の pytest、`apps/web` の dev / build / E2E、`apps/wp-relay` の型検査と Vitest | Supabase ローカル（Docker、`pnpm -C tools/supabase-cli exec supabase --workdir ../.. start`。api 54421、db 54422） | `http://localhost:3000`（dev）、3100（E2E）、3101（check:headers） | 置かない（ローカルの `.env`、`apps/web/.env.local` はローカルの値だけ） |
 | CI | GitHub Actions の `ci.yml`（PR と main への push） | ジョブの中で起動する Supabase ローカル。GA4 と WP は偽物（07 §5） | ― | 渡さない（Secrets と Environment を参照しない） |
-| 本番 | 日次バッチ（Actions の `daily.yml`）→ Supabase（本番プロジェクト）→ Vercel（BI） | 本番の Supabase、GA4 Data API、takatsu-connect.com の WP REST API | Vercel の既定のドメイン `<プロジェクト名>.vercel.app`（2026-11-07 の依頼者の決定）。プロジェクト名は未確定（§8） | §3〜§5 |
+| 本番 | 日次バッチ（Actions の `daily.yml`）→ Supabase（本番プロジェクト）→ Vercel（BI）。バッチの WP の取得は Vercel の中継（`apps/wp-relay`、hnd1）を経由する | 本番の Supabase、GA4 Data API、takatsu-connect.com の WP REST API（中継経由） | BI は Vercel の既定のドメイン `<プロジェクト名>.vercel.app`（2026-11-07 の依頼者の決定。公開中の URL は README.md の「サービス情報」）。中継の URL はこの文書に書かない（Environment の Secret `WP_RELAY_URL`） | §3〜§5 |
 
+- 中継に検証用の環境はない。Vercel のプレビューを作らず、production のデプロイだけを置く（ADR 0011 §1）。ローカルと CI では中継の関数をテストで直接呼び、WP は偽物にする（07）。
 - 検証用の環境（ステージングの Supabase）は作らない。Vercel の Preview は本番の Supabase の anon キーで公開ビューだけを読む（07 §2 の選択肢のうち前者。公開データなので新しい露出はない）。理由: 無料枠の Supabase プロジェクトを増やすと管理の手間と一時停止の対象が増え、Preview で見るのは構造とヘッダだけで足りる（07 §2）。
 
 ## 2. 構成
@@ -22,10 +25,14 @@
 ```
 GitHub Actions（daily.yml、main、Environment production）
   ├─ WIF（OIDC → GCP STS → SA の短命トークン） → GA4 Data API
-  ├─ WP REST API（https://takatsu-connect.com/wp-json/wp/v2/、差分取得）
+  ├─ 中継（Vercel の関数 apps/wp-relay、hnd1。GET /api/relay、Bearer トークン、許可リスト）
+  │    └─ WP REST API（https://takatsu-connect.com/wp-json/wp/v2/、差分取得。日本の IP から）
   ├─ psycopg（batch_writer、shared pooler の session mode、verify-full + 固定 CA） → Supabase の internal.*
   └─ Deploy Hook（POST） → Vercel が main をビルド → ビルド時に anon キーで pub_* を読み、全ページを静的生成
 ```
+
+- 対象サイトのホスティング（XServer）が国外からの API アクセスを禁止しているので、Actions から WP を直接読まない（ADR 0011）。国外制限は緩めない。
+- Vercel のプロジェクトは BI と中継の 2 つで、環境変数を共有しない（§4）。
 
 ### 2.2 ワークフローの一覧
 
@@ -33,15 +40,17 @@ GitHub Actions（daily.yml、main、Environment production）
 | --- | --- | --- | --- | --- | --- |
 | `.github/workflows/ci.yml` | `pull_request`、main への `push` | `batch` | ruff check、ruff format --check、mypy、pytest（単体。U） | `contents: read` | なし |
 | | | `web` | `pnpm run check`（ESLint、Prettier、tsc、Vitest、S-01 の名前、禁止語） | 同上 | なし |
+| | | `wp-relay` | `apps/wp-relay` の型検査と Vitest（許可リスト、認証、応答の絞り込み。07） | 同上 | なし |
 | | | `integration` | Supabase ローカルを起動 → pytest（I-DB、I-B）→ E2E のフィクスチャ → `pnpm run build` → `check:build`（S-14）→ `check:headers`（S-11）→ `e2e`（Chromium） | 同上 | なし |
 | | | `static` | actionlint、gitleaks（全履歴、`--redact`）、`check_repo_rules.py`（S-10、S-15、S-01） | 同上 | なし |
-| | | `deps-audit` | pip-audit（S-08）、`pnpm audit --audit-level=high` | 同上 | なし |
+| | | `deps-audit` | pip-audit（S-08）、`pnpm audit --audit-level=high`（`apps/web` と `apps/wp-relay`） | 同上 | なし |
 | `.github/workflows/daily.yml` | `schedule`（UTC 08:00 と 09:00）、`workflow_dispatch` | `daily` / `backfill` / `publish_only` | 日次バッチ、バックフィル、Deploy Hook だけ（03 §2） | 最上位 `contents: read`。`daily` と `backfill` だけ `id-token: write` | Environment `production` とリポジトリの Secrets（§3） |
 | `.github/workflows/wif-check.yml` | `workflow_dispatch` だけ | `wif-check` | WIF で認証して GA4 Data API を 1 回呼ぶ（状態コードと行数だけを出す） | `id-token: write`（このジョブ） | リポジトリの Secrets 3 つ |
 | `.github/workflows/audit.yml` | `schedule`（毎週月曜 UTC 00:00）、`workflow_dispatch` | `pip-audit`、`pnpm-audit` | 依存の週 1 の監査（W-9） | `contents: read` | なし |
 | `.github/workflows/heartbeat.yml` | `schedule`（毎週月曜 UTC 03:00）、`workflow_dispatch` | `heartbeat` | main の最新コミットが 45 日以上前なら `ops/heartbeat.txt` をコミット（03 §12） | `contents: write`（これだけ） | なし |
 
 - すべてのジョブに `if: github.ref == 'refs/heads/main'` を付けている（ci.yml を除く）。`daily.yml` はさらに、リポジトリの Variable `DAILY_ENABLED` が `true` のときだけ動く。本番の設定が終わるまで、schedule が毎日失敗のメールを出さないようにするため。
+- 中継をデプロイするワークフローはない。中継は main のチェックアウトから CLI でデプロイする（deploy.md 手順 8.5。Vercel のデプロイ用の秘密を GitHub に増やさないため。ADR 0011 §1）。
 - `uses:` はすべて commit SHA で固定し、行末に版を書いた（版と SHA は親が 2026-11-07 に `gh api` で確認した事実票による）。
 - actionlint v1.7.12 と gitleaks v8.30.1 はバイナリを取り、SHA-256 を確かめて動かす（`.github/scripts/install-tools.sh`。チェックサムは 2026-11-07 に `gh api repos/<owner>/<repo>/releases/tags/<tag>` の `assets[].digest` で確認）。gitleaks-action は使わない。
 - pip-audit は `.github/requirements/audit.txt`（ハッシュ固定、2026-10-24 より前に公開された版だけで生成）から入れる。`apps/batch` の依存とは別のロック。
@@ -50,12 +59,12 @@ GitHub Actions（daily.yml、main、Environment production）
 
 | ファイル | 内容 |
 | --- | --- |
-| `.github/scripts/check_repo_rules.py` | 07 S-10 のワークフローの規律、S-15 の `.env.example` の形と名前の一覧、S-01 の名前（文書と検査の道具を除く）。標準ライブラリだけ。ローカルでも `python .github/scripts/check_repo_rules.py` で動く |
+| `.github/scripts/check_repo_rules.py` | 07 S-10 のワークフローの規律、S-15 の `.env.example` の形と名前の一覧、S-01 の名前（文書と検査の道具を除く）。`WP_RELAY_URL` と `WP_RELAY_TOKEN` を `daily` と `backfill` のジョブだけが参照することも検査する。標準ライブラリだけ。ローカルでも `python .github/scripts/check_repo_rules.py` で動く |
 | `.github/scripts/install-tools.sh` | actionlint と gitleaks を固定の版とチェックサムで入れる |
 | `.github/scripts/pip-audit.sh` | pip-audit。例外の ID は理由つきでこのファイルに書く |
 | `.github/scripts/supabase-local-env.sh` | CI の Supabase ローカルの接続情報を `GITHUB_ENV` に書く。`batch_writer` のパスワードはジョブの中で生成する使い捨ての値 |
 | `.gitleaks.toml` | gitleaks の既定のルール + S-09 のパターン（JWT、`sb_secret_`、パスワードつきの Postgres の URL、pooler の URL、Deploy Hook の URL、SA の JSON 鍵） |
-| `.github/dependabot.yml` | github-actions、pip（`/apps/batch`、`/.github/requirements`）、npm（`/apps/web`）。すべて `cooldown` つき。自動 merge はしない |
+| `.github/dependabot.yml` | github-actions、pip（`/apps/batch`、`/.github/requirements`）、npm（`/apps/web`、`/apps/wp-relay`）。すべて `cooldown` つき。自動 merge はしない |
 
 ## 3. GitHub の Secrets、Variables、Environment
 
@@ -66,14 +75,21 @@ GitHub Actions（daily.yml、main、Environment production）
 | `GA4_PROPERTY_ID` | Secret | リポジトリ | 同上 | 依頼者 | 手順 1 |
 | `SUPABASE_BATCH_DB_URL` | Secret | Environment `production` だけ。リポジトリの Secret に同名を置かない（W-3） | `daily`、`backfill` の実行のステップだけ | 依頼者 | 手順 5 |
 | `VERCEL_DEPLOY_HOOK_URL` | Secret | Environment `production` だけ | `daily`、`backfill`、`publish_only` の実行のステップだけ | 依頼者 | 手順 7 |
+| `WP_RELAY_URL` | Secret | Environment `production` だけ。公開の YAML に URL を書かない | `daily`、`backfill` の実行のステップだけ（`publish_only` には渡さない） | 依頼者 | 手順 8.5 |
+| `WP_RELAY_TOKEN` | Secret | Environment `production` だけ。同じ値を Vercel の中継のプロジェクトにも置く（§4） | 同上 | 依頼者 | 手順 8.5。ローテーションは runbook.md §8.6 |
 | `production` | Environment | リポジトリ（Settings → Environments）。Deployment branches を main だけに限る | `daily.yml` の 3 ジョブだけ | 依頼者 | 手順 5 |
 | `DAILY_ENABLED` | Variable | リポジトリ（Settings → Secrets and variables → Actions → Variables）。値は `true` のときだけ有効 | `daily.yml` の実行の条件 | 依頼者 | 手順 8 |
 
-- 2026-11-07 に `gh api repos/takatsu-connect/access-analyzer/environments` で、Environment がまだ 1 つもないことを確かめた。
+- 2026-11-07 に `gh api repos/takatsu-connect/access-analyzer/environments` で、Environment がまだ 1 つもないことを確かめた（その後、deploy.md 手順 5 で `production` を作成済み）。
+- `WP_RELAY_URL` と `WP_RELAY_TOKEN` は、両方あるか両方ないかだけをバッチが受ける。片方だけなら起動時の検証で失敗する（03 §16）。
 - `GITHUB_RUN_ID` は Actions が自動で設定し、バッチが `batch_run` に記録する（数字だけを受ける。`env.py`）。設定は不要。
 - 失敗通知のための Secret は置かない（GitHub の失敗メール。Q-12）。
 
 ## 4. Vercel の環境変数と設定
+
+Vercel のプロジェクトは 2 つ。BI（`apps/web`）と中継（`apps/wp-relay`。ADR 0011 のプロジェクト名は `takatsu-connect-wp-relay`）。どちらも Small Piece のチーム（Pro）にある。要件 Q-06 の回答は Hobby の想定だったが、依頼者の判断で Pro のチームに置いた（非商用）。2 つのプロジェクトは環境変数を共有しない。
+
+### 4.1 BI のプロジェクト
 
 | 名前 / 項目 | 値の置き場所 | 対象 | 設定する人 |
 | --- | --- | --- | --- |
@@ -85,7 +101,21 @@ GitHub Actions（daily.yml、main、Environment production）
 | Deployment Protection | Standard Protection（本番ドメイン以外のデプロイの URL を閉じる） | プロジェクト | 依頼者 |
 | Web Analytics、Speed Insights、Toolbar | 使わない（2026-11-07 の依頼者の決定。06 §6 の CSP とも合う） | プロジェクト | 依頼者 |
 
+- BI 自身の閲覧の計測に使う `BI_GA4_MEASUREMENT_ID`（Production だけ。ADR 0013）は、この表にまだ載せていない（この更新の範囲外）。
 - Vercel のアカウント所有者（NFR-60）: 未記入。依頼者が §7 に書く。
+
+### 4.2 中継のプロジェクト
+
+| 名前 / 項目 | 値の置き場所 | 対象 | 設定する人 |
+| --- | --- | --- | --- |
+| `WP_RELAY_TOKEN` | Vercel の Environment Variables（Sensitive）。GitHub の Environment `production` の Secret と同じ値。64 文字以上 | Production だけ（Preview と Development に置かない） | 依頼者 |
+| リージョン、上限時間 | `apps/wp-relay/vercel.json`（regions `["hnd1"]`、`maxDuration` 25） | プロジェクト | リポジトリで管理する |
+| Git 連携 | 付けない。main のチェックアウトから CLI で production だけをデプロイする（deploy.md 手順 8.5）。プレビューを作らない | プロジェクト | 依頼者 |
+| Deployment Protection | Standard Protection を有効にする（ADR 0011 §3。認証の手段にはしない。認証は関数の中のトークンの検査） | プロジェクト | 依頼者 |
+| Supabase、GA4、Deploy Hook の値 | 置かない | ― | ― |
+
+- トークンが未設定または空なら、中継はすべての要求を 401 で拒否する（fail closed）。止め方は runbook.md §14.1。
+- 未確認: Vercel Firewall のレート制限を `/api/relay` に掛けられるか、費用の上限と通知を設定できるか、中継で Pro の追加費用が発生するか、基盤のログの項目と保持期間、環境変数を変えたときの過去のデプロイの値（このため、トークンを変えたら過去のデプロイを削除する。runbook.md §8.6）、hnd1 の出口 IP が日本であり続けるか（ADR 0011「未確認の事項」）。
 
 ## 5. Supabase
 
@@ -113,7 +143,7 @@ GitHub Actions（daily.yml、main、Environment production）
 | GitHub organization `takatsu-connect` | Owner | 依頼者（メンバー 2 アカウント） | 2FA 必須を有効化済み（initial_setup.md §1） |
 | GCP プロジェクト | 所有者 | 依頼者 | SA の「サービス アカウント トークン作成者」をローカル確認用に付与済み。WIF 移行後に不要なら外す（deploy.md 手順 11） |
 | Supabase の organization / プロジェクト | 未記入 | 依頼者が記入 | 多要素認証の状態を記入する（ADR 0009 確認項目 4） |
-| Vercel のアカウント（Hobby） | 所有者 | 未記入（NFR-60） | 依頼者が記入 |
+| Vercel のチーム（Small Piece、Pro。BI と中継の 2 プロジェクト） | 所有者 | 未記入（NFR-60） | 依頼者が記入。チームのメンバーと権限、2 要素認証の状態は未確認（ADR 0011「未確認の事項」） |
 | GA4 プロパティ | 管理者 | 未記入 | SA は閲覧者 |
 
 ## 8. 確認が要ること
@@ -124,3 +154,4 @@ GitHub Actions（daily.yml、main、Environment production）
 4. Vercel のビルドが `packageManager: pnpm@10.6.5` を使うか（corepack の扱い）。Node は `engines.node: 24.x` を読む見込み。
 5. Vercel の Git の設定で、fork からの PR のプレビューをビルドしない設定（06 §2.4）の名前と既定値。
 6. Standard Protection で `<プロジェクト名>.vercel.app` が「本番ドメイン」として公開のまま残ること（Vercel Docs「Deployment Protection」、2026-11-07 確認: Standard Protection は本番ドメイン以外をすべて保護し、本番の生成 URL も制限される）。
+7. 中継について未確認のこと（§4.2 の末尾）。Firewall のレート制限、費用の上限と通知、基盤のログの項目と保持期間、環境変数の変更と過去のデプロイの関係、hnd1 の出口 IP。
