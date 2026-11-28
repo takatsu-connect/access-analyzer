@@ -1,7 +1,7 @@
 # 02 データモデル（Supabase）
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-24
+- 更新日: 2026-11-28
 - 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36（初回対象外）、FR-73、FR-76、ADR 0003、ADR 0005（保留）、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
@@ -333,7 +333,7 @@
 
 | ビュー | 元の表 | 列 | 対応する 05 §4.1 の行 / 用途 |
 | --- | --- | --- | --- |
-| pub_meta | batch_run | base_date、finished_at（最後の success）、mask_threshold、is_stale（基準日が前日より古い）、last_status | FR-02、NFR-90 |
+| pub_meta | batch_run | base_date、finished_at（最後の success）、mask_threshold、is_stale（日次バッチの定刻 JST 17:00 から 14 時間たっても、その回のぶんの成功がない。時刻 t に成功しているはずの基準日は「(t − 31 時間) の日付 − 1」。2026-11-28 に 0009 で「基準日が前日より古い」から変更。前の定義では、日付が変わってからその日のバッチが動くまでの再ビルドで、正常でも遅れと出た）、last_status | FR-02、NFR-90 |
 | pub_batch_run | batch_run | run_id、started_at、finished_at、base_date、mode、status、failed_step、error_kind（直近 30 件） | FR-02、FR-76 |
 | pub_period | period | period_id、kind、start_date、end_date、is_confirmed | FR-01 |
 | pub_author | wp_author | author_slug、display_name、author_url | FR-30、NFR-35 |
