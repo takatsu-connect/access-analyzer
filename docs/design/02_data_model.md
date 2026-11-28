@@ -1,7 +1,7 @@
 # 02 データモデル（Supabase）
 
 - 状態: 確定（2026-11-04。依頼者の確認済み。実装時の確認項目は ADR 0009 にある）
-- 更新日: 2026-11-10
+- 更新日: 2026-11-24
 - 参照: 05_non_functional.md §4.1（格納と公開の組み合わせ）、NFR-30〜NFR-45、NFR-50〜NFR-52、FR-36（初回対象外）、FR-73、FR-76、ADR 0003、ADR 0005（保留）、ADR 0007、ADR 0009
 - 変更履歴:
   - 2026-11-03: 設計レビュー（audits/2026-11-03-design-review.md）の H-1・M-1〜M-8・L-1〜L-10 と Q-36 を反映
@@ -527,7 +527,7 @@ revoke all on public.pub_<名前>, ... from public, authenticated, service_role;
 
 Supabase 管理スキーマ: `pg_catalog`、`information_schema`、`auth`、`extensions`、`graphql`、`graphql_public`、`realtime`、`storage`、`supabase_functions`。これらには基盤が anon / authenticated / PUBLIC に権限を与えており（2026-11-05 にローカルで確認。`storage` の表への select / insert / update / delete を含む）、本プロジェクトは変更しない。検査 1〜2 は `supabase/checks/anon_privileges.sql` にこの除外リストつきで置き、マイグレーション末尾に同じ本文を写す。07 I-DB-15 は anon と authenticated が usage を持つスキーマの集合が「管理スキーマ + `public`」と完全に一致することも確かめ、スキーマが増えたら失敗させる。本番で管理スキーマの一覧が違い、一覧の外に anon などの権限があれば、本番への適用時に末尾の検査で失敗する。これは意図どおりで、そのスキーマを確かめてから一覧を直す。検査を弱めて通さない。
 
-`batch_writer` の権限の検査（W-8）は、違反を 1 行ずつ返す select として `supabase/checks/batch_writer_privileges.sql` に置く。0 行なら合格。同じ select をマイグレーション末尾に `do` ブロックで包んで写し（1 行でもあれば `raise exception`）、07 I-DB-18 でファイルを実行して 2 か所の本文の一致も確かめる。A-11 では本番の SQL エディタで同じファイルの内容を実行する。これで、本番の手変更や既定権限で広がった権限に気づける。検査する内容:
+`batch_writer` の権限の検査（W-8）は、違反を 1 行ずつ返す select として `supabase/checks/batch_writer_privileges.sql` に置く。0 行なら合格。同じ select をマイグレーション末尾に `do` ブロックで包んで写し（1 行でもあれば `raise exception`）、07 I-DB-18 でファイルを実行して 2 か所の本文の一致も確かめる。A-11 では本番で同じファイルの内容を実行する。これで、本番の手変更や既定権限で広がった権限に気づける。検査は `information_schema` を読まず、`pg_catalog` の ACL（`aclexplode`）と `has_*_privilege` だけで判定する（2026-11-24）。`information_schema` の `*_grants` は実行する役割に関係する行しか返さないので、読み取り専用の役割で流すと偽の違反と偽の合格が出たため（2026-11-08 に本番で確認）。置き換えた本文は `0008_privilege_checks.sql` に写してあり、0005 の末尾の検査は適用済みなので書き換えていない。`anon_privileges.sql` も同じ。検査する内容:
 
 - 表の grant: `information_schema.role_table_grants` が許可リスト（§3.1〜§3.6 の表。`batch_run` は delete なし）に一致する（I-DB-18 (1)）。`has_table_privilege` の実効値でも、public と `internal` の表とビューに許可リストの外の権限がない。列単位の grant（`attacl`）がない（監査 L-1）。
 - スキーマ: すべてのスキーマについて `has_schema_privilege('batch_writer', <スキーマ>, 'USAGE')` と `'CREATE'` を見る。CREATE はどこにもない。USAGE の許可は `internal` と、PUBLIC 経由であることを `nspacl` で確かめた `public` だけ。`pg_catalog` と `information_schema` は PostgreSQL の既定で PUBLIC が USAGE を持つので USAGE の判定から除く。ほかに PUBLIC 経由の USAGE が見つかったら、ローカルの結果を確かめて可否を決める（Supabase の既定権限は未確認）。`public` の CREATE が PUBLIC に残っていれば `revoke create on schema public from public` をマイグレーションに足す。広げる方向で直さない。

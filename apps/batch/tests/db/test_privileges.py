@@ -363,11 +363,43 @@ def test_i_db_15_counts_check_rejects_other_shapes(admin: Admin, counts: str) ->
         )
 
 
+# 検査を流す役割。None は管理接続のまま。"anon" は検査の対象そのもの。NEW_READER は、テストの中で
+# 作る、何の権限も所属も持たない役割（本番では Supabase CLI の読み取り専用の役割で流す。A-11。
+# 監査 2026-11-24-privilege-checks-review.md M-2）。どれで流しても同じ結果になること。
+NEW_READER = "check_reader"
+CHECK_READERS = [None, "anon", NEW_READER]
+
+
+def _violations(admin: Admin, name: str, reader: str | None) -> list[str]:
+    """検査のファイルを、指定した役割で流して違反の一覧を返す（役割はこの中で元に戻す）。"""
+    if reader == NEW_READER:
+        admin.execute(b"create role check_reader nologin noinherit")
+        admin.execute(b"grant check_reader to current_user")
+    if reader is not None:
+        admin.execute(sql.SQL("set local role {}").format(sql.Identifier(reader)))
+    try:
+        return [str(row[0]) for row in _rows(admin, _check_body(name))]
+    finally:
+        if reader is not None:
+            admin.execute(b"reset role")
+
+
+@pytest.mark.parametrize("reader", CHECK_READERS)
 @pytest.mark.parametrize("name", ["anon_privileges", "batch_writer_privileges"])
-def test_check_files_return_no_violation(admin: Admin, name: str) -> None:
-    assert _rows(admin, _check_body(name)) == []
+def test_check_files_return_no_violation(admin: Admin, name: str, reader: str | None) -> None:
+    assert _violations(admin, name, reader) == []
 
 
+@pytest.mark.parametrize("name", ["anon_privileges", "batch_writer_privileges"])
+def test_check_files_do_not_read_information_schema(name: str) -> None:
+    # information_schema は、実行する役割に関係する行しか返さない（2026-11-08 に本番で偽の違反）
+    body = "\n".join(
+        line for line in _check_body(name).splitlines() if not line.lstrip().startswith("--")
+    )
+    assert "information_schema." not in body
+
+
+@pytest.mark.parametrize("reader", CHECK_READERS)
 @pytest.mark.parametrize(
     ("statement", "expected"),
     [
@@ -397,15 +429,42 @@ def test_check_files_return_no_violation(admin: Admin, name: str) -> None:
             "grant update (title) on internal.wp_post to anon",
             "column grant: anon internal.wp_post.title",
         ),
+        # 監査 2026-11-24-privilege-checks-review.md M-2: 書き換えた節（ACL と既定の ACL から読む）
+        ("grant select on internal.wp_post to public", "table grant: PUBLIC internal.wp_post"),
+        (
+            "grant select (title) on internal.wp_post to public",
+            "column grant: PUBLIC internal.wp_post.title",
+        ),
+        (
+            # 関数は、何もしなければ PUBLIC が実行できる（ACL は空で、既定を展開して見つける）
+            "create function internal.extra() returns integer language sql as 'select 1'",
+            "routine grant: PUBLIC internal.extra",
+        ),
+        (
+            "create sequence internal.extra_seq;grant usage on sequence internal.extra_seq to anon",
+            "usage grant: anon internal.extra_seq",
+        ),
+        (
+            # ドメインも、何もしなければ PUBLIC が使える
+            "create domain internal.extra_domain as integer",
+            "usage grant: PUBLIC internal.extra_domain",
+        ),
+        (
+            "create view public.pub_extra as select 1 as value_mask",
+            "mask column: pub_extra.value_mask",
+        ),
     ],
 )
-def test_check_detects_regression(admin: Admin, statement: str, expected: str) -> None:
+def test_check_detects_regression(
+    admin: Admin, statement: str, expected: str, reader: str | None
+) -> None:
     # 検査そのものが働くことを、権限を広げて確かめる（変更はロールバックする）
     admin.execute(statement.encode())
-    violations = [str(row[0]) for row in _rows(admin, _check_body("anon_privileges"))]
+    violations = _violations(admin, "anon_privileges", reader)
     assert any(violation.startswith(expected) for violation in violations), violations
 
 
+@pytest.mark.parametrize("reader", CHECK_READERS)
 @pytest.mark.parametrize(
     ("statement", "expected"),
     [
@@ -436,9 +495,11 @@ def test_check_detects_regression(admin: Admin, statement: str, expected: str) -
         ),
     ],
 )
-def test_batch_writer_check_detects_regression(admin: Admin, statement: str, expected: str) -> None:
+def test_batch_writer_check_detects_regression(
+    admin: Admin, statement: str, expected: str, reader: str | None
+) -> None:
     admin.execute(statement.encode())
-    violations = [str(row[0]) for row in _rows(admin, _check_body("batch_writer_privileges"))]
+    violations = _violations(admin, "batch_writer_privileges", reader)
     assert any(violation.startswith(expected) for violation in violations), violations
 
 
@@ -449,7 +510,8 @@ def _normalize(text: str) -> str:
 
 @pytest.mark.parametrize("name", ["anon_privileges", "batch_writer_privileges"])
 def test_i_db_18_10_migration_check_matches_file(name: str) -> None:
-    migration = (MIGRATIONS / "0005_public_views.sql").read_text(encoding="utf-8")
+    # 0005 の末尾の検査は適用済みで書き換えない。置き換えた本文は 0008 にある
+    migration = (MIGRATIONS / "0008_privilege_checks.sql").read_text(encoding="utf-8")
     match = re.search(rf"-- BEGIN CHECK {name}\n(.*?)-- END CHECK {name}", migration, re.DOTALL)
     assert match is not None
     assert _normalize(match.group(1)) == _normalize(_check_body(name))
