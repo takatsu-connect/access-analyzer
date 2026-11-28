@@ -101,7 +101,7 @@ Vercel のプロジェクトは 2 つ。BI（`apps/web`）と中継（`apps/wp-r
 | Deployment Protection | Standard Protection（本番ドメイン以外のデプロイの URL を閉じる） | プロジェクト | 依頼者 |
 | Web Analytics、Speed Insights、Toolbar | 使わない（2026-11-07 の依頼者の決定。06 §6 の CSP とも合う） | プロジェクト | 依頼者 |
 
-- BI 自身の閲覧の計測に使う `BI_GA4_MEASUREMENT_ID`（Production だけ。ADR 0013）は、この表にまだ載せていない（この更新の範囲外）。
+- BI 自身の閲覧の計測に使う `BI_GA4_MEASUREMENT_ID`（ADR 0013、FR-77）は、BI のプロジェクトの Production にだけ置く。値は測定 ID で秘密ではない。空なら計測も CSP の追加もしない。
 - Vercel のアカウント所有者（NFR-60）: 未記入。依頼者が §7 に書く。
 
 ### 4.2 中継のプロジェクト
@@ -121,7 +121,7 @@ Vercel のプロジェクトは 2 つ。BI（`apps/web`）と中継（`apps/wp-r
 
 | 項目 | 内容 | 置き場所 | 設定する人 |
 | --- | --- | --- | --- |
-| 本番プロジェクト | 作成済み（2026-11-04）。マイグレーション 0001〜0005 は未適用（2026-11-07） | Supabase | 依頼者 |
+| 本番プロジェクト | 作成済み（2026-11-04）。マイグレーションは 0001〜0008 を適用済み（2026-11-28 に `migration list` で確認。0009 は未適用） | Supabase | 依頼者 |
 | `postgres` のパスワード | マイグレーションの適用（`supabase db push`）のときに入力する。保存先はパスワード管理ツール（依頼者の管理）とし、リポジトリ、Actions、Vercel に置かない（06 §3） | 依頼者のパスワード管理ツール | 依頼者 |
 | `batch_writer` のパスワード | 英数字 32 文字以上のランダム値（ADR 0009）。SQL エディタで設定し、接続文字列にして Environment の Secret にだけ置く | Environment `production` | 依頼者 |
 | CA | `apps/batch/certs/supabase-root-2021.crt`（Supabase Root 2021 CA。SHA-256 指紋 `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA`、有効期限 2031-04-26。pooler のサーバー証明書の有効期限は 2030-03-11。ADR 0009） | リポジトリ（秘密ではない） | ― |
@@ -133,7 +133,7 @@ Vercel のプロジェクトは 2 つ。BI（`apps/web`）と中継（`apps/wp-r
 | --- | --- |
 | プロジェクト | `affable-enigma-513514-q8`（番号 359672952827） |
 | SA | `sa-takatsu-connect-ga4@affable-enigma-513514-q8.iam.gserviceaccount.com`（GA4 プロパティの閲覧者。GCP のロールは持たない） |
-| WIF のプール / プロバイダ | `github` / `access-analyzer`（未作成。deploy.md 手順 1）。属性条件は repository、repository_id（1443616803）、ref = refs/heads/main |
+| WIF のプール / プロバイダ | `github` / `access-analyzer`（作成済み。2026-11-08 に deploy.md 手順 1・2 を完了し、`wif-check` が 200）。属性条件は repository、repository_id（1443616803）、ref = refs/heads/main |
 | JSON 鍵 | 動作確認後に削除する（deploy.md 手順 11） |
 
 ## 7. 権限を持つ人

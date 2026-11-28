@@ -17,7 +17,7 @@
 | 週 1 | Actions の `audit` の結果、Dependabot の PR | `audit` が成功。PR は §12 で処理する |
 | 月 1（必須。03 §12） | Actions の実行一覧（`daily` が毎日動いているか、`heartbeat` が動いたか）、Vercel のビルド履歴 | `daily` が毎日 success（2 本目の 18:00 は成功の後なので何もせず success）。止まっていない |
 | 月 1 | `internal.batch_run` の直近 30 日（monitoring.md §4） | `failed` が続いていない。`ga4_tokens` が見込みの 3 倍以内 |
-| 月 1 | Vercel の `takatsu-connect-wp-relay` の使用量（§14.3） | バッチが成功している日の実行回数が 1 日数十回 |
+| 月 1 | Vercel の `takatsu-connect-wp-relay` の使用量（§14.3） | バッチが成功している日の実行回数が、1 回の実行で 7 件ほど（§14.3） |
 | 年 1 | §8 のローテーション | ― |
 
 ## 2. 失敗の通知を受けたとき
@@ -279,6 +279,6 @@ openssl s_client -starttls postgres -connect <POOLER-HOST>:5432 -showcerts -CAfi
 
 ### 14.3 使用量の点検
 
-- 月 1 回、Vercel の `takatsu-connect-wp-relay` の関数の実行回数を見る。バッチが成功している日の目安は 1 日数十回（ADR 0011 の見込み。実測はまだない。最初の実行の後に実測で置き換える）。
+- 月 1 回、Vercel の `takatsu-connect-wp-relay` の関数の実行回数を見る。バッチが成功している日の目安は、日次の 1 回の実行で 7 件ほど（2026-11-24〜11-27 の本番のログの `wp_requests`。保険の 2 回目も動いた日はその 2 倍。週 1 の全著者の確認の日と backfill の日は増える）。
 - 大きく超えているときは、ログの `outcome` を見る。`unauthorized` が多いなら未認証の大量要求（WordPress には届かない）。`ok` が多く、バッチの実行で説明がつかないならトークンの漏えいを疑い、§9.4。
 - Vercel Firewall のレート制限を `/api/relay` に掛けられるか、費用の上限や通知を設定できるか、Pro の追加費用の有無は未確認。
